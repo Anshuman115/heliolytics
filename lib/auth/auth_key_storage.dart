@@ -1,8 +1,14 @@
 import 'dart:typed_data';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:heliolytics/auth/auth_key_store.dart';
 import 'package:heliolytics/auth/auth_key_validator.dart';
 import 'package:heliolytics/config/constants.dart';
+
+final authKeyStoreProvider = Provider<AuthKeyStore>(
+  (ref) => throw UnimplementedError(
+      'Override authKeyStoreProvider in ProviderScope'),
+);
 
 class AuthKeyStorage {
   final AuthKeyStore _store;

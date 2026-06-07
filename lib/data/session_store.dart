@@ -1,8 +1,18 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:heliolytics/config/constants.dart';
 import 'package:heliolytics/data/models.dart';
 import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+final sessionStoreProvider = FutureProvider<SessionStore>((ref) async {
+  final root = await getApplicationDocumentsDirectory();
+  final dir = Directory(p.join(root.path, appDocsSubdir));
+  if (!dir.existsSync()) await dir.create(recursive: true);
+  return SessionStore(rootDir: dir);
+});
 
 class SessionStore {
   final Directory rootDir;

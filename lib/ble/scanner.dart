@@ -1,4 +1,9 @@
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:heliolytics/ble/ble_devices.dart';
+
+final bleScannerProvider = Provider<BleScanner>(
+  (ref) => scannerProvider(),
+);
 
 class StubScanner implements BleScanner {
   @override
