@@ -4,7 +4,9 @@ import 'package:pointycastle/export.dart';
 class CryptoUtils {
   static String bytesToHex(Uint8List bytes) {
     final sb = StringBuffer();
-    for (final b in bytes) sb.write(b.toRadixString(16).padLeft(2, '0'));
+    for (final b in bytes) {
+      sb.write(b.toRadixString(16).padLeft(2, '0'));
+    }
     return sb.toString();
   }
 
