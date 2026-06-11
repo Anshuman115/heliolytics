@@ -1,0 +1,22 @@
+Actual filenames in helio_dump_v3/:
+- 0x01_hr_samples.bin
+- 0x05_workouts.bin
+- 0x06_workout_details.bin
+- 0x0D_pai_scores.bin
+- 0x13_stress_auto.bin
+- 0x25_spo2.bin
+- 0x26_spo2_sleep.bin
+- 0x27_accelerometer.bin
+- 0x2E_temperature.bin
+- 0x38_sleep_resp_rate.bin
+- 0x39_probe39.bin
+- 0x3A_resting_hr.bin
+- 0x3B_activity_sessions.bin
+- 0x3D_max_hr.bin
+- 0x46_continuous_hr.bin
+- 0x48_sleep_session.bin
+- 0x49_hrv.bin
+- 0x4A_hrv_trend.bin
+- 0x4E_sleep_segments.bin
+- 0x55_probe55.bin
+- 0x57_probe57.bin

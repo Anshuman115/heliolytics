@@ -25,3 +25,6 @@ deploy/.env
 
 # Local-only docs (never commit)
 docs/
+CLAUDE.md
+TODO.md
+deploy/DEV.md
