@@ -9,14 +9,11 @@ import (
 )
 
 func TestCoverageResponseSerializesWorkoutTypesAsNull(t *testing.T) {
-	cov := store.DataCoverage{
-		HasData: false,
-		Types: map[string]*time.Time{
-			"0x05": nil,
-			"0x06": nil,
-			"0x3B": nil,
-		},
+	types := map[string]*time.Time{}
+	for _, key := range store.SyncedBLETypeCodes {
+		types[key] = nil
 	}
+	cov := store.DataCoverage{HasData: false, Types: types}
 	out := buildCoverageResponse(cov)
 	raw, err := json.Marshal(out)
 	if err != nil {
@@ -26,12 +23,12 @@ func TestCoverageResponseSerializesWorkoutTypesAsNull(t *testing.T) {
 	if err := json.Unmarshal(raw, &decoded); err != nil {
 		t.Fatalf("Unmarshal: %v", err)
 	}
-	types, ok := decoded["types"].(map[string]any)
+	decodedTypes, ok := decoded["types"].(map[string]any)
 	if !ok {
 		t.Fatalf("response missing types map: %s", raw)
 	}
-	for _, key := range []string{"0x05", "0x06", "0x3B"} {
-		v, ok := types[key]
+	for _, key := range store.SyncedBLETypeCodes {
+		v, ok := decodedTypes[key]
 		if !ok {
 			t.Fatalf("types missing key %s", key)
 		}

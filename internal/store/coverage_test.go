@@ -42,7 +42,7 @@ func TestGetCoverageIncludesWorkoutTypeKeys(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCoverage: %v", err)
 	}
-	for _, key := range []string{"0x05", "0x06", "0x3B"} {
+	for _, key := range SyncedBLETypeCodes {
 		if _, ok := cov.Types[key]; !ok {
 			t.Fatalf("Types missing key %s", key)
 		}
