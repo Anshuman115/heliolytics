@@ -50,3 +50,10 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 	out.TempSeries = ParseTempSeries(blobs["0x2E"], FindEntry(cat, "0x2E"))
 	return out
 }
+
+func (b ParsedBatch) healthSeries() []HealthSample {
+	return appendHealthSeries(
+		b.StressSeries, b.HrvSeries, b.Spo2Spot, b.Spo2Sleep,
+		b.RhrSeries, b.RespRateSeries, b.MaxHrSeries,
+	)
+}
