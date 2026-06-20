@@ -20,9 +20,9 @@ cp .env.example .env   # set HELIOLYTICS_SIGNING_SECRET, HELIOLYTICS_WEB_PASSWOR
 ./install.sh
 ```
 
-- API (direct): `http://localhost:8080/health`
-- Web (direct): `http://localhost:3000/login`
-- HTTPS (Caddy): `https://localhost` (self-signed internal cert)
+- API (local): `http://127.0.0.1:8080/health`
+- Web (local): `http://127.0.0.1:3000/login`
+- Public HTTPS: Cloudflare Tunnel (`cloudflared` container) — see `deploy/deployment.md`
 
 See `deploy/deployment.md` for full **dev** and **production** (VPS + domain) steps. See `deploy/DEV.md` for a short local Docker cheat sheet.
 
