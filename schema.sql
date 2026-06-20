@@ -91,22 +91,24 @@ CREATE TABLE activity_sessions (
 );
 
 CREATE TABLE temperature_samples (
-  id               BIGSERIAL PRIMARY KEY,
+  id               BIGSERIAL NOT NULL,
   sync_session_id  TEXT NOT NULL,
   day_key          TEXT NOT NULL,
   sampled_at       TIMESTAMPTZ NOT NULL,
-  celsius          NUMERIC(4, 1) NOT NULL
+  celsius          NUMERIC(4, 1) NOT NULL,
+  PRIMARY KEY (sampled_at, id)
 );
 
 CREATE INDEX idx_temp_samples_day ON temperature_samples(day_key, sampled_at);
 
 CREATE TABLE health_samples (
-  id               BIGSERIAL PRIMARY KEY,
+  id               BIGSERIAL NOT NULL,
   sync_session_id  TEXT NOT NULL,
   metric           TEXT NOT NULL,
   day_key          TEXT NOT NULL,
   sampled_at       TIMESTAMPTZ NOT NULL,
-  value            NUMERIC(6, 2) NOT NULL
+  value            NUMERIC(6, 2) NOT NULL,
+  PRIMARY KEY (sampled_at, id)
 );
 
 CREATE INDEX idx_health_samples_day_metric
