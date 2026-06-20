@@ -13,15 +13,16 @@ type TempPoint struct {
 	Celsius   float64
 }
 
-func (s *Store) ReplaceTemperature(ctx context.Context, sid string, pts []TempPoint) error {
+func (s *Store) UpsertTemperature(ctx context.Context, sid string, pts []TempPoint) error {
 	if sid == "" {
-		return errRequired("temperature_samples.sync_session_id")
-	}
-	if err := s.q.DeleteTemperatureBySession(ctx, sid); err != nil {
-		return err
+		return errRequired("temperature_samples.source_session_id")
 	}
 	for _, p := range pts {
 		if err := validateTempPoint(p); err != nil {
+			return err
+		}
+		day, err := dateKey(p.DayKey)
+		if err != nil {
 			return err
 		}
 		ts, err := timestamptzRequired(p.SampledAt, "temperature_samples.sampled_at")
@@ -32,11 +33,8 @@ func (s *Store) ReplaceTemperature(ctx context.Context, sid string, pts []TempPo
 		if err != nil {
 			return err
 		}
-		if err := s.q.InsertTemperatureSample(ctx, db.InsertTemperatureSampleParams{
-			SyncSessionID: sid,
-			DayKey:        p.DayKey,
-			SampledAt:     ts,
-			Celsius:       c,
+		if err := s.q.UpsertTemperatureSample(ctx, db.UpsertTemperatureSampleParams{
+			SampledAt: ts, DayKey: day, Celsius: c, SourceSessionID: sid,
 		}); err != nil {
 			return err
 		}
@@ -45,7 +43,15 @@ func (s *Store) ReplaceTemperature(ctx context.Context, sid string, pts []TempPo
 }
 
 func (s *Store) ListTemperature(ctx context.Context, from, to string) ([]TempPoint, error) {
-	rows, err := s.q.ListTemperature(ctx, db.ListTemperatureParams{DayKey: from, DayKey_2: to})
+	fromD, err := dateKey(from)
+	if err != nil {
+		return nil, err
+	}
+	toD, err := dateKey(to)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListTemperature(ctx, db.ListTemperatureParams{DayKey: fromD, DayKey_2: toD})
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +62,7 @@ func (s *Store) ListTemperature(ctx context.Context, from, to string) ([]TempPoi
 			continue
 		}
 		out = append(out, TempPoint{
-			DayKey: r.DayKey, SampledAt: r.SampledAt.Time, Celsius: *c,
+			DayKey: dateKeyString(r.DayKey), SampledAt: r.SampledAt.Time, Celsius: *c,
 		})
 	}
 	return out, nil

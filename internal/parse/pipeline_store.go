@@ -26,7 +26,7 @@ func ptrInt(v int) *int {
 	return &v
 }
 
-func toSleepRows(sid string, recs []SleepRecord) []store.SleepRow {
+func toSleepRows(recs []SleepRecord) []store.SleepRow {
 	out := make([]store.SleepRow, len(recs))
 	for i, s := range recs {
 		st := make([]store.SleepStagePoint, len(s.Stages))
@@ -34,7 +34,7 @@ func toSleepRows(sid string, recs []SleepRecord) []store.SleepRow {
 			st[j] = store.SleepStagePoint{Start: g.Start, End: g.End, Type: g.Type}
 		}
 		out[i] = store.SleepRow{
-			SyncSessionID: sid, DayKey: s.DayKey, StartedAt: s.StartedAt,
+			DayKey: s.DayKey, StartedAt: s.StartedAt,
 			Score: s.Score, TotalMins: s.TotalMin, DeepMins: s.DeepMin,
 			RemMins: s.RemMin, LightMins: s.LightMin, WakeMins: s.WakeMin,
 			IsNap: s.IsNap, Stages: st,
@@ -70,11 +70,19 @@ func toHealthRows(pts []HealthSample) []store.HealthSample {
 	return out
 }
 
-func toWorkoutRows(sid string, recs []WorkoutRecord) []store.WorkoutRow {
+func toHrRows(pts []HrSamplePoint) []store.HeartRateSample {
+	out := make([]store.HeartRateSample, len(pts))
+	for i, p := range pts {
+		out[i] = store.HeartRateSample{DayKey: p.DayKey, SampledAt: p.Ts, Bpm: p.Bpm}
+	}
+	return out
+}
+
+func toWorkoutRows(recs []WorkoutRecord) []store.WorkoutRow {
 	out := make([]store.WorkoutRow, len(recs))
 	for i, w := range recs {
 		out[i] = store.WorkoutRow{
-			SyncSessionID: sid, DayKey: w.DayKey, StartedAt: w.StartedAt,
+			DayKey: w.DayKey, StartedAt: w.StartedAt,
 			SportType: w.SportType, SportName: w.SportName,
 			DurationSec: w.DurationSec, Calories: w.Calories,
 			AvgHr: w.AvgHr, MaxHr: w.MaxHr,
@@ -83,11 +91,11 @@ func toWorkoutRows(sid string, recs []WorkoutRecord) []store.WorkoutRow {
 	return out
 }
 
-func toActivitySessionRows(sid string, recs []WorkoutRecord) []store.ActivitySessionRow {
+func toActivitySessionRows(recs []WorkoutRecord) []store.ActivitySessionRow {
 	out := make([]store.ActivitySessionRow, len(recs))
 	for i, s := range recs {
 		out[i] = store.ActivitySessionRow{
-			SyncSessionID: sid, DayKey: s.DayKey, StartedAt: s.StartedAt,
+			DayKey: s.DayKey, StartedAt: s.StartedAt,
 			SportType: s.SportType, SportName: s.SportName,
 			DurationSec: s.DurationSec, Calories: s.Calories,
 			AvgHr: s.AvgHr, MaxHr: s.MaxHr,

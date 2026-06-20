@@ -1,9 +1,10 @@
--- name: DeleteHealthSamplesBySession :exec
-DELETE FROM health_samples WHERE sync_session_id = $1;
-
--- name: InsertHealthSample :exec
-INSERT INTO health_samples (sync_session_id, metric, day_key, sampled_at, value)
-VALUES ($1, $2, $3, $4, $5);
+-- name: UpsertHealthSample :exec
+INSERT INTO health_samples (metric, day_key, sampled_at, value, source_session_id)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (metric, sampled_at) DO UPDATE SET
+  value = EXCLUDED.value,
+  day_key = EXCLUDED.day_key,
+  source_session_id = EXCLUDED.source_session_id;
 
 -- name: ListHealthSamples :many
 SELECT metric, day_key, sampled_at, value

@@ -69,7 +69,7 @@ func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
 		t.Fatalf("insert sync_session: %v", err)
 	}
 	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO workouts (sync_session_id, day_key, started_at, duration_sec, sport_type, sport_name)
+		INSERT INTO workouts (source_session_id, day_key, started_at, duration_sec, sport_type, sport_name)
 		VALUES ($1, '2026-06-06', $2, $3, 92, 'Badminton')`,
 		coverageTestSessionID, started, durationSec,
 	); err != nil {
@@ -111,7 +111,7 @@ func TestGetCoverageActivityTypeNonNullWhenParsedSessionExists(t *testing.T) {
 		t.Fatalf("insert sync_session: %v", err)
 	}
 	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO activity_sessions (sync_session_id, day_key, started_at, duration_sec, sport_type)
+		INSERT INTO activity_sessions (source_session_id, day_key, started_at, duration_sec, sport_type)
 		VALUES ($1, '2026-06-05', $2, $3, 1)`,
 		coverageTestSessionID, started, durationSec,
 	); err != nil {

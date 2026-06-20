@@ -38,7 +38,7 @@ func TestGetCoverageSleepTypesNonNullWhenParsedSleepExists(t *testing.T) {
 		{mainStart, mainMins, "2026-06-07", false},
 	} {
 		if _, err := st.pool.Exec(ctx, `
-			INSERT INTO sleep_sessions (sync_session_id, day_key, started_at, total_mins, is_nap)
+			INSERT INTO sleep_sessions (source_session_id, day_key, started_at, total_mins, is_nap)
 			VALUES ($1, $2, $3, $4, $5)`,
 			coverageTestSessionID, row.day, row.start, row.mins, row.nap,
 		); err != nil {
@@ -82,9 +82,9 @@ func TestGetCoverageVitalsAndDailyNonNullWhenSeeded(t *testing.T) {
 		t.Fatalf("insert daily_metrics: %v", err)
 	}
 	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO health_samples (sync_session_id, metric, day_key, sampled_at, value)
-		VALUES ($1, 'stress', '2026-06-08', $2, 35)`,
-		coverageTestSessionID, seedAt,
+		INSERT INTO health_samples (metric, day_key, sampled_at, value, source_session_id)
+		VALUES ('stress', '2026-06-08', $1, 35, $2)`,
+		seedAt, coverageTestSessionID,
 	); err != nil {
 		t.Fatalf("insert health_sample: %v", err)
 	}

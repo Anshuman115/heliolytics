@@ -5,11 +5,11 @@ import "time"
 // SyncedBLETypeCodes matches Heliolytics_App fetchTypeCodes — every key must appear in coverage.types.
 var SyncedBLETypeCodes = []string{
 	"0x01", "0x05", "0x06", "0x0D", "0x13", "0x25", "0x26", "0x2E",
-	"0x38", "0x39", "0x3A", "0x3B", "0x3D", "0x48", "0x49", "0x4E",
+	"0x38", "0x39", "0x3A", "0x3B", "0x3D", "0x46", "0x48", "0x49", "0x4E",
 }
 
 func buildTypeCoverage(
-	workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd *time.Time,
+	workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd *time.Time,
 	stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd, maxHrEnd *time.Time,
 	stepsEnd, paiEnd, readinessEnd *time.Time,
 ) map[string]*time.Time {
@@ -27,6 +27,7 @@ func buildTypeCoverage(
 		"0x3A": rhrEnd,
 		"0x3B": activityEnd,
 		"0x3D": maxHrEnd,
+		"0x46": hrEnd,
 		"0x48": mainSleepEnd,
 		"0x49": hrvEnd,
 		"0x4E": napEnd,

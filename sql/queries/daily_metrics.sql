@@ -3,9 +3,9 @@ INSERT INTO daily_metrics (
   day_key, steps, pai_score, readiness, spo2_avg, hrv_rmssd,
   resting_hr, max_hr, resp_rate_avg, stress_avg, sleep_score, sleep_mins,
   sleep_deep_mins, sleep_rem_mins, sleep_light_mins, temp_avg_c,
-  nap_count, workout_count, activity_session_count
+  nap_count, workout_count, activity_session_count, source_session_id
 ) VALUES (
-  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19
+  $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
 )
 ON CONFLICT (day_key) DO UPDATE SET
   steps = EXCLUDED.steps,
@@ -26,6 +26,7 @@ ON CONFLICT (day_key) DO UPDATE SET
   nap_count = GREATEST(daily_metrics.nap_count, EXCLUDED.nap_count),
   workout_count = GREATEST(daily_metrics.workout_count, EXCLUDED.workout_count),
   activity_session_count = GREATEST(daily_metrics.activity_session_count, EXCLUDED.activity_session_count),
+  source_session_id = EXCLUDED.source_session_id,
   updated_at = NOW();
 
 -- name: ListDays :many

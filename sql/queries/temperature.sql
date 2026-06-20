@@ -1,9 +1,10 @@
--- name: DeleteTemperatureBySession :exec
-DELETE FROM temperature_samples WHERE sync_session_id = $1;
-
--- name: InsertTemperatureSample :exec
-INSERT INTO temperature_samples (sync_session_id, day_key, sampled_at, celsius)
-VALUES ($1, $2, $3, $4);
+-- name: UpsertTemperatureSample :exec
+INSERT INTO temperature_samples (sampled_at, day_key, celsius, source_session_id)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (sampled_at) DO UPDATE SET
+  celsius = EXCLUDED.celsius,
+  day_key = EXCLUDED.day_key,
+  source_session_id = EXCLUDED.source_session_id;
 
 -- name: ListTemperature :many
 SELECT day_key, sampled_at, celsius

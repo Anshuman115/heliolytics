@@ -14,9 +14,12 @@ coverage/
 # Go
 vendor/
 
-# Env
+# Env / secrets (never commit)
 .env
+.env.local
+*.env.local
 deploy/.env
+build.env
 
 # OS / IDE
 .DS_Store

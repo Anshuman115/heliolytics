@@ -41,10 +41,7 @@ func validateTempPoint(p TempPoint) error {
 	return nil
 }
 
-func validateHealthSample(sid string, p HealthSample) error {
-	if sid == "" {
-		return fmt.Errorf("health_samples.sync_session_id required")
-	}
+func validateHealthSample(p HealthSample) error {
 	if err := textRequired(p.Metric, "health_samples.metric"); err != nil {
 		return err
 	}
@@ -60,19 +57,29 @@ func validateHealthSample(sid string, p HealthSample) error {
 	return nil
 }
 
-func validateSleepRow(r SleepRow) error {
-	if err := validateTimedRow("sleep_sessions", r.SyncSessionID, r.DayKey, r.StartedAt); err != nil {
+func validateHeartRateSample(p HeartRateSample) error {
+	if err := dayKeyRequired(p.DayKey, "heart_rate_samples"); err != nil {
 		return err
+	}
+	if p.SampledAt.IsZero() {
+		return fmt.Errorf("heart_rate_samples.sampled_at required")
+	}
+	if p.Bpm < 30 || p.Bpm > 220 {
+		return fmt.Errorf("heart_rate_samples.bpm out of range")
 	}
 	return nil
 }
 
+func validateSleepRow(r SleepRow) error {
+	return validateTimedRow("sleep_sessions", r.DayKey, r.StartedAt)
+}
+
 func validateWorkoutRow(r WorkoutRow) error {
-	return validateTimedRow("workouts", r.SyncSessionID, r.DayKey, r.StartedAt)
+	return validateTimedRow("workouts", r.DayKey, r.StartedAt)
 }
 
 func validateActivityRow(r ActivitySessionRow) error {
-	return validateTimedRow("activity_sessions", r.SyncSessionID, r.DayKey, r.StartedAt)
+	return validateTimedRow("activity_sessions", r.DayKey, r.StartedAt)
 }
 
 func validateDayMetric(d DayMetric) error {
@@ -87,10 +94,7 @@ func validateDayMetric(d DayMetric) error {
 	return nil
 }
 
-func validateTimedRow(table, sid, dayKey string, startedAt time.Time) error {
-	if sid == "" {
-		return fmt.Errorf("%s.sync_session_id required", table)
-	}
+func validateTimedRow(table, dayKey string, startedAt time.Time) error {
 	if err := dayKeyRequired(dayKey, table); err != nil {
 		return err
 	}

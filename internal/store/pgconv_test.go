@@ -66,11 +66,12 @@ func TestValidateTempPoint(t *testing.T) {
 
 func TestValidateHealthSample(t *testing.T) {
 	ok := HealthSample{Metric: "hrv", DayKey: "2026-06-10", SampledAt: time.Unix(1, 0).UTC(), Value: 42.5}
-	if err := validateHealthSample("sid", ok); err != nil {
+	if err := validateHealthSample(ok); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateHealthSample("", ok); err == nil {
-		t.Fatal("expected sync_session_id error")
+	bad := HealthSample{Metric: "", DayKey: "2026-06-10", SampledAt: time.Unix(1, 0).UTC(), Value: 42.5}
+	if err := validateHealthSample(bad); err == nil {
+		t.Fatal("expected metric error")
 	}
 }
 

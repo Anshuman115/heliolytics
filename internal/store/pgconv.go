@@ -88,6 +88,24 @@ func dayKeyRequired(v, column string) error {
 	return nil
 }
 
+func dateKey(s string) (pgtype.Date, error) {
+	if err := dayKeyRequired(s, "day_key"); err != nil {
+		return pgtype.Date{}, err
+	}
+	t, err := time.Parse("2006-01-02", s)
+	if err != nil {
+		return pgtype.Date{}, fmt.Errorf("day_key: %w", err)
+	}
+	return pgtype.Date{Time: t, Valid: true}, nil
+}
+
+func dateKeyString(d pgtype.Date) string {
+	if !d.Valid {
+		return ""
+	}
+	return d.Time.Format("2006-01-02")
+}
+
 func textRequired(v, column string) error {
 	if v == "" {
 		return fmt.Errorf("%s: value required", column)

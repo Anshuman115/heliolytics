@@ -1,4 +1,4 @@
--- Heliolytics PostgreSQL + TimescaleDB schema (full reset — no incremental migrations)
+-- Heliolytics PostgreSQL + TimescaleDB schema 
 -- Apply on fresh DB via deploy/docker-compose init, or: psql -f schema.sql
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
@@ -59,7 +59,7 @@ CREATE TABLE sleep_sessions (
   wake_mins        INT NOT NULL DEFAULT 0,
   is_nap           BOOLEAN NOT NULL DEFAULT false,
   stages_json      JSONB,
-  UNIQUE (sync_session_id, started_at)
+  UNIQUE (started_at, day_key)
 );
 
 CREATE TABLE workouts (
@@ -73,7 +73,7 @@ CREATE TABLE workouts (
   calories         INT,
   avg_hr           INT,
   max_hr           INT,
-  UNIQUE (sync_session_id, started_at)
+  UNIQUE (day_key, started_at)
 );
 
 CREATE TABLE activity_sessions (
@@ -87,7 +87,7 @@ CREATE TABLE activity_sessions (
   calories         INT,
   avg_hr           INT,
   max_hr           INT,
-  UNIQUE (sync_session_id, started_at)
+  UNIQUE (day_key, started_at)
 );
 
 CREATE TABLE temperature_samples (

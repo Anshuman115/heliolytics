@@ -20,6 +20,7 @@ type ParsedBatch struct {
 	Workouts         []WorkoutRecord
 	ActivitySessions []WorkoutRecord
 	TempSeries       []TempSamplePoint
+	HrSeries         []HrSamplePoint
 }
 
 func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time) ParsedBatch {
@@ -48,6 +49,7 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 	)
 	out.ActivitySessions = ParseActivitySessions(blobs["0x3B"])
 	out.TempSeries = ParseTempSeries(blobs["0x2E"], FindEntry(cat, "0x2E"))
+	out.HrSeries = ParseContinuousHr(blobs["0x46"])
 	return out
 }
 

@@ -9,6 +9,7 @@ type AggregatedBatch struct {
 	Workouts         []WorkoutRecord
 	ActivitySessions []WorkoutRecord
 	TempSeries       []TempSamplePoint
+	HrSeries         []HrSamplePoint
 	HealthSeries     []HealthSample
 }
 
@@ -52,6 +53,7 @@ func Aggregate(parsed ParsedBatch) AggregatedBatch {
 		Workouts:         parsed.Workouts,
 		ActivitySessions: parsed.ActivitySessions,
 		TempSeries:       parsed.TempSeries,
+		HrSeries:         parsed.HrSeries,
 		HealthSeries:     parsed.healthSeries(),
 	}
 }

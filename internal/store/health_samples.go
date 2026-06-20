@@ -14,15 +14,16 @@ type HealthSample struct {
 	Value     float64
 }
 
-func (s *Store) ReplaceHealthSamples(ctx context.Context, sid string, pts []HealthSample) error {
+func (s *Store) UpsertHealthSamples(ctx context.Context, sid string, pts []HealthSample) error {
 	if sid == "" {
-		return errRequired("health_samples.sync_session_id")
-	}
-	if err := s.q.DeleteHealthSamplesBySession(ctx, sid); err != nil {
-		return err
+		return errRequired("health_samples.source_session_id")
 	}
 	for _, p := range pts {
-		if err := validateHealthSample(sid, p); err != nil {
+		if err := validateHealthSample(p); err != nil {
+			return err
+		}
+		day, err := dateKey(p.DayKey)
+		if err != nil {
 			return err
 		}
 		ts, err := timestamptzRequired(p.SampledAt, "health_samples.sampled_at")
@@ -33,12 +34,8 @@ func (s *Store) ReplaceHealthSamples(ctx context.Context, sid string, pts []Heal
 		if err != nil {
 			return err
 		}
-		if err := s.q.InsertHealthSample(ctx, db.InsertHealthSampleParams{
-			SyncSessionID: sid,
-			Metric:        p.Metric,
-			DayKey:        p.DayKey,
-			SampledAt:     ts,
-			Value:         val,
+		if err := s.q.UpsertHealthSample(ctx, db.UpsertHealthSampleParams{
+			Metric: p.Metric, DayKey: day, SampledAt: ts, Value: val, SourceSessionID: sid,
 		}); err != nil {
 			return err
 		}
@@ -47,7 +44,15 @@ func (s *Store) ReplaceHealthSamples(ctx context.Context, sid string, pts []Heal
 }
 
 func (s *Store) ListHealthSamples(ctx context.Context, from, to string) ([]HealthSample, error) {
-	rows, err := s.q.ListHealthSamples(ctx, db.ListHealthSamplesParams{DayKey: from, DayKey_2: to})
+	fromD, err := dateKey(from)
+	if err != nil {
+		return nil, err
+	}
+	toD, err := dateKey(to)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListHealthSamples(ctx, db.ListHealthSamplesParams{DayKey: fromD, DayKey_2: toD})
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +63,7 @@ func (s *Store) ListHealthSamples(ctx context.Context, from, to string) ([]Healt
 			continue
 		}
 		out = append(out, HealthSample{
-			Metric: r.Metric, DayKey: r.DayKey,
+			Metric: r.Metric, DayKey: dateKeyString(r.DayKey),
 			SampledAt: r.SampledAt.Time, Value: *v,
 		})
 	}

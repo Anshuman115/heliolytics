@@ -9,35 +9,42 @@ import (
 )
 
 type DailyMetric struct {
-	DayKey         string             `json:"day_key"`
-	Steps          int32              `json:"steps"`
-	PaiScore       pgtype.Int4        `json:"pai_score"`
-	Readiness      pgtype.Int4        `json:"readiness"`
-	Spo2Avg        pgtype.Int4        `json:"spo2_avg"`
-	HrvRmssd       pgtype.Int4        `json:"hrv_rmssd"`
-	RestingHr      pgtype.Int4        `json:"resting_hr"`
-	MaxHr          pgtype.Int4        `json:"max_hr"`
-	RespRateAvg    pgtype.Int4        `json:"resp_rate_avg"`
-	StressAvg      pgtype.Int4        `json:"stress_avg"`
-	SleepScore     pgtype.Int4        `json:"sleep_score"`
-	SleepMins      pgtype.Int4        `json:"sleep_mins"`
-	SleepDeepMins  pgtype.Int4        `json:"sleep_deep_mins"`
-	SleepRemMins   pgtype.Int4        `json:"sleep_rem_mins"`
-	SleepLightMins pgtype.Int4        `json:"sleep_light_mins"`
-	TempAvgC       pgtype.Numeric     `json:"temp_avg_c"`
+	DayKey               pgtype.Date        `json:"day_key"`
+	Steps                int32              `json:"steps"`
+	PaiScore             pgtype.Int4        `json:"pai_score"`
+	Readiness            pgtype.Int4        `json:"readiness"`
+	Spo2Avg              pgtype.Int4        `json:"spo2_avg"`
+	HrvRmssd             pgtype.Int4        `json:"hrv_rmssd"`
+	RestingHr            pgtype.Int4        `json:"resting_hr"`
+	MaxHr                pgtype.Int4        `json:"max_hr"`
+	RespRateAvg          pgtype.Int4        `json:"resp_rate_avg"`
+	StressAvg            pgtype.Int4        `json:"stress_avg"`
+	SleepScore           pgtype.Int4        `json:"sleep_score"`
+	SleepMins            pgtype.Int4        `json:"sleep_mins"`
+	SleepDeepMins        pgtype.Int4        `json:"sleep_deep_mins"`
+	SleepRemMins         pgtype.Int4        `json:"sleep_rem_mins"`
+	SleepLightMins       pgtype.Int4        `json:"sleep_light_mins"`
+	TempAvgC             pgtype.Numeric     `json:"temp_avg_c"`
 	NapCount             int32              `json:"nap_count"`
 	WorkoutCount         int32              `json:"workout_count"`
 	ActivitySessionCount int32              `json:"activity_session_count"`
+	SourceSessionID      pgtype.Text        `json:"source_session_id"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
 
+type HeartRateSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Bpm             int16              `json:"bpm"`
+	SourceSessionID string             `json:"source_session_id"`
+}
+
 type HealthSample struct {
-	ID            int64              `json:"id"`
-	SyncSessionID string             `json:"sync_session_id"`
-	Metric        string             `json:"metric"`
-	DayKey        string             `json:"day_key"`
-	SampledAt     pgtype.Timestamptz `json:"sampled_at"`
-	Value         pgtype.Numeric     `json:"value"`
+	Metric          string             `json:"metric"`
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Value           pgtype.Numeric     `json:"value"`
+	SourceSessionID string             `json:"source_session_id"`
 }
 
 type RawTypeBlob struct {
@@ -48,15 +55,19 @@ type RawTypeBlob struct {
 }
 
 type SleepSession struct {
-	ID            int64              `json:"id"`
-	SyncSessionID string             `json:"sync_session_id"`
-	DayKey        string             `json:"day_key"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	Score         int32              `json:"score"`
-	TotalMins     int32              `json:"total_mins"`
-	DeepMins      int32              `json:"deep_mins"`
-	RemMins       int32              `json:"rem_mins"`
-	LightMins     int32              `json:"light_mins"`
+	ID              int64              `json:"id"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Score           int32              `json:"score"`
+	TotalMins       int32              `json:"total_mins"`
+	DeepMins        int32              `json:"deep_mins"`
+	RemMins         int32              `json:"rem_mins"`
+	LightMins       int32              `json:"light_mins"`
+	WakeMins        int32              `json:"wake_mins"`
+	IsNap           bool               `json:"is_nap"`
+	StagesJson      []byte             `json:"stages_json"`
+	SourceSessionID string             `json:"source_session_id"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type SyncSession struct {
@@ -70,35 +81,36 @@ type SyncSession struct {
 }
 
 type TemperatureSample struct {
-	ID            int64              `json:"id"`
-	SyncSessionID string             `json:"sync_session_id"`
-	DayKey        string             `json:"day_key"`
-	SampledAt     pgtype.Timestamptz `json:"sampled_at"`
-	Celsius       pgtype.Numeric     `json:"celsius"`
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Celsius         pgtype.Numeric     `json:"celsius"`
+	SourceSessionID string             `json:"source_session_id"`
 }
 
 type Workout struct {
-	ID            int64              `json:"id"`
-	SyncSessionID string             `json:"sync_session_id"`
-	DayKey        string             `json:"day_key"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	SportType     int32              `json:"sport_type"`
-	SportName     pgtype.Text        `json:"sport_name"`
-	DurationSec   int32              `json:"duration_sec"`
-	Calories      pgtype.Int4        `json:"calories"`
-	AvgHr         pgtype.Int4        `json:"avg_hr"`
-	MaxHr         pgtype.Int4        `json:"max_hr"`
+	ID              int64              `json:"id"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	SportType       int32              `json:"sport_type"`
+	SportName       pgtype.Text        `json:"sport_name"`
+	DurationSec     int32              `json:"duration_sec"`
+	Calories        pgtype.Int4        `json:"calories"`
+	AvgHr           pgtype.Int4        `json:"avg_hr"`
+	MaxHr           pgtype.Int4        `json:"max_hr"`
+	SourceSessionID string             `json:"source_session_id"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
 type ActivitySession struct {
-	ID            int64              `json:"id"`
-	SyncSessionID string             `json:"sync_session_id"`
-	DayKey        string             `json:"day_key"`
-	StartedAt     pgtype.Timestamptz `json:"started_at"`
-	SportType     int32              `json:"sport_type"`
-	SportName     pgtype.Text        `json:"sport_name"`
-	DurationSec   int32              `json:"duration_sec"`
-	Calories      pgtype.Int4        `json:"calories"`
-	AvgHr         pgtype.Int4        `json:"avg_hr"`
-	MaxHr         pgtype.Int4        `json:"max_hr"`
+	ID              int64              `json:"id"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	SportType       int32              `json:"sport_type"`
+	SportName       pgtype.Text        `json:"sport_name"`
+	DurationSec     int32              `json:"duration_sec"`
+	Calories        pgtype.Int4        `json:"calories"`
+	AvgHr           pgtype.Int4        `json:"avg_hr"`
+	MaxHr           pgtype.Int4        `json:"max_hr"`
+	SourceSessionID string             `json:"source_session_id"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
