@@ -8,6 +8,20 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ActivitySession struct {
+	ID              int64              `json:"id"`
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	SportType       int32              `json:"sport_type"`
+	SportName       pgtype.Text        `json:"sport_name"`
+	DurationSec     int32              `json:"duration_sec"`
+	Calories        pgtype.Int4        `json:"calories"`
+	AvgHr           pgtype.Int4        `json:"avg_hr"`
+	MaxHr           pgtype.Int4        `json:"max_hr"`
+	SourceSessionID string             `json:"source_session_id"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type DailyMetric struct {
 	DayKey               pgtype.Date        `json:"day_key"`
 	Steps                int32              `json:"steps"`
@@ -32,18 +46,18 @@ type DailyMetric struct {
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
 
-type HeartRateSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Bpm             int16              `json:"bpm"`
-	SourceSessionID string             `json:"source_session_id"`
-}
-
 type HealthSample struct {
 	Metric          string             `json:"metric"`
 	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
 	DayKey          pgtype.Date        `json:"day_key"`
 	Value           pgtype.Numeric     `json:"value"`
+	SourceSessionID string             `json:"source_session_id"`
+}
+
+type HeartRateSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Bpm             int16              `json:"bpm"`
 	SourceSessionID string             `json:"source_session_id"`
 }
 
@@ -88,20 +102,6 @@ type TemperatureSample struct {
 }
 
 type Workout struct {
-	ID              int64              `json:"id"`
-	StartedAt       pgtype.Timestamptz `json:"started_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	SportType       int32              `json:"sport_type"`
-	SportName       pgtype.Text        `json:"sport_name"`
-	DurationSec     int32              `json:"duration_sec"`
-	Calories        pgtype.Int4        `json:"calories"`
-	AvgHr           pgtype.Int4        `json:"avg_hr"`
-	MaxHr           pgtype.Int4        `json:"max_hr"`
-	SourceSessionID string             `json:"source_session_id"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-}
-
-type ActivitySession struct {
 	ID              int64              `json:"id"`
 	StartedAt       pgtype.Timestamptz `json:"started_at"`
 	DayKey          pgtype.Date        `json:"day_key"`

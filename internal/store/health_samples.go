@@ -69,3 +69,37 @@ func (s *Store) ListHealthSamples(ctx context.Context, from, to string) ([]Healt
 	}
 	return out, nil
 }
+
+type HealthCompactDay struct {
+	Metric    string    `json:"metric"`
+	DayKey    string    `json:"dayKey"`
+	StartTime time.Time `json:"startTime"`
+	Offsets   []int32   `json:"offsets"`
+	Values    []float64 `json:"values"`
+}
+
+func (s *Store) ListHealthSamplesCompact(ctx context.Context, from, to string) ([]HealthCompactDay, error) {
+	fromD, err := dateKey(from)
+	if err != nil {
+		return nil, err
+	}
+	toD, err := dateKey(to)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListHealthSamplesCompact(ctx, db.ListHealthSamplesCompactParams{DayKey: fromD, DayKey_2: toD})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]HealthCompactDay, len(rows))
+	for i, r := range rows {
+		out[i] = HealthCompactDay{
+			Metric:    r.Metric,
+			DayKey:    dateKeyString(r.DayKey),
+			StartTime: r.StartTime.Time,
+			Offsets:   r.Offsets,
+			Values:    r.Values,
+		}
+	}
+	return out, nil
+}

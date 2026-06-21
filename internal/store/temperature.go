@@ -67,3 +67,35 @@ func (s *Store) ListTemperature(ctx context.Context, from, to string) ([]TempPoi
 	}
 	return out, nil
 }
+
+type TempCompactDay struct {
+	DayKey    string    `json:"dayKey"`
+	StartTime time.Time `json:"startTime"`
+	Offsets   []int32   `json:"offsets"`
+	Values    []float64 `json:"values"`
+}
+
+func (s *Store) ListTemperatureCompact(ctx context.Context, from, to string) ([]TempCompactDay, error) {
+	fromD, err := dateKey(from)
+	if err != nil {
+		return nil, err
+	}
+	toD, err := dateKey(to)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.q.ListTemperatureCompact(ctx, db.ListTemperatureCompactParams{DayKey: fromD, DayKey_2: toD})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]TempCompactDay, len(rows))
+	for i, r := range rows {
+		out[i] = TempCompactDay{
+			DayKey:    dateKeyString(r.DayKey),
+			StartTime: r.StartTime.Time,
+			Offsets:   r.Offsets,
+			Values:    r.Values,
+		}
+	}
+	return out, nil
+}
