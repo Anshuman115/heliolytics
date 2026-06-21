@@ -54,7 +54,12 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	log.Printf("ingest session id=%s started=%s mac=%v", sess.SessionID, sess.StartedAt, sess.DeviceMAC)
-	started, _ := time.Parse(time.RFC3339, sess.StartedAt)
+	started, err := time.Parse(time.RFC3339, sess.StartedAt)
+	if err != nil {
+		log.Printf("ingest reject reason=invalid_started_at session=%s val=%q err=%v", sess.SessionID, sess.StartedAt, err)
+		http.Error(w, "invalid startedAt timestamp", http.StatusBadRequest)
+		return
+	}
 	var ended *time.Time
 	if sess.EndedAt != nil {
 		t, err := time.Parse(time.RFC3339, *sess.EndedAt)

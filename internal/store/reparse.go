@@ -52,3 +52,14 @@ var ErrNoCatalog = errNoCatalog{}
 type errNoCatalog struct{}
 
 func (errNoCatalog) Error() string { return "no catalog stored for session" }
+
+// ResetDailySteps zeroes out the steps column for all daily_metrics rows whose
+// source_session_id matches the given session. Call this before re-running
+// RunIngest on an already-ingested session so that the accumulate-on-upsert
+// SQL does not double-count the step deltas.
+func (s *Store) ResetDailySteps(ctx context.Context, sessionID string) error {
+	_, err := s.pool.Exec(ctx,
+		`UPDATE daily_metrics SET steps = 0 WHERE source_session_id = $1`,
+		sessionID)
+	return err
+}

@@ -33,6 +33,10 @@ func (h *reparseHandler) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
+	if err := h.st.ResetDailySteps(r.Context(), rep.SessionID); err != nil {
+		log.Printf("reparse reset error: %v", err)
+		// non-fatal: continue anyway — may double-count but better than hard fail
+	}
 	if err := parse.RunIngest(r.Context(), h.st, rep.SessionID, rep.Catalog, rep.Blobs, rep.EndedAt); err != nil {
 		log.Printf("reparse ingest error: %v", err)
 		http.Error(w, "parse error", http.StatusInternalServerError)
