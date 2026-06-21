@@ -8,7 +8,9 @@ INSERT INTO daily_metrics (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20
 )
 ON CONFLICT (day_key) DO UPDATE SET
-  steps = EXCLUDED.steps,
+  -- Steps arrive as incremental deltas (minutes since last sync), not the
+  -- full-day cumulative total, so we ADD rather than replace.
+  steps = daily_metrics.steps + GREATEST(EXCLUDED.steps, 0),
   pai_score = COALESCE(EXCLUDED.pai_score, daily_metrics.pai_score),
   readiness = COALESCE(EXCLUDED.readiness, daily_metrics.readiness),
   spo2_avg = COALESCE(EXCLUDED.spo2_avg, daily_metrics.spo2_avg),
