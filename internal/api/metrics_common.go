@@ -9,6 +9,8 @@ import (
 	"github.com/heliolytics/api/internal/store"
 )
 
+var ist = time.FixedZone("IST", 5*3600+30*60)
+
 type metricsHandler struct {
 	st *store.Store
 }
@@ -28,7 +30,7 @@ func dayRange(r *http.Request) (string, string) {
 	if from != "" && to != "" {
 		return from, to
 	}
-	now := time.Now().UTC()
+	now := time.Now().In(ist)
 	return now.AddDate(0, 0, -30).Format("2006-01-02"), now.Format("2006-01-02")
 }
 
@@ -38,7 +40,7 @@ func workoutDayRange(r *http.Request) (string, string) {
 	if from != "" && to != "" {
 		return from, to
 	}
-	now := time.Now().UTC()
+	now := time.Now().In(ist)
 	return now.AddDate(0, 0, -90).Format("2006-01-02"), now.Format("2006-01-02")
 }
 
