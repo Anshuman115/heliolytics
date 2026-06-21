@@ -32,7 +32,7 @@ func Load() Config {
 		TrustProxy:      env("TRUST_PROXY", "") == "true",
 	}
 	if cfg.DBURL == "" {
-		cfg.DBURL = "set DATABASE_URL in environment"
+		log.Fatal("DATABASE_URL is required — set it in your environment or deploy/.env")
 	}
 	for _, weak := range weakSigningSecrets {
 		if cfg.SigningSecret == weak {
