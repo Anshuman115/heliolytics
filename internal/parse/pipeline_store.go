@@ -78,6 +78,27 @@ func toHrRows(pts []HrSamplePoint) []store.HeartRateSample {
 	return out
 }
 
+func toStepRows(pts []StepSample) []store.StepSample {
+	out := make([]store.StepSample, len(pts))
+	for i, p := range pts {
+		out[i] = store.StepSample{DayKey: p.DayKey, SampledAt: p.SampledAt, Steps: p.Steps}
+	}
+	return out
+}
+
+// stepDays returns the distinct IST day keys present in a step series.
+func stepDays(pts []StepSample) []string {
+	seen := map[string]bool{}
+	var days []string
+	for _, p := range pts {
+		if !seen[p.DayKey] {
+			seen[p.DayKey] = true
+			days = append(days, p.DayKey)
+		}
+	}
+	return days
+}
+
 func toWorkoutRows(recs []WorkoutRecord) []store.WorkoutRow {
 	out := make([]store.WorkoutRow, len(recs))
 	for i, w := range recs {

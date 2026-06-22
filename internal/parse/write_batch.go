@@ -26,5 +26,14 @@ func WriteBatch(ctx context.Context, st *store.Store, syncSessionID string, batc
 	if err := st.UpsertHealthSamples(ctx, syncSessionID, toHealthRows(batch.HealthSeries)); err != nil {
 		return err
 	}
-	return st.UpsertDayMetrics(ctx, syncSessionID, batch.Days)
+	// Per-minute steps stored idempotently; then recompute daily totals as a
+	// SUM so the 60-min sync overlap cannot double-count (replaces the additive
+	// daily upsert below).
+	if err := st.UpsertStepSamples(ctx, syncSessionID, toStepRows(batch.StepSeries)); err != nil {
+		return err
+	}
+	if err := st.UpsertDayMetrics(ctx, syncSessionID, batch.Days); err != nil {
+		return err
+	}
+	return st.RecomputeDailySteps(ctx, stepDays(batch.StepSeries))
 }

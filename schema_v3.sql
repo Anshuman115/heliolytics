@@ -116,6 +116,19 @@ CREATE TABLE heart_rate_samples (
 
 CREATE INDEX idx_hr_day ON heart_rate_samples (day_key, sampled_at);
 
+-- Per-minute steps from BLE 0x01, idempotent by minute timestamp. Daily totals
+-- are recomputed as SUM(steps) per IST day, so re-syncing the 60-min overlap
+-- window overwrites rather than double-counts.
+CREATE TABLE step_samples (
+  sampled_at        TIMESTAMPTZ NOT NULL,
+  day_key           DATE NOT NULL,
+  steps             SMALLINT NOT NULL CHECK (steps >= 0),
+  source_session_id TEXT NOT NULL,
+  PRIMARY KEY (sampled_at)
+);
+
+CREATE INDEX idx_step_day ON step_samples (day_key, sampled_at);
+
 -- Skin temperature (~1/min) from BLE 0x2E
 CREATE TABLE temperature_samples (
   sampled_at        TIMESTAMPTZ NOT NULL,
@@ -141,5 +154,6 @@ CREATE INDEX idx_health_day_metric
   ON health_samples (day_key, metric, sampled_at);
 
 SELECT create_hypertable('heart_rate_samples', 'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('step_samples', 'sampled_at', if_not_exists => TRUE);
 SELECT create_hypertable('temperature_samples', 'sampled_at', if_not_exists => TRUE);
 SELECT create_hypertable('health_samples', 'sampled_at', if_not_exists => TRUE);

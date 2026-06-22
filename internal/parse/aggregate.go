@@ -11,6 +11,7 @@ type AggregatedBatch struct {
 	TempSeries       []TempSamplePoint
 	HrSeries         []HrSamplePoint
 	HealthSeries     []HealthSample
+	StepSeries       []StepSample
 }
 
 // Aggregate rolls parsed blobs into daily metrics and canonical vitals.
@@ -55,5 +56,6 @@ func Aggregate(parsed ParsedBatch) AggregatedBatch {
 		TempSeries:       parsed.TempSeries,
 		HrSeries:         parsed.HrSeries,
 		HealthSeries:     parsed.healthSeries(),
+		StepSeries:       parsed.StepSeries,
 	}
 }
