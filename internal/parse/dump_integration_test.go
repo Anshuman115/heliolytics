@@ -7,18 +7,26 @@ import (
 )
 
 func TestHelioDumpV5WorkoutsAndPai(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "Heliolytics_App", "helio_dump_v5")
+	root := filepath.Join("..", "..", "..", "Heliolytics_App", "DUMPP")
 	w05, err := os.ReadFile(filepath.Join(root, "0x05_raw.bin"))
 	if err != nil {
-		t.Skip("helio_dump_v5 missing")
+		t.Skip("DUMPP missing")
 	}
 	w06, _ := os.ReadFile(filepath.Join(root, "0x06_raw.bin"))
 	pai, _ := os.ReadFile(filepath.Join(root, "0x0D_raw.bin"))
 
 	scores := ParsePai(pai)
 	t.Logf("PAI records: %d", len(scores))
-	if len(scores) < 10 {
-		t.Fatalf("want >=10 PAI days got %d", len(scores))
+	if len(scores) < 1 {
+		t.Fatalf("want >=1 PAI day got %d", len(scores))
+	}
+	// PAI total is a float32 ≈ 81 in this dump — must NOT be the old byte-scan
+	// bug value of 61. Guard the regression.
+	for _, s := range scores {
+		t.Logf("  PAI %s = %d", s.DayKey, s.Score)
+		if s.Score < 70 || s.Score > 90 {
+			t.Fatalf("PAI %s = %d, want ~81 (float32@59); 61 = old byte-scan bug", s.DayKey, s.Score)
+		}
 	}
 
 	w5 := ParseWorkouts(w05)

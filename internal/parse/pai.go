@@ -1,23 +1,33 @@
 package parse
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"math"
+)
 
-const paiRecordSize = 61
-const paiMarkerByte = 0x05
+const (
+	paiRecordSize = 102 // 0x05 marker → next marker, on Helio firmware
+	paiMarkerByte = 0x05
+	paiScoreOff   = 59 // float32 LE PAI total, offset from the 0x05 marker
+	paiScoreMax   = 1000.0
+)
 
 type PaiScore struct {
 	DayKey string
 	Score  int
 }
 
-// ParsePai scans for 0x05-marked records (~102 B apart on Helio firmware).
+// ParsePai scans for 0x05-marked records. Each record holds an absolute epoch
+// (u32 LE at marker+1) and the PAI total as a float32 LE at marker+59. The
+// score is NOT an integer byte — earlier firmware-agnostic byte scans landed on
+// a float's exponent byte and returned bogus values (e.g. 61 instead of 81).
 func ParsePai(raw []byte) []PaiScore {
 	type slot struct {
 		sec   int64
 		score int
 	}
 	byDay := map[string]slot{}
-	for i := 0; i+21 <= len(raw); i++ {
+	for i := 0; i+paiScoreOff+4 <= len(raw); i++ {
 		if raw[i] != paiMarkerByte {
 			continue
 		}
@@ -25,12 +35,8 @@ func ParsePai(raw []byte) []PaiScore {
 		if !IsPlausibleUnixSec(sec) {
 			continue
 		}
-		end := i + paiRecordSize
-		if end > len(raw) {
-			end = len(raw)
-		}
-		score := findPaiScore(raw[i:end])
-		if score <= 0 {
+		score, ok := paiTotal(raw[i:])
+		if !ok {
 			continue
 		}
 		dk := IstDayKey(sec)
@@ -45,17 +51,15 @@ func ParsePai(raw []byte) []PaiScore {
 	return out
 }
 
-func findPaiScore(rec []byte) int {
-	if len(rec) < 21 {
-		return 0
+// paiTotal reads the float32 PAI total at the fixed in-record offset.
+func paiTotal(rec []byte) (int, bool) {
+	if len(rec) < paiScoreOff+4 {
+		return 0, false
 	}
-	if rec[20] > 0 && rec[20] <= 100 {
-		return int(rec[20])
+	v := math.Float32frombits(binary.LittleEndian.Uint32(rec[paiScoreOff:]))
+	f := float64(v)
+	if math.IsNaN(f) || math.IsInf(f, 0) || f <= 0 || f > paiScoreMax {
+		return 0, false
 	}
-	for j := 10; j < 40 && j < len(rec); j++ {
-		if rec[j] > 0 && rec[j] <= 100 {
-			return int(rec[j])
-		}
-	}
-	return 0
+	return int(math.Round(f)), true
 }
