@@ -35,5 +35,17 @@ func WriteBatch(ctx context.Context, st *store.Store, syncSessionID string, batc
 	if err := st.UpsertDayMetrics(ctx, syncSessionID, batch.Days); err != nil {
 		return err
 	}
-	return st.RecomputeDailySteps(ctx, stepDays(batch.StepSeries))
+	if err := st.RecomputeDailySteps(ctx, stepDays(batch.StepSeries)); err != nil {
+		return err
+	}
+	// Compute the recovery score from each affected day's trailing baseline.
+	return st.RecomputeReadiness(ctx, dayKeysOf(batch.Days))
+}
+
+func dayKeysOf(days []store.DayMetric) []string {
+	out := make([]string, 0, len(days))
+	for _, d := range days {
+		out = append(out, d.DayKey)
+	}
+	return out
 }
