@@ -34,7 +34,6 @@ CREATE TABLE daily_metrics (
   spo2_avg                 INT,
   hrv_rmssd                INT,
   resting_hr               INT,
-  max_hr                   INT,
   resp_rate_avg            INT,
   stress_avg               INT,
   sleep_score              INT,

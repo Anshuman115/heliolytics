@@ -30,7 +30,6 @@ type DailyMetric struct {
 	Spo2Avg              pgtype.Int4        `json:"spo2_avg"`
 	HrvRmssd             pgtype.Int4        `json:"hrv_rmssd"`
 	RestingHr            pgtype.Int4        `json:"resting_hr"`
-	MaxHr                pgtype.Int4        `json:"max_hr"`
 	RespRateAvg          pgtype.Int4        `json:"resp_rate_avg"`
 	StressAvg            pgtype.Int4        `json:"stress_avg"`
 	SleepScore           pgtype.Int4        `json:"sleep_score"`
@@ -82,6 +81,13 @@ type SleepSession struct {
 	StagesJson      []byte             `json:"stages_json"`
 	SourceSessionID string             `json:"source_session_id"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type StepSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Steps           int16              `json:"steps"`
+	SourceSessionID string             `json:"source_session_id"`
 }
 
 type SyncSession struct {

@@ -8,7 +8,7 @@ func toStoreDays(m map[string]*DayAcc) []store.DayMetric {
 		out = append(out, store.DayMetric{
 			DayKey: day, Steps: d.Steps, PaiScore: d.Pai, Readiness: d.Readiness,
 			Spo2Avg: d.Spo2Avg(), HrvRmssd: d.HrvAvg(), RestingHr: d.RestingHr,
-			MaxHr: d.MaxHr, RespRateAvg: d.RespRateAvg(), StressAvg: d.StressAvg(),
+			RespRateAvg: d.RespRateAvg(), StressAvg: d.StressAvg(),
 			SleepScore: d.SleepScore, SleepMins: ptrInt(d.SleepMins),
 			SleepDeepMins: ptrInt(d.SleepDeep), SleepRemMins: ptrInt(d.SleepRem),
 			SleepLightMins: ptrInt(d.SleepLight), TempAvgC: d.TempAvg(),

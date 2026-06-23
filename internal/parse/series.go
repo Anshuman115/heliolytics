@@ -94,10 +94,6 @@ func ParseRhrSeries(raw []byte) []HealthSample {
 	return parseHr6Series(raw, "rhr", 30, 220)
 }
 
-func ParseMaxHrSeries(raw []byte) []HealthSample {
-	return parseHr6Series(raw, "max_hr", 30, 220)
-}
-
 func parseHr6Series(raw []byte, metric string, lo, hi int) []HealthSample {
 	if len(raw)%6 != 0 {
 		return nil

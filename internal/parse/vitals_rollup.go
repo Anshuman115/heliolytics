@@ -17,7 +17,6 @@ func ApplyCanonicalVitals(
 	spo2Sleep []HealthSample,
 	rhr []HealthSample,
 	respRate []HealthSample,
-	maxHr []HealthSample,
 ) {
 	wins := bestSleepWindows(sleep)
 	for day, acc := range days {
@@ -45,9 +44,6 @@ func ApplyCanonicalVitals(
 		}
 		if v := latestOnDay(rhr, day); v != nil {
 			acc.RestingHr = v
-		}
-		if v := latestOnDay(maxHr, day); v != nil {
-			acc.MaxHr = v
 		}
 	}
 }

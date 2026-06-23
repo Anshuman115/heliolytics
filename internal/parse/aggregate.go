@@ -41,7 +41,7 @@ func Aggregate(parsed ParsedBatch) AggregatedBatch {
 	}
 	ApplyCanonicalVitals(days, parsed.Sleep, parsed.StressSeries, parsed.HrvSeries,
 		parsed.Spo2Spot, parsed.Spo2Sleep, parsed.RhrSeries,
-		parsed.RespRateSeries, parsed.MaxHrSeries)
+		parsed.RespRateSeries)
 	for _, w := range parsed.Workouts {
 		acc(days, w.DayKey).WorkoutCount++
 	}

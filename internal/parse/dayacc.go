@@ -9,7 +9,6 @@ type DayAcc struct {
 	HrvSum        int
 	HrvCount      int
 	RestingHr     *int
-	MaxHr         *int
 	RespRateSum   int
 	RespRateCount int
 	StressSum     int

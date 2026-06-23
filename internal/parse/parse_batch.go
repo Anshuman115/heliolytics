@@ -16,7 +16,6 @@ type ParsedBatch struct {
 	Spo2Sleep        []HealthSample
 	RhrSeries        []HealthSample
 	RespRateSeries   []HealthSample
-	MaxHrSeries      []HealthSample
 	Workouts         []WorkoutRecord
 	ActivitySessions []WorkoutRecord
 	TempSeries       []TempSamplePoint
@@ -43,7 +42,6 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 	out.Spo2Sleep = ParseSpo2SleepSeries(blobs["0x26"])
 	out.RhrSeries = ParseRhrSeries(blobs["0x3A"])
 	out.RespRateSeries = ParseRespRateSeries(blobs["0x38"])
-	out.MaxHrSeries = ParseMaxHrSeries(blobs["0x3D"])
 	out.Workouts = MergeWorkouts(
 		ParseWorkouts(blobs["0x05"]),
 		ParseWorkoutDetails(blobs["0x06"]),
@@ -58,6 +56,6 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 func (b ParsedBatch) healthSeries() []HealthSample {
 	return appendHealthSeries(
 		b.StressSeries, b.HrvSeries, b.Spo2Spot, b.Spo2Sleep,
-		b.RhrSeries, b.RespRateSeries, b.MaxHrSeries,
+		b.RhrSeries, b.RespRateSeries,
 	)
 }

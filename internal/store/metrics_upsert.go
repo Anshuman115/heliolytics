@@ -23,7 +23,7 @@ func (s *Store) UpsertDayMetrics(ctx context.Context, sid string, days []DayMetr
 			DayKey: day, Steps: int32(d.Steps),
 			PaiScore: int4Ptr(d.PaiScore), Readiness: int4Ptr(d.Readiness),
 			Spo2Avg: int4Ptr(d.Spo2Avg), HrvRmssd: int4Ptr(d.HrvRmssd),
-			RestingHr: int4Ptr(d.RestingHr), MaxHr: int4Ptr(d.MaxHr),
+			RestingHr: int4Ptr(d.RestingHr),
 			RespRateAvg: int4Ptr(d.RespRateAvg), StressAvg: int4Ptr(d.StressAvg),
 			SleepScore: int4Ptr(d.SleepScore), SleepMins: int4Ptr(d.SleepMins),
 			SleepDeepMins: int4Ptr(d.SleepDeepMins), SleepRemMins: int4Ptr(d.SleepRemMins),

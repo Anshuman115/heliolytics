@@ -10,7 +10,6 @@ type DayMetric struct {
 	Spo2Avg        *int      `json:"spo2Avg,omitempty"`
 	HrvRmssd       *int      `json:"hrvRmssd,omitempty"`
 	RestingHr      *int      `json:"restingHr,omitempty"`
-	MaxHr          *int      `json:"maxHr,omitempty"`
 	RespRateAvg    *int      `json:"respRateAvg,omitempty"`
 	StressAvg      *int      `json:"stressAvg,omitempty"`
 	SleepScore     *int      `json:"sleepScore,omitempty"`
