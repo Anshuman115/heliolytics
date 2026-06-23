@@ -16,8 +16,8 @@ package readiness
 import "math"
 
 const (
-	MinDays    = 7  // below this many valid HRV nights: building baseline
-	fullSDDays = 14 // below this: use population-prior SDs, not personal
+	MinDays    = 3  // below this many valid HRV nights: building baseline
+	fullSDDays = 14 // below this: use population-prior SDs, not personal (provisional)
 	meanWindow = 7
 	sdWindow   = 60
 

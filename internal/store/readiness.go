@@ -20,8 +20,10 @@ func (s *Store) RecomputeReadiness(ctx context.Context, days []string) error {
 		if !ok {
 			continue
 		}
+		// Write to computed_readiness only; the device 0x39 `readiness` column is
+		// authoritative and reads COALESCE(readiness, computed_readiness).
 		if _, err := s.pool.Exec(ctx,
-			`UPDATE daily_metrics SET readiness = $2, updated_at = NOW()
+			`UPDATE daily_metrics SET computed_readiness = $2, updated_at = NOW()
 			 WHERE day_key = $1::date`, day, score); err != nil {
 			return err
 		}

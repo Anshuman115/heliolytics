@@ -93,7 +93,7 @@ func (s *Store) ListActivitySessions(ctx context.Context, from, to string) ([]Ac
 	return out, nil
 }
 
-func dayMetricFromDB(r db.DailyMetric) DayMetric {
+func dayMetricFromDB(r db.ListDaysRow) DayMetric {
 	updated := time.Time{}
 	if r.UpdatedAt.Valid {
 		updated = r.UpdatedAt.Time

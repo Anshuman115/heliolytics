@@ -30,7 +30,8 @@ CREATE TABLE daily_metrics (
   day_key                  DATE PRIMARY KEY,
   steps                    INT NOT NULL DEFAULT 0,
   pai_score                INT,
-  readiness                INT,
+  readiness                INT,   -- device "Daily readiness" (0x39), authoritative
+  computed_readiness       INT,   -- our derived recovery score (fallback)
   spo2_avg                 INT,
   hrv_rmssd                INT,
   resting_hr               INT,

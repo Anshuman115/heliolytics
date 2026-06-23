@@ -27,6 +27,7 @@ type DailyMetric struct {
 	Steps                int32              `json:"steps"`
 	PaiScore             pgtype.Int4        `json:"pai_score"`
 	Readiness            pgtype.Int4        `json:"readiness"`
+	ComputedReadiness    pgtype.Int4        `json:"computed_readiness"`
 	Spo2Avg              pgtype.Int4        `json:"spo2_avg"`
 	HrvRmssd             pgtype.Int4        `json:"hrv_rmssd"`
 	RestingHr            pgtype.Int4        `json:"resting_hr"`

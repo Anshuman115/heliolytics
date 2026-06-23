@@ -13,10 +13,12 @@ func baseline(n int, rmssd, rhr, resp, sleep float64) []DayVitals {
 	return h
 }
 
-func TestBuildingBaselineBelow7Days(t *testing.T) {
-	h := baseline(6, 50, 50, 15, 60)
-	if _, ok := Compute(h); ok {
-		t.Fatal("want ok=false with <7 valid HRV nights")
+func TestBuildingBaselineBelowMinDays(t *testing.T) {
+	if _, ok := Compute(baseline(2, 50, 50, 15, 60)); ok {
+		t.Fatal("want ok=false with <3 valid HRV nights")
+	}
+	if _, ok := Compute(baseline(3, 50, 50, 15, 60)); !ok {
+		t.Fatal("want ok=true (provisional) at 3 valid HRV nights")
 	}
 }
 

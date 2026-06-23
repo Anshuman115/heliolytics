@@ -12,7 +12,8 @@ import (
 )
 
 const listDays = `-- name: ListDays :many
-SELECT day_key, steps, pai_score, readiness, spo2_avg, hrv_rmssd,
+SELECT day_key, steps, pai_score,
+       COALESCE(readiness, computed_readiness) AS readiness, spo2_avg, hrv_rmssd,
        resting_hr, resp_rate_avg, stress_avg, sleep_score, sleep_mins,
        sleep_deep_mins, sleep_rem_mins, sleep_light_mins, temp_avg_c,
        nap_count, workout_count, activity_session_count, source_session_id, updated_at
@@ -26,15 +27,39 @@ type ListDaysParams struct {
 	DayKey_2 pgtype.Date `json:"day_key_2"`
 }
 
-func (q *Queries) ListDays(ctx context.Context, arg ListDaysParams) ([]DailyMetric, error) {
+type ListDaysRow struct {
+	DayKey               pgtype.Date        `json:"day_key"`
+	Steps                int32              `json:"steps"`
+	PaiScore             pgtype.Int4        `json:"pai_score"`
+	Readiness            pgtype.Int4        `json:"readiness"`
+	Spo2Avg              pgtype.Int4        `json:"spo2_avg"`
+	HrvRmssd             pgtype.Int4        `json:"hrv_rmssd"`
+	RestingHr            pgtype.Int4        `json:"resting_hr"`
+	RespRateAvg          pgtype.Int4        `json:"resp_rate_avg"`
+	StressAvg            pgtype.Int4        `json:"stress_avg"`
+	SleepScore           pgtype.Int4        `json:"sleep_score"`
+	SleepMins            pgtype.Int4        `json:"sleep_mins"`
+	SleepDeepMins        pgtype.Int4        `json:"sleep_deep_mins"`
+	SleepRemMins         pgtype.Int4        `json:"sleep_rem_mins"`
+	SleepLightMins       pgtype.Int4        `json:"sleep_light_mins"`
+	TempAvgC             pgtype.Numeric     `json:"temp_avg_c"`
+	NapCount             int32              `json:"nap_count"`
+	WorkoutCount         int32              `json:"workout_count"`
+	ActivitySessionCount int32              `json:"activity_session_count"`
+	SourceSessionID      pgtype.Text        `json:"source_session_id"`
+	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+}
+
+// readiness prefers the device's 0x39 score, falling back to our computed one.
+func (q *Queries) ListDays(ctx context.Context, arg ListDaysParams) ([]ListDaysRow, error) {
 	rows, err := q.db.Query(ctx, listDays, arg.DayKey, arg.DayKey_2)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []DailyMetric{}
+	items := []ListDaysRow{}
 	for rows.Next() {
-		var i DailyMetric
+		var i ListDaysRow
 		if err := rows.Scan(
 			&i.DayKey,
 			&i.Steps,
