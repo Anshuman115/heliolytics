@@ -9,6 +9,6 @@ fi
 
 echo "Stopping stack and deleting Postgres volume (all data lost)..."
 docker compose down -v
-echo "Starting fresh DB with schema_v3.sql..."
+echo "Starting fresh DB with schema.sql..."
 docker compose up -d --build
 echo "Done. Re-sync your strap to populate metrics."

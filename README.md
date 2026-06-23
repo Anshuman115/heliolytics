@@ -84,8 +84,8 @@ Flutter client ──POST /api/v1/ingest (raw bytes, HMAC)──►  Go API
   `sleep_sessions` (+ stage JSON), `workouts`, `activity_sessions`, plus `sync_sessions`
   and `raw_type_blobs` for replayable raw ingest.
 
-Schema in [`schema_v3.sql`](schema_v3.sql); rationale in
-[SCHEMA_DESIGN_v3.md](SCHEMA_DESIGN_v3.md). Queries are `sqlc`-generated into `internal/store/db`.
+Schema in [`schema.sql`](schema.sql); rationale in
+[SCHEMA_DESIGN.md](SCHEMA_DESIGN.md). Queries are `sqlc`-generated into `internal/store/db`.
 
 ---
 
