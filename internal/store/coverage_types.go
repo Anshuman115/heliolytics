@@ -10,7 +10,7 @@ var SyncedBLETypeCodes = []string{
 
 func buildTypeCoverage(
 	workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd *time.Time,
-	stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd, maxHrEnd *time.Time,
+	stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd *time.Time,
 	stepsEnd, paiEnd, readinessEnd *time.Time,
 ) map[string]*time.Time {
 	return map[string]*time.Time{
@@ -26,7 +26,7 @@ func buildTypeCoverage(
 		"0x39": readinessEnd,
 		"0x3A": rhrEnd,
 		"0x3B": activityEnd,
-		"0x3D": maxHrEnd,
+		"0x3D": nil, // device max-HR: fetched by the app but not parsed/stored — no coverage
 		"0x46": hrEnd,
 		"0x48": mainSleepEnd,
 		"0x49": hrvEnd,

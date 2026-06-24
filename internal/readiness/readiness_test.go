@@ -60,6 +60,17 @@ func TestMissingRmssdNoScore(t *testing.T) {
 	}
 }
 
+// Target day must NOT be averaged into its own baseline. With a flat 50ms prior
+// and a 60ms target (HRV only), the score should clearly reflect the elevation
+// (~75); folding the target into the mean would dampen it to the high 60s.
+func TestTargetExcludedFromBaseline(t *testing.T) {
+	h := []DayVitals{{RMSSD: f(50)}, {RMSSD: f(50)}, {RMSSD: f(60)}}
+	score, ok := Compute(h)
+	if !ok || score < 72 {
+		t.Fatalf("score=%d (ok=%v), want >=72 — target leaked into its own baseline?", score, ok)
+	}
+}
+
 func TestMissingRespStillScores(t *testing.T) {
 	// No respiratory data at all: weight renormalizes over HRV+RHR+sleep.
 	h := baseline(14, 50, 50, 15, 50)

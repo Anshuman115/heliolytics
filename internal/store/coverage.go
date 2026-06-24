@@ -36,20 +36,19 @@ SELECT
   (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'spo2_sleep') AS spo2_sleep_end,
   (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'resp_rate') AS resp_end,
   (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'rhr') AS rhr_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'max_hr') AS max_hr_end,
   (SELECT MAX(updated_at) FROM daily_metrics WHERE steps > 0) AS steps_end,
   (SELECT MAX(updated_at) FROM daily_metrics WHERE pai_score IS NOT NULL) AS pai_end,
   (SELECT MAX(updated_at) FROM daily_metrics WHERE readiness IS NOT NULL) AS readiness_end`
 	var (
 		through, ingest                                                       *time.Time
 		workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd          *time.Time
-		stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd, maxHrEnd *time.Time
+		stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd          *time.Time
 		stepsEnd, paiEnd, readinessEnd                                        *time.Time
 	)
 	err := s.pool.QueryRow(ctx, q).Scan(
 		&through, &ingest,
 		&workoutEnd, &activityEnd, &mainSleepEnd, &napEnd, &tempEnd, &hrEnd,
-		&stressEnd, &hrvEnd, &spo2End, &spo2SleepEnd, &respEnd, &rhrEnd, &maxHrEnd,
+		&stressEnd, &hrvEnd, &spo2End, &spo2SleepEnd, &respEnd, &rhrEnd,
 		&stepsEnd, &paiEnd, &readinessEnd,
 	)
 	if err != nil {
@@ -57,7 +56,7 @@ SELECT
 	}
 	types := buildTypeCoverage(
 		workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd,
-		stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd, maxHrEnd,
+		stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd,
 		stepsEnd, paiEnd, readinessEnd,
 	)
 	out := DataCoverage{
