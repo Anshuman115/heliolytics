@@ -25,7 +25,7 @@ daily rollups and a science-backed recovery score, and serves a REST metrics API
   and survive client reinstalls.
 - **Science-backed recovery score** — daily readiness from HRV (`ln(RMSSD)`), resting HR,
   sleep, and respiratory rate vs a personal rolling baseline (7-day mean / 60-day SD),
-  following HRV-guided-training research (Plews et al.) and WHOOP/Oura methodology.
+  following HRV-guided-training research (Plews et al.).
   Prefers the device's own readiness when present, falls back to the computed score, and
   gates a provisional score until enough baseline exists. Pure, unit-tested scoring in
   [`internal/readiness`](internal/readiness).

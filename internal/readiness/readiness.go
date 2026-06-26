@@ -1,6 +1,6 @@
 // Package readiness computes a daily recovery/readiness score (0–100) from
 // nightly vitals, using the baseline-deviation method standard in HRV-guided
-// training and consumer wearables (WHOOP/Oura).
+// training and consumer wearables.
 //
 // Design (evidence-informed; see docs):
 //   - HRV uses ln(RMSSD) (RMSSD is log-normal). Baseline = 7-day rolling mean,
@@ -8,7 +8,7 @@
 //   - Baseline is the PRIOR days only (the target day is never folded into its
 //     own mean/SD). Each metric -> sub-score = clamp(50 ± 25·z, 0, 100): ±2 SD
 //     spans the range; the ~0.5 SD "smallest worthwhile change" ≈ a 12-pt move.
-//   - Weights (HRV-dominant, per WHOOP): HRV .50, RHR .25, sleep .15, resp .10.
+//   - Weights (HRV-dominant): HRV .50, RHR .25, sleep .15, resp .10.
 //     Missing optional components are dropped and remaining weights renormalized.
 //   - Cold start: <3 valid HRV nights -> no score ("building baseline"). Each
 //     metric uses a population-prior SD until it has fullSDDays of its own
