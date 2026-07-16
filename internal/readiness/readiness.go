@@ -2,7 +2,7 @@
 // nightly vitals, using the baseline-deviation method standard in HRV-guided
 // training and consumer wearables.
 //
-// Design (evidence-informed; see docs):
+// Design (evidence-informed):
 //   - HRV uses ln(RMSSD) (RMSSD is log-normal). Baseline = 7-day rolling mean,
 //     spread = 60-day SD (Plews 2012/2013; HRV4Training/Altini).
 //   - Baseline is the PRIOR days only (the target day is never folded into its
