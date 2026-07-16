@@ -134,3 +134,35 @@ payload `{ts}:{nonce}` is signed with `HELIOLYTICS_SIGNING_SECRET`.
 - No public token-minting endpoint; `reparse` is opt-in only.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the ingest → parse → store → serve pipeline.
+
+---
+
+## Documentation
+
+Engineering rules and security invariants live in [CLAUDE.md](CLAUDE.md). One guide
+per feature, written to be read before changing that area:
+
+| Guide | Covers |
+|-------|--------|
+| [Ingest & parsing](docs/features/ingest-and-parsing.md) | Raw blobs → typed records → daily rollups; coverage watermarks |
+| [Metrics API](docs/features/metrics-api.md) | Every route, the middleware chain, the sqlc store layer |
+| [Auth & security](docs/features/auth-and-security.md) | HMAC tokens, replay defense, rate limiting, configuration |
+| [Readiness score](docs/features/readiness-score.md) | Baseline-deviation model, weights, cold-start handling |
+| [Storage & schema](docs/features/storage-and-schema.md) | Tables, hypertables, why raw blobs are kept, migrations |
+| [Deploy](docs/features/deploy.md) | Compose stack, Cloudflare Tunnel, secrets, scripts |
+
+---
+
+## Development notes
+
+This project is built intensively with [Claude Code](https://claude.com/claude-code)
+as an engineering assistant — architecture, protocol decoding, and validation are
+reviewed and directed by hand, and the AI-assisted commits are attributed as such in
+the history. The rules the assistant works under are the same ones in
+[CLAUDE.md](CLAUDE.md).
+
+---
+
+## License
+
+[Apache License 2.0](LICENSE).
