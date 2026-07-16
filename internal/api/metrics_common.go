@@ -56,3 +56,12 @@ func logMetrics(op string, r *http.Request, detail string) {
 	}
 	log.Printf("metrics %s path=%s%s remote=%s %s", op, r.URL.Path, q, r.RemoteAddr, detail)
 }
+
+// strOrDash renders an optional string for logs. Logging the pointer itself
+// prints an address, which looks like data and is not.
+func strOrDash(s *string) string {
+	if s == nil || *s == "" {
+		return "-"
+	}
+	return *s
+}

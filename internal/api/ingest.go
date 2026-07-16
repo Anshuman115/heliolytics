@@ -53,7 +53,9 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid session json", http.StatusBadRequest)
 		return
 	}
-	log.Printf("ingest session id=%s started=%s mac=%v", sess.SessionID, sess.StartedAt, sess.DeviceMAC)
+	// deviceMac is nullable, so print the value rather than the pointer.
+	log.Printf("ingest session id=%s started=%s mac=%s",
+		sess.SessionID, sess.StartedAt, strOrDash(sess.DeviceMAC))
 	started, err := time.Parse(time.RFC3339, sess.StartedAt)
 	if err != nil {
 		log.Printf("ingest reject reason=invalid_started_at session=%s val=%q err=%v", sess.SessionID, sess.StartedAt, err)
