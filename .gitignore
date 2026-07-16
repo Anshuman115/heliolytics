@@ -27,11 +27,13 @@ build.env
 *.swp
 
 # Local-only docs (never commit)
-docs/
-CLAUDE.md
 TODO.md
 PLAN.md
 deploy/DEV.md
 _learnspace/
 lessons/
 .github/
+
+# Docs: feature docs are published; reference manuals stay local.
+docs/*
+!docs/features/
