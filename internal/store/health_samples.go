@@ -14,10 +14,23 @@ type HealthSample struct {
 	Value     float64
 }
 
+// Mirrors sql/queries/health_samples.sql:UpsertHealthSample. Kept inline so the
+// rows can be pipelined as one batch; sqlc only generates a per-row Exec.
+const upsertHealthSampleSQL = `
+	INSERT INTO health_samples (metric, day_key, sampled_at, value, source_session_id)
+	VALUES ($1, $2, $3, $4, $5)
+	ON CONFLICT (metric, sampled_at) DO UPDATE SET
+	  value = EXCLUDED.value,
+	  day_key = EXCLUDED.day_key,
+	  source_session_id = EXCLUDED.source_session_id`
+
 func (s *Store) UpsertHealthSamples(ctx context.Context, sid string, pts []HealthSample) error {
 	if sid == "" {
 		return errRequired("health_samples.source_session_id")
 	}
+	// Validate and convert everything up front: a bad row must fail the whole
+	// write before any of it reaches the database.
+	rows := make([]queuedRow, 0, len(pts))
 	for _, p := range pts {
 		if err := validateHealthSample(p); err != nil {
 			return err
@@ -34,13 +47,9 @@ func (s *Store) UpsertHealthSamples(ctx context.Context, sid string, pts []Healt
 		if err != nil {
 			return err
 		}
-		if err := s.q.UpsertHealthSample(ctx, db.UpsertHealthSampleParams{
-			Metric: p.Metric, DayKey: day, SampledAt: ts, Value: val, SourceSessionID: sid,
-		}); err != nil {
-			return err
-		}
+		rows = append(rows, queuedRow{p.Metric, day, ts, val, sid})
 	}
-	return nil
+	return s.execBatch(ctx, upsertHealthSampleSQL, rows)
 }
 
 func (s *Store) ListHealthSamples(ctx context.Context, from, to string) ([]HealthSample, error) {

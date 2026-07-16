@@ -13,10 +13,21 @@ type TempPoint struct {
 	Celsius   float64
 }
 
+// Mirrors sql/queries/temperature.sql:UpsertTemperatureSample. Inline so rows
+// can be pipelined as one batch; sqlc only generates a per-row Exec.
+const upsertTemperatureSQL = `
+	INSERT INTO temperature_samples (sampled_at, day_key, celsius, source_session_id)
+	VALUES ($1, $2, $3, $4)
+	ON CONFLICT (sampled_at) DO UPDATE SET
+	  celsius = EXCLUDED.celsius,
+	  day_key = EXCLUDED.day_key,
+	  source_session_id = EXCLUDED.source_session_id`
+
 func (s *Store) UpsertTemperature(ctx context.Context, sid string, pts []TempPoint) error {
 	if sid == "" {
 		return errRequired("temperature_samples.source_session_id")
 	}
+	rows := make([]queuedRow, 0, len(pts))
 	for _, p := range pts {
 		if err := validateTempPoint(p); err != nil {
 			return err
@@ -33,13 +44,9 @@ func (s *Store) UpsertTemperature(ctx context.Context, sid string, pts []TempPoi
 		if err != nil {
 			return err
 		}
-		if err := s.q.UpsertTemperatureSample(ctx, db.UpsertTemperatureSampleParams{
-			SampledAt: ts, DayKey: day, Celsius: c, SourceSessionID: sid,
-		}); err != nil {
-			return err
-		}
+		rows = append(rows, queuedRow{ts, day, c, sid})
 	}
-	return nil
+	return s.execBatch(ctx, upsertTemperatureSQL, rows)
 }
 
 func (s *Store) ListTemperature(ctx context.Context, from, to string) ([]TempPoint, error) {

@@ -15,38 +15,39 @@ type StepSample struct {
 // UpsertStepSamples writes per-minute steps idempotently, keyed by the minute
 // timestamp. A re-synced overlap window overwrites the same rows instead of
 // adding, which is what makes daily totals immune to the sync overlap.
+const upsertStepSampleSQL = `
+	INSERT INTO step_samples (sampled_at, day_key, steps, source_session_id)
+	VALUES ($1, $2::date, $3, $4)
+	ON CONFLICT (sampled_at) DO UPDATE SET
+		steps = EXCLUDED.steps,
+		day_key = EXCLUDED.day_key,
+		source_session_id = EXCLUDED.source_session_id`
+
 func (s *Store) UpsertStepSamples(ctx context.Context, sid string, pts []StepSample) error {
 	if sid == "" {
 		return errRequired("step_samples.source_session_id")
 	}
+	rows := make([]queuedRow, 0, len(pts))
 	for _, p := range pts {
-		if _, err := s.pool.Exec(ctx, `
-			INSERT INTO step_samples (sampled_at, day_key, steps, source_session_id)
-			VALUES ($1, $2::date, $3, $4)
-			ON CONFLICT (sampled_at) DO UPDATE SET
-				steps = EXCLUDED.steps,
-				day_key = EXCLUDED.day_key,
-				source_session_id = EXCLUDED.source_session_id`,
-			p.SampledAt.UTC(), p.DayKey, p.Steps, sid); err != nil {
-			return err
-		}
+		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Steps, sid})
 	}
-	return nil
+	return s.execBatch(ctx, upsertStepSampleSQL, rows)
 }
 
 // RecomputeDailySteps sets daily_metrics.steps to SUM(step_samples.steps) for
 // each given IST day. Because step_samples are idempotent per minute, this is
 // immune to the 60-minute sync overlap that the additive upsert double-counts.
+const recomputeDailyStepsSQL = `
+	UPDATE daily_metrics
+	SET steps = COALESCE(
+		(SELECT SUM(steps) FROM step_samples WHERE day_key = $1::date), 0),
+	    updated_at = NOW()
+	WHERE day_key = $1::date`
+
 func (s *Store) RecomputeDailySteps(ctx context.Context, days []string) error {
+	rows := make([]queuedRow, 0, len(days))
 	for _, day := range days {
-		if _, err := s.pool.Exec(ctx, `
-			UPDATE daily_metrics
-			SET steps = COALESCE(
-				(SELECT SUM(steps) FROM step_samples WHERE day_key = $1::date), 0),
-			    updated_at = NOW()
-			WHERE day_key = $1::date`, day); err != nil {
-			return err
-		}
+		rows = append(rows, queuedRow{day})
 	}
-	return nil
+	return s.execBatch(ctx, recomputeDailyStepsSQL, rows)
 }

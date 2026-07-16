@@ -13,10 +13,21 @@ type HeartRateSample struct {
 	Bpm       int
 }
 
+// Mirrors sql/queries/heart_rate_samples.sql:UpsertHeartRateSample. Inline so
+// rows can be pipelined as one batch; sqlc only generates a per-row Exec.
+const upsertHeartRateSQL = `
+	INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id)
+	VALUES ($1, $2, $3, $4)
+	ON CONFLICT (sampled_at) DO UPDATE SET
+	  bpm = EXCLUDED.bpm,
+	  day_key = EXCLUDED.day_key,
+	  source_session_id = EXCLUDED.source_session_id`
+
 func (s *Store) UpsertHeartRateSamples(ctx context.Context, sid string, pts []HeartRateSample) error {
 	if sid == "" {
 		return errRequired("heart_rate_samples.source_session_id")
 	}
+	rows := make([]queuedRow, 0, len(pts))
 	for _, p := range pts {
 		if err := validateHeartRateSample(p); err != nil {
 			return err
@@ -29,13 +40,9 @@ func (s *Store) UpsertHeartRateSamples(ctx context.Context, sid string, pts []He
 		if err != nil {
 			return err
 		}
-		if err := s.q.UpsertHeartRateSample(ctx, db.UpsertHeartRateSampleParams{
-			SampledAt: ts, DayKey: day, Bpm: int16(p.Bpm), SourceSessionID: sid,
-		}); err != nil {
-			return err
-		}
+		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid})
 	}
-	return nil
+	return s.execBatch(ctx, upsertHeartRateSQL, rows)
 }
 
 func (s *Store) ListHeartRateSamples(ctx context.Context, from, to string) ([]HeartRateSample, error) {
