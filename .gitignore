@@ -30,10 +30,8 @@ build.env
 docs/
 CLAUDE.md
 TODO.md
+PLAN.md
 deploy/DEV.md
-MISSION.md
-NOTES.md
-reference/
 _learnspace/
 lessons/
 .github/
