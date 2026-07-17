@@ -7,7 +7,7 @@ import (
 )
 
 func TestHelioDumpV5WorkoutsAndPai(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "Heliolytics_App", "DUMPP")
+	root := filepath.Join("..", "..", "..", "Heliolytics_App", "rawData", "DUMPP")
 	w05, err := os.ReadFile(filepath.Join(root, "0x05_raw.bin"))
 	if err != nil {
 		t.Skip("DUMPP missing")

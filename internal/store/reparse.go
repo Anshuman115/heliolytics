@@ -6,20 +6,23 @@ import (
 )
 
 type SessionReplay struct {
-	SessionID string
-	StartedAt time.Time
-	EndedAt   time.Time
-	Catalog   []byte
-	Blobs     map[string][]byte
+	SessionID  string
+	DeviceMAC  string
+	StartedAt  time.Time
+	EndedAt    time.Time
+	BatteryPct *int
+	Catalog    []byte
+	Blobs      map[string][]byte
 }
 
 func (s *Store) LatestReplay(ctx context.Context) (*SessionReplay, error) {
-	var sid string
+	var sid, mac string
 	var started, ended time.Time
+	var battery *int
 	var catalog []byte
 	err := s.pool.QueryRow(ctx, `
-		SELECT session_id, started_at, COALESCE(ended_at, started_at), catalog_json
-		FROM sync_sessions ORDER BY ingested_at DESC LIMIT 1`).Scan(&sid, &started, &ended, &catalog)
+		SELECT session_id, device_mac, started_at, COALESCE(ended_at, started_at), battery_pct, catalog_json
+		FROM sync_sessions ORDER BY ingested_at DESC LIMIT 1`).Scan(&sid, &mac, &started, &ended, &battery, &catalog)
 	if err != nil {
 		return nil, err
 	}
@@ -42,8 +45,8 @@ func (s *Store) LatestReplay(ctx context.Context) (*SessionReplay, error) {
 		blobs[code] = raw
 	}
 	return &SessionReplay{
-		SessionID: sid, StartedAt: started, EndedAt: ended,
-		Catalog: catalog, Blobs: blobs,
+		SessionID: sid, DeviceMAC: mac, StartedAt: started, EndedAt: ended,
+		BatteryPct: battery, Catalog: catalog, Blobs: blobs,
 	}, rows.Err()
 }
 

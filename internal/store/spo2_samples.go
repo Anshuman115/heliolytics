@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5"
 )
 
 const upsertSpo2SampleSQL = `
@@ -21,4 +23,17 @@ func (s *Store) UpsertSpo2Samples(ctx context.Context, sid string, pts []SampleV
 		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Value, sid})
 	}
 	return s.execBatch(ctx, upsertSpo2SampleSQL, rows)
+}
+
+// UpsertSpo2SamplesTx is UpsertSpo2Samples run against an already-open
+// transaction, for use inside Store.WithTx.
+func (s *Store) UpsertSpo2SamplesTx(ctx context.Context, tx pgx.Tx, sid string, pts []SampleValue) error {
+	if sid == "" {
+		return errRequired("spo2_samples.source_session_id")
+	}
+	rows := make([]queuedRow, 0, len(pts))
+	for _, p := range pts {
+		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Value, sid})
+	}
+	return execBatchTx(ctx, tx, upsertSpo2SampleSQL, rows)
 }

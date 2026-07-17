@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/heliolytics/api/internal/store/db"
+	"github.com/jackc/pgx/v5"
 )
 
 type HeartRateSample struct {
@@ -43,6 +44,30 @@ func (s *Store) UpsertHeartRateSamples(ctx context.Context, sid string, pts []He
 		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid})
 	}
 	return s.execBatch(ctx, upsertHeartRateSQL, rows)
+}
+
+// UpsertHeartRateSamplesTx is UpsertHeartRateSamples run against an
+// already-open transaction, for use inside Store.WithTx.
+func (s *Store) UpsertHeartRateSamplesTx(ctx context.Context, tx pgx.Tx, sid string, pts []HeartRateSample) error {
+	if sid == "" {
+		return errRequired("heart_rate_samples.source_session_id")
+	}
+	rows := make([]queuedRow, 0, len(pts))
+	for _, p := range pts {
+		if err := validateHeartRateSample(p); err != nil {
+			return err
+		}
+		day, err := dateKey(p.DayKey)
+		if err != nil {
+			return err
+		}
+		ts, err := timestamptzRequired(p.SampledAt, "heart_rate_samples.sampled_at")
+		if err != nil {
+			return err
+		}
+		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid})
+	}
+	return execBatchTx(ctx, tx, upsertHeartRateSQL, rows)
 }
 
 func (s *Store) ListHeartRateSamples(ctx context.Context, from, to string) ([]HeartRateSample, error) {

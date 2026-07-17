@@ -75,18 +75,18 @@ func TestGetCoverageVitalsAndDailyNonNullWhenSeeded(t *testing.T) {
 		t.Fatalf("insert sync_session: %v", err)
 	}
 	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO daily_metrics (day_key, steps, pai_score, updated_at)
-		VALUES ('2026-06-08', 5000, 42, $1)`,
-		seedAt,
+		INSERT INTO daily_metrics (day_key, steps, pai_score, updated_at, source_session_id)
+		VALUES ('2026-06-08', 5000, 42, $1, $2)`,
+		seedAt, coverageTestSessionID,
 	); err != nil {
 		t.Fatalf("insert daily_metrics: %v", err)
 	}
 	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO health_samples (metric, day_key, sampled_at, value, source_session_id)
-		VALUES ('stress', '2026-06-08', $1, 35, $2)`,
+		INSERT INTO stress_samples (sampled_at, day_key, value, source_session_id)
+		VALUES ($1, '2026-06-08', 35, $2)`,
 		seedAt, coverageTestSessionID,
 	); err != nil {
-		t.Fatalf("insert health_sample: %v", err)
+		t.Fatalf("insert stress_sample: %v", err)
 	}
 
 	cov, err := st.GetCoverage(ctx)

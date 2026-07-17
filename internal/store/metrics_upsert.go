@@ -4,7 +4,55 @@ import (
 	"context"
 
 	"github.com/heliolytics/api/internal/store/db"
+	"github.com/jackc/pgx/v5"
 )
+
+// SQL consts mirroring sql/queries/sleep.sql, workouts.sql, and
+// activity_sessions.sql's Upsert* statements. Inlined here (rather than
+// reused from sqlc's per-row Exec) so rows can be pipelined as one batch via
+// execBatchTx, matching the pattern used by every other bulk upsert in this
+// package.
+const upsertSleepSessionSQL = `
+INSERT INTO sleep_sessions (source_session_id, day_key, started_at, score,
+  total_mins, deep_mins, rem_mins, light_mins, wake_mins, is_nap, stages_json)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+ON CONFLICT (started_at, day_key) DO UPDATE SET
+  source_session_id = EXCLUDED.source_session_id,
+  score = EXCLUDED.score,
+  total_mins = EXCLUDED.total_mins,
+  deep_mins = EXCLUDED.deep_mins,
+  rem_mins = EXCLUDED.rem_mins,
+  light_mins = EXCLUDED.light_mins,
+  wake_mins = EXCLUDED.wake_mins,
+  is_nap = EXCLUDED.is_nap,
+  stages_json = EXCLUDED.stages_json,
+  updated_at = NOW()`
+
+const upsertWorkoutSQL = `
+INSERT INTO workouts (source_session_id, day_key, started_at, sport_type,
+  sport_name, duration_sec, calories, avg_hr, max_hr)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (day_key, started_at) DO UPDATE SET
+  source_session_id = EXCLUDED.source_session_id,
+  sport_name = EXCLUDED.sport_name,
+  duration_sec = EXCLUDED.duration_sec,
+  calories = EXCLUDED.calories,
+  avg_hr = EXCLUDED.avg_hr,
+  max_hr = EXCLUDED.max_hr,
+  updated_at = NOW()`
+
+const upsertActivitySessionSQL = `
+INSERT INTO activity_sessions (source_session_id, day_key, started_at, sport_type,
+  sport_name, duration_sec, calories, avg_hr, max_hr)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+ON CONFLICT (day_key, started_at) DO UPDATE SET
+  source_session_id = EXCLUDED.source_session_id,
+  sport_name = EXCLUDED.sport_name,
+  duration_sec = EXCLUDED.duration_sec,
+  calories = EXCLUDED.calories,
+  avg_hr = EXCLUDED.avg_hr,
+  max_hr = EXCLUDED.max_hr,
+  updated_at = NOW()`
 
 func (s *Store) UpsertDayMetrics(ctx context.Context, sid string, days []DayMetric) error {
 	for _, d := range days {
@@ -125,4 +173,96 @@ func (s *Store) UpsertActivitySessions(ctx context.Context, sid string, rows []A
 		}
 	}
 	return nil
+}
+
+// UpsertSleepSessionsTx is UpsertSleepSessions run against an already-open
+// transaction, for use inside Store.WithTx. Builds one []queuedRow and
+// writes via execBatchTx instead of looping per-row tx.Exec, per the
+// project's uniform-batching rule for multi-row writes.
+func (s *Store) UpsertSleepSessionsTx(ctx context.Context, tx pgx.Tx, sid string, rows []SleepRow) error {
+	if sid == "" {
+		return errRequired("sleep_sessions.source_session_id")
+	}
+	qrows := make([]queuedRow, 0, len(rows))
+	for _, r := range rows {
+		if err := validateSleepRow(r); err != nil {
+			return err
+		}
+		day, err := dateKey(r.DayKey)
+		if err != nil {
+			return err
+		}
+		ts, err := timestamptzRequired(r.StartedAt, "sleep_sessions.started_at")
+		if err != nil {
+			return err
+		}
+		stagesJSON, err := encodeSleepStages(r.Stages)
+		if err != nil {
+			return err
+		}
+		qrows = append(qrows, queuedRow{
+			sid, day, ts, int32(r.Score), int32(r.TotalMins),
+			int32(r.DeepMins), int32(r.RemMins), int32(r.LightMins),
+			int32(r.WakeMins), r.IsNap, stagesJSON,
+		})
+	}
+	return execBatchTx(ctx, tx, upsertSleepSessionSQL, qrows)
+}
+
+// UpsertWorkoutsTx is UpsertWorkouts run against an already-open transaction,
+// for use inside Store.WithTx. Builds one []queuedRow and writes via
+// execBatchTx instead of looping per-row tx.Exec, per the project's
+// uniform-batching rule for multi-row writes.
+func (s *Store) UpsertWorkoutsTx(ctx context.Context, tx pgx.Tx, sid string, rows []WorkoutRow) error {
+	if sid == "" {
+		return errRequired("workouts.source_session_id")
+	}
+	qrows := make([]queuedRow, 0, len(rows))
+	for _, r := range rows {
+		if err := validateWorkoutRow(r); err != nil {
+			return err
+		}
+		day, err := dateKey(r.DayKey)
+		if err != nil {
+			return err
+		}
+		ts, err := timestamptzRequired(r.StartedAt, "workouts.started_at")
+		if err != nil {
+			return err
+		}
+		qrows = append(qrows, queuedRow{
+			sid, day, ts, int32(r.SportType), textPtr(r.SportName),
+			int32(r.DurationSec), int4Ptr(r.Calories), int4Ptr(r.AvgHr), int4Ptr(r.MaxHr),
+		})
+	}
+	return execBatchTx(ctx, tx, upsertWorkoutSQL, qrows)
+}
+
+// UpsertActivitySessionsTx is UpsertActivitySessions run against an
+// already-open transaction, for use inside Store.WithTx. Builds one
+// []queuedRow and writes via execBatchTx instead of looping per-row
+// tx.Exec, per the project's uniform-batching rule for multi-row writes.
+func (s *Store) UpsertActivitySessionsTx(ctx context.Context, tx pgx.Tx, sid string, rows []ActivitySessionRow) error {
+	if sid == "" {
+		return errRequired("activity_sessions.source_session_id")
+	}
+	qrows := make([]queuedRow, 0, len(rows))
+	for _, r := range rows {
+		if err := validateActivityRow(r); err != nil {
+			return err
+		}
+		day, err := dateKey(r.DayKey)
+		if err != nil {
+			return err
+		}
+		ts, err := timestamptzRequired(r.StartedAt, "activity_sessions.started_at")
+		if err != nil {
+			return err
+		}
+		qrows = append(qrows, queuedRow{
+			sid, day, ts, int32(r.SportType), textPtr(r.SportName),
+			int32(r.DurationSec), int4Ptr(r.Calories), int4Ptr(r.AvgHr), int4Ptr(r.MaxHr),
+		})
+	}
+	return execBatchTx(ctx, tx, upsertActivitySessionSQL, qrows)
 }

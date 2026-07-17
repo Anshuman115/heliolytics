@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/heliolytics/api/internal/store/db"
+	"github.com/jackc/pgx/v5"
 )
 
 type TempPoint struct {
@@ -47,6 +48,34 @@ func (s *Store) UpsertTemperature(ctx context.Context, sid string, pts []TempPoi
 		rows = append(rows, queuedRow{ts, day, c, sid})
 	}
 	return s.execBatch(ctx, upsertTemperatureSQL, rows)
+}
+
+// UpsertTemperatureTx is UpsertTemperature run against an already-open
+// transaction, for use inside Store.WithTx.
+func (s *Store) UpsertTemperatureTx(ctx context.Context, tx pgx.Tx, sid string, pts []TempPoint) error {
+	if sid == "" {
+		return errRequired("temperature_samples.source_session_id")
+	}
+	rows := make([]queuedRow, 0, len(pts))
+	for _, p := range pts {
+		if err := validateTempPoint(p); err != nil {
+			return err
+		}
+		day, err := dateKey(p.DayKey)
+		if err != nil {
+			return err
+		}
+		ts, err := timestamptzRequired(p.SampledAt, "temperature_samples.sampled_at")
+		if err != nil {
+			return err
+		}
+		c, err := numericFromFloat(p.Celsius)
+		if err != nil {
+			return err
+		}
+		rows = append(rows, queuedRow{ts, day, c, sid})
+	}
+	return execBatchTx(ctx, tx, upsertTemperatureSQL, rows)
 }
 
 func (s *Store) ListTemperature(ctx context.Context, from, to string) ([]TempPoint, error) {

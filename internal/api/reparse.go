@@ -37,7 +37,11 @@ func (h *reparseHandler) serve(w http.ResponseWriter, r *http.Request) {
 		log.Printf("reparse reset error: %v", err)
 		// non-fatal: continue anyway — may double-count but better than hard fail
 	}
-	if err := parse.RunIngest(r.Context(), h.st, rep.SessionID, rep.Catalog, rep.Blobs, rep.EndedAt); err != nil {
+	meta := store.SessionMeta{
+		ID: rep.SessionID, DeviceMAC: rep.DeviceMAC, StartedAt: rep.StartedAt,
+		EndedAt: &rep.EndedAt, BatteryPct: rep.BatteryPct, CatalogJSON: rep.Catalog,
+	}
+	if err := parse.RunIngest(r.Context(), h.st, meta, rep.Blobs, rep.EndedAt); err != nil {
 		log.Printf("reparse ingest error: %v", err)
 		http.Error(w, "parse error", http.StatusInternalServerError)
 		return

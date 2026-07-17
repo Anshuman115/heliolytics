@@ -2,30 +2,6 @@ package parse
 
 import "github.com/heliolytics/api/internal/store"
 
-func toStoreDays(m map[string]*DayAcc) []store.DayMetric {
-	out := make([]store.DayMetric, 0, len(m))
-	for day, d := range m {
-		out = append(out, store.DayMetric{
-			DayKey: day, Steps: d.Steps, PaiScore: d.Pai, Readiness: d.Readiness,
-			Spo2Avg: d.Spo2Avg(), HrvRmssd: d.HrvAvg(), RestingHr: d.RestingHr,
-			RespRateAvg: d.RespRateAvg(), StressAvg: d.StressAvg(),
-			SleepScore: d.SleepScore, SleepMins: ptrInt(d.SleepMins),
-			SleepDeepMins: ptrInt(d.SleepDeep), SleepRemMins: ptrInt(d.SleepRem),
-			SleepLightMins: ptrInt(d.SleepLight), TempAvgC: d.TempAvg(),
-			NapCount: d.NapCount, WorkoutCount: d.WorkoutCount,
-			ActivitySessionCount: d.ActivitySessionCount,
-		})
-	}
-	return out
-}
-
-func ptrInt(v int) *int {
-	if v == 0 {
-		return nil
-	}
-	return &v
-}
-
 func toSleepRows(recs []SleepRecord) []store.SleepRow {
 	out := make([]store.SleepRow, len(recs))
 	for i, s := range recs {
@@ -59,13 +35,13 @@ func appendHealthSeries(parts ...[]HealthSample) []HealthSample {
 	return out
 }
 
-func toHealthRows(pts []HealthSample) []store.HealthSample {
-	out := make([]store.HealthSample, len(pts))
-	for i, p := range pts {
-		out[i] = store.HealthSample{
-			Metric: p.Metric, DayKey: p.DayKey,
-			SampledAt: p.SampledAt, Value: p.Value,
-		}
+// toSampleValues converts a per-metric parse.HealthSample slice into
+// store.SampleValue rows. Metric is dropped here — it's implied by which
+// UpsertXSamplesTx method the caller passes the result to.
+func toSampleValues(hs []HealthSample) []store.SampleValue {
+	out := make([]store.SampleValue, 0, len(hs))
+	for _, h := range hs {
+		out = append(out, store.SampleValue{DayKey: h.DayKey, SampledAt: h.SampledAt, Value: h.Value})
 	}
 	return out
 }
@@ -84,19 +60,6 @@ func toStepRows(pts []StepSample) []store.StepSample {
 		out[i] = store.StepSample{DayKey: p.DayKey, SampledAt: p.SampledAt, Steps: p.Steps}
 	}
 	return out
-}
-
-// stepDays returns the distinct IST day keys present in a step series.
-func stepDays(pts []StepSample) []string {
-	seen := map[string]bool{}
-	var days []string
-	for _, p := range pts {
-		if !seen[p.DayKey] {
-			seen[p.DayKey] = true
-			days = append(days, p.DayKey)
-		}
-	}
-	return days
 }
 
 func toWorkoutRows(recs []WorkoutRecord) []store.WorkoutRow {

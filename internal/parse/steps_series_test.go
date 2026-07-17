@@ -12,7 +12,7 @@ import (
 // overlap) overwrites in an idempotent store and the daily SUM does not change —
 // whereas the old additive path would have doubled it.
 func TestStepSeriesIdempotentUnderOverlap(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "Heliolytics_App", "DUMPP")
+	root := filepath.Join("..", "..", "..", "Heliolytics_App", "rawData", "DUMPP")
 	raw, err := os.ReadFile(filepath.Join(root, "0x01_raw.bin"))
 	if err != nil {
 		t.Skip("DUMPP/0x01_raw.bin missing")

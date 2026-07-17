@@ -15,13 +15,18 @@ func TestAggregateCountsNapFromParsedSleep(t *testing.T) {
 	}
 	parsed := ParseBlobs(nil, map[string][]byte{"0x48": raw}, time.Now().UTC())
 	agg := Aggregate(parsed)
+	// Nap counts are no longer aggregated in-memory (internal/rollup computes
+	// them from the DB after commit) — but Aggregate must still pass every
+	// parsed sleep record, including naps, through to the write batch.
 	var napDays int
-	for _, d := range agg.Days {
-		if d.NapCount > 0 {
+	seen := map[string]bool{}
+	for _, s := range agg.Sleep {
+		if s.IsNap && !seen[s.DayKey] {
+			seen[s.DayKey] = true
 			napDays++
 		}
 	}
 	if napDays == 0 {
-		t.Fatal("want nap_count on at least one day from sleep fixture")
+		t.Fatal("want at least one nap sleep record on a day from sleep fixture")
 	}
 }

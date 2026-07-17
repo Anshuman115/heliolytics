@@ -3,6 +3,8 @@ package store
 import (
 	"context"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
 // SampleValue is one per-minute reading for any of the single-value metric
@@ -31,4 +33,17 @@ func (s *Store) UpsertHrvSamples(ctx context.Context, sid string, pts []SampleVa
 		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Value, sid})
 	}
 	return s.execBatch(ctx, upsertHrvSampleSQL, rows)
+}
+
+// UpsertHrvSamplesTx is UpsertHrvSamples run against an already-open
+// transaction, for use inside Store.WithTx.
+func (s *Store) UpsertHrvSamplesTx(ctx context.Context, tx pgx.Tx, sid string, pts []SampleValue) error {
+	if sid == "" {
+		return errRequired("hrv_samples.source_session_id")
+	}
+	rows := make([]queuedRow, 0, len(pts))
+	for _, p := range pts {
+		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Value, sid})
+	}
+	return execBatchTx(ctx, tx, upsertHrvSampleSQL, rows)
 }

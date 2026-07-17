@@ -79,16 +79,14 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 	meta.BatteryPct = sess.BatteryPercent
 
 	ctx := r.Context()
-	if err := h.st.UpsertSession(ctx, meta); err != nil {
-		log.Printf("ingest reject reason=db_session session=%s err=%v", sess.SessionID, err)
-		http.Error(w, "db error", http.StatusInternalServerError)
-		return
-	}
-	log.Printf("ingest session upserted id=%s", sess.SessionID)
 	fetchEnd := started
 	if ended != nil {
 		fetchEnd = *ended
 	}
+	// Session row and raw blobs are no longer upserted here — they're written
+	// inside RunIngest's single transaction (internal/parse/write_batch.go),
+	// alongside every other row for this sync, so a failure partway through
+	// rolls back the whole sync instead of leaving an orphaned session row.
 	blobs := map[string][]byte{}
 	for name, headers := range r.MultipartForm.File {
 		if name == "session" || name == "catalog" {
@@ -107,14 +105,13 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 			log.Printf("ingest blob skipped name=%s (unexpected filename)", name)
 			continue
 		}
-		_ = h.st.UpsertRaw(ctx, sess.SessionID, typeCode, raw)
 		blobs[typeCode] = raw
-		log.Printf("ingest blob stored type=%s bytes=%d", typeCode, len(raw))
+		log.Printf("ingest blob read type=%s bytes=%d", typeCode, len(raw))
 	}
 	log.Printf("ingest parsing session=%s blob_types=%d", sess.SessionID, len(blobs))
-	if err := parse.RunIngest(ctx, h.st, sess.SessionID, catalogJSON, blobs, fetchEnd); err != nil {
-		log.Printf("ingest parse error session=%s: %v", sess.SessionID, err)
-		http.Error(w, "parse error", http.StatusInternalServerError)
+	if err := parse.RunIngest(ctx, h.st, meta, blobs, fetchEnd); err != nil {
+		log.Printf("ingest error session=%s: %v", sess.SessionID, err)
+		http.Error(w, "ingest error", http.StatusInternalServerError)
 		return
 	}
 	log.Printf("ingest ok session=%s types=%d mac=%s", sess.SessionID, len(blobs), meta.DeviceMAC)

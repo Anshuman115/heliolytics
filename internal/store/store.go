@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/heliolytics/api/internal/store/db"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -39,4 +40,20 @@ func (s *Store) ExecDayKeys(ctx context.Context, sql string, days []string) erro
 		rows = append(rows, queuedRow{d})
 	}
 	return s.execBatch(ctx, sql, rows)
+}
+
+// ensureDailyMetricsRowSQL inserts a daily_metrics row for a day if one
+// doesn't already exist, so per-day recompute writers always have a row to
+// update. Chunked via execBatchTx like every other bulk write, so a large
+// backfill's touched-day set is one pipelined round trip, not N.
+const ensureDailyMetricsRowSQL = `INSERT INTO daily_metrics (day_key) VALUES ($1::date) ON CONFLICT (day_key) DO NOTHING`
+
+// EnsureDailyMetricsRowsTx runs ensureDailyMetricsRowSQL for each day in days
+// against an already-open transaction, for use inside Store.WithTx.
+func (s *Store) EnsureDailyMetricsRowsTx(ctx context.Context, tx pgx.Tx, days []string) error {
+	rows := make([]queuedRow, 0, len(days))
+	for _, day := range days {
+		rows = append(rows, queuedRow{day})
+	}
+	return execBatchTx(ctx, tx, ensureDailyMetricsRowSQL, rows)
 }

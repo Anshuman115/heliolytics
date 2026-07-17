@@ -1,6 +1,10 @@
 package store
 
-import "context"
+import (
+	"context"
+
+	"github.com/jackc/pgx/v5"
+)
 
 // UpsertPaiScores and UpsertReadinessScores persist the single per-day value
 // parsed from the device's raw PAI (0x0D) / readiness (0x39) blobs. Both go
@@ -42,4 +46,30 @@ func (s *Store) UpsertReadinessScores(ctx context.Context, sid string, scores ma
 		rows = append(rows, queuedRow{day, score, sid})
 	}
 	return s.execBatch(ctx, upsertRawReadinessSQL, rows)
+}
+
+// UpsertPaiScoresTx is UpsertPaiScores run against an already-open
+// transaction, for use inside Store.WithTx.
+func (s *Store) UpsertPaiScoresTx(ctx context.Context, tx pgx.Tx, sid string, scores map[string]int) error {
+	if sid == "" {
+		return errRequired("raw_pai_scores.source_session_id")
+	}
+	rows := make([]queuedRow, 0, len(scores))
+	for day, score := range scores {
+		rows = append(rows, queuedRow{day, score, sid})
+	}
+	return execBatchTx(ctx, tx, upsertRawPaiScoreSQL, rows)
+}
+
+// UpsertReadinessScoresTx is UpsertReadinessScores run against an
+// already-open transaction, for use inside Store.WithTx.
+func (s *Store) UpsertReadinessScoresTx(ctx context.Context, tx pgx.Tx, sid string, scores map[string]int) error {
+	if sid == "" {
+		return errRequired("raw_readiness.source_session_id")
+	}
+	rows := make([]queuedRow, 0, len(scores))
+	for day, score := range scores {
+		rows = append(rows, queuedRow{day, score, sid})
+	}
+	return execBatchTx(ctx, tx, upsertRawReadinessSQL, rows)
 }

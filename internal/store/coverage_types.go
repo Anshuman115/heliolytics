@@ -10,7 +10,7 @@ var SyncedBLETypeCodes = []string{
 
 func buildTypeCoverage(
 	workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd *time.Time,
-	stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd *time.Time,
+	stressEnd, hrvEnd, spo2End, respEnd, rhrEnd *time.Time,
 	stepsEnd, paiEnd, readinessEnd *time.Time,
 ) map[string]*time.Time {
 	return map[string]*time.Time{
@@ -20,7 +20,7 @@ func buildTypeCoverage(
 		"0x0D": paiEnd,
 		"0x13": stressEnd,
 		"0x25": spo2End,
-		"0x26": spo2SleepEnd,
+		"0x26": spo2End,
 		"0x2E": tempEnd,
 		"0x38": respEnd,
 		"0x39": readinessEnd,

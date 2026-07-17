@@ -16,7 +16,11 @@ func (s *Store) GetCoverage(ctx context.Context) (DataCoverage, error) {
 	const q = `
 SELECT
   (SELECT MAX(ts) FROM (
-    SELECT sampled_at AS ts FROM health_samples
+    SELECT sampled_at AS ts FROM hrv_samples
+    UNION ALL SELECT sampled_at FROM spo2_samples
+    UNION ALL SELECT sampled_at FROM stress_samples
+    UNION ALL SELECT sampled_at FROM resp_samples
+    UNION ALL SELECT sampled_at FROM rhr_samples
     UNION ALL SELECT sampled_at FROM temperature_samples
     UNION ALL SELECT sampled_at FROM heart_rate_samples
     UNION ALL SELECT started_at + make_interval(secs => duration_sec) FROM workouts
@@ -30,25 +34,24 @@ SELECT
   (SELECT MAX(started_at + make_interval(mins => total_mins)) FROM sleep_sessions WHERE is_nap) AS nap_end,
   (SELECT MAX(sampled_at) FROM temperature_samples) AS temp_end,
   (SELECT MAX(sampled_at) FROM heart_rate_samples) AS hr_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'stress') AS stress_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'hrv') AS hrv_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'spo2') AS spo2_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'spo2_sleep') AS spo2_sleep_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'resp_rate') AS resp_end,
-  (SELECT MAX(sampled_at) FROM health_samples WHERE metric = 'rhr') AS rhr_end,
+  (SELECT MAX(sampled_at) FROM stress_samples) AS stress_end,
+  (SELECT MAX(sampled_at) FROM hrv_samples) AS hrv_end,
+  (SELECT MAX(sampled_at) FROM spo2_samples) AS spo2_end,
+  (SELECT MAX(sampled_at) FROM resp_samples) AS resp_end,
+  (SELECT MAX(sampled_at) FROM rhr_samples) AS rhr_end,
   (SELECT MAX(updated_at) FROM daily_metrics WHERE steps > 0) AS steps_end,
   (SELECT MAX(updated_at) FROM daily_metrics WHERE pai_score IS NOT NULL) AS pai_end,
   (SELECT MAX(updated_at) FROM daily_metrics WHERE readiness IS NOT NULL) AS readiness_end`
 	var (
-		through, ingest                                                       *time.Time
-		workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd          *time.Time
-		stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd          *time.Time
-		stepsEnd, paiEnd, readinessEnd                                        *time.Time
+		through, ingest                                               *time.Time
+		workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd *time.Time
+		stressEnd, hrvEnd, spo2End, respEnd, rhrEnd                   *time.Time
+		stepsEnd, paiEnd, readinessEnd                                *time.Time
 	)
 	err := s.pool.QueryRow(ctx, q).Scan(
 		&through, &ingest,
 		&workoutEnd, &activityEnd, &mainSleepEnd, &napEnd, &tempEnd, &hrEnd,
-		&stressEnd, &hrvEnd, &spo2End, &spo2SleepEnd, &respEnd, &rhrEnd,
+		&stressEnd, &hrvEnd, &spo2End, &respEnd, &rhrEnd,
 		&stepsEnd, &paiEnd, &readinessEnd,
 	)
 	if err != nil {
@@ -56,7 +59,7 @@ SELECT
 	}
 	types := buildTypeCoverage(
 		workoutEnd, activityEnd, mainSleepEnd, napEnd, tempEnd, hrEnd,
-		stressEnd, hrvEnd, spo2End, spo2SleepEnd, respEnd, rhrEnd,
+		stressEnd, hrvEnd, spo2End, respEnd, rhrEnd,
 		stepsEnd, paiEnd, readinessEnd,
 	)
 	out := DataCoverage{

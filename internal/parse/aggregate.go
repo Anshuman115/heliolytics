@@ -1,61 +1,51 @@
 package parse
 
-import "github.com/heliolytics/api/internal/store"
-
-// AggregatedBatch is store-ready ingest output before session IDs are applied.
+// AggregatedBatch holds one sync's parsed rows, grouped by destination table.
+// No daily_metrics fields here — those are filled by internal/rollup after
+// commit, reading back from the tables these rows land in.
 type AggregatedBatch struct {
-	Days             []store.DayMetric
 	Sleep            []SleepRecord
 	Workouts         []WorkoutRecord
 	ActivitySessions []WorkoutRecord
 	TempSeries       []TempSamplePoint
 	HrSeries         []HrSamplePoint
-	HealthSeries     []HealthSample
 	StepSeries       []StepSample
+	HrvSeries        []HealthSample // parse.HealthSample, converted to store.SampleValue at the write site
+	Spo2Series       []HealthSample // Spo2Spot + Spo2Sleep merged via appendHealthSeries
+	StressSeries     []HealthSample
+	RespRateSeries   []HealthSample
+	RhrSeries        []HealthSample
+	PaiScores        map[string]int // day_key -> score, from parsed.Pai
+	ReadinessScores  map[string]int // day_key -> score, from parsed.Readiness
+	TouchedDays      []string
 }
 
-// Aggregate rolls parsed blobs into daily metrics and canonical vitals.
+// Aggregate regroups a ParsedBatch into per-table row slices ready for the
+// store layer. It performs no daily rollup itself — that happens after the
+// write transaction commits, by reading the committed rows back from the DB.
 func Aggregate(parsed ParsedBatch) AggregatedBatch {
-	days := map[string]*DayAcc{}
-	for day, steps := range parsed.StepsByDay {
-		acc(days, day).Steps = steps
+	pai := map[string]int{}
+	for _, p := range parsed.Pai {
+		pai[p.DayKey] = p.Score
 	}
-	mergeSleep(days, parsed.Sleep)
-	for _, s := range parsed.Sleep {
-		if s.IsNap {
-			acc(days, s.DayKey).NapCount++
-		}
-	}
-	for _, s := range parsed.Pai {
-		v := s.Score
-		acc(days, s.DayKey).Pai = &v
-	}
-	for _, s := range parsed.Readiness {
-		v := s.Readiness
-		acc(days, s.DayKey).Readiness = &v
-	}
-	for _, s := range parsed.Temperature {
-		a := acc(days, s.DayKey)
-		a.TempSum += s.Celsius
-		a.TempCount++
-	}
-	ApplyCanonicalVitals(days, parsed.Sleep, parsed.StressSeries, parsed.HrvSeries,
-		parsed.Spo2Spot, parsed.Spo2Sleep, parsed.RhrSeries,
-		parsed.RespRateSeries)
-	for _, w := range parsed.Workouts {
-		acc(days, w.DayKey).WorkoutCount++
-	}
-	for _, s := range parsed.ActivitySessions {
-		acc(days, s.DayKey).ActivitySessionCount++
+	readiness := map[string]int{}
+	for _, r := range parsed.Readiness {
+		readiness[r.DayKey] = r.Readiness
 	}
 	return AggregatedBatch{
-		Days:             toStoreDays(days),
 		Sleep:            parsed.Sleep,
 		Workouts:         parsed.Workouts,
 		ActivitySessions: parsed.ActivitySessions,
 		TempSeries:       parsed.TempSeries,
 		HrSeries:         parsed.HrSeries,
-		HealthSeries:     parsed.healthSeries(),
 		StepSeries:       parsed.StepSeries,
+		HrvSeries:        parsed.HrvSeries,
+		Spo2Series:       appendHealthSeries(parsed.Spo2Spot, parsed.Spo2Sleep),
+		StressSeries:     parsed.StressSeries,
+		RespRateSeries:   parsed.RespRateSeries,
+		RhrSeries:        parsed.RhrSeries,
+		PaiScores:        pai,
+		ReadinessScores:  readiness,
+		TouchedDays:      TouchedDayKeys(parsed),
 	}
 }

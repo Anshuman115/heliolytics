@@ -31,6 +31,11 @@ func testStore(t *testing.T) (*Store, func()) {
 }
 
 func cleanupCoverageFixture(ctx context.Context, st *Store) {
+	_, _ = st.pool.Exec(ctx, `DELETE FROM sleep_sessions WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM workouts WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM activity_sessions WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM daily_metrics WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM stress_samples WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM sync_sessions WHERE session_id = $1`, coverageTestSessionID)
 }
 
