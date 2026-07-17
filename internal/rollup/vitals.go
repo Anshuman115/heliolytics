@@ -2,35 +2,42 @@ package rollup
 
 import (
 	"context"
+	"errors"
 	"log"
 	"time"
 
 	"github.com/heliolytics/api/internal/store"
+	"github.com/jackc/pgx/v5"
 )
 
 // recomputeHrvSQL averages hrv_samples.value within the sleep window and
-// writes it to daily_metrics.hrv_rmssd.
+// writes it to daily_metrics.hrv_rmssd. COALESCEd onto the existing value so
+// a window with zero in-window samples (metric missing from this sync, but
+// present from an earlier one) leaves the prior value intact instead of
+// clobbering it to NULL — same guard sleep.go uses for its main-sleep fields.
 const recomputeHrvSQL = `
-	UPDATE daily_metrics SET hrv_rmssd = (
+	UPDATE daily_metrics SET hrv_rmssd = COALESCE((
 		SELECT ROUND(AVG(value))::int FROM hrv_samples
 		WHERE sampled_at >= $2 AND sampled_at <= $3
-	), updated_at = NOW() WHERE day_key = $1::date`
+	), hrv_rmssd), updated_at = NOW() WHERE day_key = $1::date`
 
 // recomputeSpo2SQL averages spo2_samples.value within the sleep window and
-// writes it to daily_metrics.spo2_avg.
+// writes it to daily_metrics.spo2_avg. Same COALESCE-onto-prior-value guard
+// as recomputeHrvSQL.
 const recomputeSpo2SQL = `
-	UPDATE daily_metrics SET spo2_avg = (
+	UPDATE daily_metrics SET spo2_avg = COALESCE((
 		SELECT ROUND(AVG(value))::int FROM spo2_samples
 		WHERE sampled_at >= $2 AND sampled_at <= $3
-	), updated_at = NOW() WHERE day_key = $1::date`
+	), spo2_avg), updated_at = NOW() WHERE day_key = $1::date`
 
 // recomputeRespSQL averages resp_samples.value within the sleep window and
-// writes it to daily_metrics.resp_rate_avg.
+// writes it to daily_metrics.resp_rate_avg. Same COALESCE-onto-prior-value
+// guard as recomputeHrvSQL.
 const recomputeRespSQL = `
-	UPDATE daily_metrics SET resp_rate_avg = (
+	UPDATE daily_metrics SET resp_rate_avg = COALESCE((
 		SELECT ROUND(AVG(value))::int FROM resp_samples
 		WHERE sampled_at >= $2 AND sampled_at <= $3
-	), updated_at = NOW() WHERE day_key = $1::date`
+	), resp_rate_avg), updated_at = NOW() WHERE day_key = $1::date`
 
 // RecomputeDailyVitals fills hrv_rmssd, spo2_avg, resp_rate_avg from the DB.
 // These three are only meaningful measured during sleep (daytime HRV/SpO2/
@@ -64,13 +71,20 @@ func RecomputeDailyVitals(ctx context.Context, st *store.Store, days []string) e
 
 func bestSleepWindow(ctx context.Context, st *store.Store, day string) (start, end time.Time, ok bool, err error) {
 	var totalMins int
-	err = st.Pool().QueryRow(ctx, `
+	queryErr := st.Pool().QueryRow(ctx, `
 		SELECT started_at, total_mins FROM sleep_sessions
 		WHERE day_key = $1::date AND is_nap = false
 		ORDER BY score DESC
 		LIMIT 1`, day).Scan(&start, &totalMins)
-	if err != nil {
-		return time.Time{}, time.Time{}, false, nil // no rows is not a hard error, just "no window"
+	if queryErr != nil {
+		if errors.Is(queryErr, pgx.ErrNoRows) {
+			// No non-nap sleep session that day is not a hard error, just "no window."
+			return time.Time{}, time.Time{}, false, nil
+		}
+		// A real DB/connection error must propagate — swallowing it here would
+		// report the whole recompute as successful while silently skipping
+		// this day's vitals.
+		return time.Time{}, time.Time{}, false, queryErr
 	}
 	return start, start.Add(time.Duration(totalMins) * time.Minute), true, nil
 }

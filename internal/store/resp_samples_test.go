@@ -8,7 +8,7 @@ import (
 
 func TestUpsertRespSamplesThenReadBack(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 	ctx := context.Background()
 	const day = "2026-06-22"
 

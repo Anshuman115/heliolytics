@@ -66,18 +66,6 @@ func validateActivityRow(r ActivitySessionRow) error {
 	return validateTimedRow("activity_sessions", r.DayKey, r.StartedAt)
 }
 
-func validateDayMetric(d DayMetric) error {
-	if err := dayKeyRequired(d.DayKey, "daily_metrics"); err != nil {
-		return err
-	}
-	if d.TempAvgC != nil {
-		if _, err := numericFromFloat(*d.TempAvgC); err != nil {
-			return fmt.Errorf("daily_metrics.temp_avg_c: %w", err)
-		}
-	}
-	return nil
-}
-
 func validateTimedRow(table, dayKey string, startedAt time.Time) error {
 	if err := dayKeyRequired(dayKey, table); err != nil {
 		return err
