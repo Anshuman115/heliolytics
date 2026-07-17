@@ -3,24 +3,26 @@ package store
 import "time"
 
 type DayMetric struct {
-	DayKey         string    `json:"dayKey"`
-	Steps          int       `json:"steps"`
-	PaiScore       *int      `json:"paiScore,omitempty"`
-	Readiness      *int      `json:"readiness,omitempty"`
-	Spo2Avg        *int      `json:"spo2Avg,omitempty"`
-	HrvRmssd       *int      `json:"hrvRmssd,omitempty"`
-	RestingHr      *int      `json:"restingHr,omitempty"`
-	RespRateAvg    *int      `json:"respRateAvg,omitempty"`
-	StressAvg      *int      `json:"stressAvg,omitempty"`
-	SleepScore     *int      `json:"sleepScore,omitempty"`
-	SleepMins      *int      `json:"sleepMins,omitempty"`
-	SleepDeepMins  *int      `json:"sleepDeepMins,omitempty"`
-	SleepRemMins   *int      `json:"sleepRemMins,omitempty"`
-	SleepLightMins *int      `json:"sleepLightMins,omitempty"`
-	TempAvgC       *float64  `json:"tempAvgC,omitempty"`
+	DayKey               string    `json:"dayKey"`
+	Steps                int       `json:"steps"`
+	PaiScore             *int      `json:"paiScore,omitempty"`
+	Readiness            *int      `json:"readiness,omitempty"`
+	Spo2Avg              *int      `json:"spo2Avg,omitempty"`
+	HrvRmssd             *int      `json:"hrvRmssd,omitempty"`
+	RestingHr            *int      `json:"restingHr,omitempty"`
+	RespRateAvg          *int      `json:"respRateAvg,omitempty"`
+	StressAvg            *int      `json:"stressAvg,omitempty"`
+	SleepScore           *int      `json:"sleepScore,omitempty"`
+	SleepMins            *int      `json:"sleepMins,omitempty"`
+	SleepDeepMins        *int      `json:"sleepDeepMins,omitempty"`
+	SleepRemMins         *int      `json:"sleepRemMins,omitempty"`
+	SleepLightMins       *int      `json:"sleepLightMins,omitempty"`
+	TempAvgC             *float64  `json:"tempAvgC,omitempty"`
 	NapCount             int       `json:"napCount"`
 	WorkoutCount         int       `json:"workoutCount"`
 	ActivitySessionCount int       `json:"activitySessionCount"`
+	CaloriesTotal        *int      `json:"caloriesTotal,omitempty"`
+	AvgHr                *int      `json:"avgHr,omitempty"`
 	Updated              time.Time `json:"updatedAt"`
 }
 

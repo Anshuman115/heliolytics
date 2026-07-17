@@ -16,7 +16,7 @@ func (s *Store) RecomputeReadiness(ctx context.Context, days []string) error {
 		if err != nil {
 			return err
 		}
-		score, ok := readiness.Compute(hist)
+		score, _, ok := readiness.Compute(hist)
 		if !ok {
 			continue
 		}
@@ -63,6 +63,13 @@ func (s *Store) readinessHistory(ctx context.Context, day string) ([]readiness.D
 		desc[i], desc[j] = desc[j], desc[i]
 	}
 	return desc, nil
+}
+
+// ReadinessHistoryPublic exposes readinessHistory for the API layer's
+// on-demand /recovery endpoint (RecomputeReadiness uses the private version
+// internally; this is the same query, just reachable from outside the package).
+func (s *Store) ReadinessHistoryPublic(ctx context.Context, day string) ([]readiness.DayVitals, error) {
+	return s.readinessHistory(ctx, day)
 }
 
 func fptr(v *int) *float64 {

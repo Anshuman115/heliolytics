@@ -102,13 +102,15 @@ func dayMetricFromDB(r db.ListDaysRow) DayMetric {
 		DayKey: dateKeyString(r.DayKey), Steps: int(r.Steps),
 		PaiScore: int4Val(r.PaiScore), Readiness: int4Val(r.Readiness),
 		Spo2Avg: int4Val(r.Spo2Avg), HrvRmssd: int4Val(r.HrvRmssd),
-		RestingHr: int4Val(r.RestingHr),
+		RestingHr:   int4Val(r.RestingHr),
 		RespRateAvg: int4Val(r.RespRateAvg), StressAvg: int4Val(r.StressAvg),
 		SleepScore: int4Val(r.SleepScore), SleepMins: int4Val(r.SleepMins),
 		SleepDeepMins: int4Val(r.SleepDeepMins), SleepRemMins: int4Val(r.SleepRemMins),
 		SleepLightMins: int4Val(r.SleepLightMins), TempAvgC: numericVal(r.TempAvgC),
 		NapCount: int(r.NapCount), WorkoutCount: int(r.WorkoutCount),
-		ActivitySessionCount: int(r.ActivitySessionCount), Updated: updated,
+		ActivitySessionCount: int(r.ActivitySessionCount),
+		CaloriesTotal:        int4Val(r.CaloriesTotal), AvgHr: int4Val(r.AvgHr),
+		Updated: updated,
 	}
 }
 

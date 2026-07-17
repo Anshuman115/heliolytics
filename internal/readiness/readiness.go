@@ -44,15 +44,25 @@ type DayVitals struct {
 	SleepScore *float64 // 0–100
 }
 
+// Component is one weighted input to the recovery score, exposed so the API
+// can show a breakdown instead of just the final number.
+type Component struct {
+	Name     string  `json:"name"`
+	Value    float64 `json:"value"`
+	Weight   float64 `json:"weight"`
+	Subscore float64 `json:"subscore"`
+}
+
 // Compute returns the 0–100 recovery score for the LAST day in history
-// (ordered oldest→newest). ok=false means there isn't enough baseline yet.
-func Compute(history []DayVitals) (score int, ok bool) {
+// (ordered oldest→newest), plus each component that went into it. ok=false
+// means there isn't enough baseline yet (components is nil in that case).
+func Compute(history []DayVitals) (score int, components []Component, ok bool) {
 	if len(history) == 0 {
-		return 0, false
+		return 0, nil, false
 	}
 	target := history[len(history)-1]
 	if target.RMSSD == nil || *target.RMSSD <= 0 {
-		return 0, false
+		return 0, nil, false
 	}
 
 	// Baseline is built from the PRIOR days only — never fold the target day into
@@ -61,37 +71,40 @@ func Compute(history []DayVitals) (score int, ok bool) {
 	prior := history[:len(history)-1]
 	lnPrior := collect(prior, lnRMSSD)
 	if len(lnPrior)+1 < MinDays { // prior + today valid HRV nights
-		return 0, false
+		return 0, nil, false
 	}
 
-	type part struct{ v, w float64 }
-	parts := []part{
+	comps := []Component{
 		// HRV (required) — higher is better.
-		{subscore(math.Log(*target.RMSSD), lnPrior, priorSDH, floorSDH, +1), wHRV},
+		{Name: "hrv", Value: *target.RMSSD, Weight: wHRV,
+			Subscore: subscore(math.Log(*target.RMSSD), lnPrior, priorSDH, floorSDH, +1)},
 	}
 
 	// RHR — lower is better. Each metric decides prior-vs-personal SD from its
 	// own baseline length, not HRV's.
 	if rhr := collect(prior, getRHR); target.RHR != nil && len(rhr) >= MinDays-1 {
-		parts = append(parts, part{subscore(*target.RHR, rhr, priorSDR, floorSDR, -1), wRHR})
+		comps = append(comps, Component{Name: "rhr", Value: *target.RHR, Weight: wRHR,
+			Subscore: subscore(*target.RHR, rhr, priorSDR, floorSDR, -1)})
 	}
 
 	// Respiratory rate — higher is worse.
 	if resp := collect(prior, getResp); target.Resp != nil && len(resp) >= MinDays-1 {
-		parts = append(parts, part{subscore(*target.Resp, resp, priorSDF, floorSDF, -1), wResp})
+		comps = append(comps, Component{Name: "resp", Value: *target.Resp, Weight: wResp,
+			Subscore: subscore(*target.Resp, resp, priorSDF, floorSDF, -1)})
 	}
 
 	// Sleep: device 0–100 score used directly.
 	if target.SleepScore != nil {
-		parts = append(parts, part{clamp(*target.SleepScore, 0, 100), wSleep})
+		comps = append(comps, Component{Name: "sleep", Value: *target.SleepScore, Weight: wSleep,
+			Subscore: clamp(*target.SleepScore, 0, 100)})
 	}
 
 	var sum, wsum float64
-	for _, p := range parts {
-		sum += p.v * p.w
-		wsum += p.w
+	for _, c := range comps {
+		sum += c.Subscore * c.Weight
+		wsum += c.Weight
 	}
-	return int(math.Round(clamp(sum/wsum, 0, 100))), true
+	return int(math.Round(clamp(sum/wsum, 0, 100))), comps, true
 }
 
 func collect(h []DayVitals, get func(DayVitals) *float64) []float64 {

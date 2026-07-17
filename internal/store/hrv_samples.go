@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 // SampleValue is one per-minute reading for any of the single-value metric
@@ -46,4 +47,35 @@ func (s *Store) UpsertHrvSamplesTx(ctx context.Context, tx pgx.Tx, sid string, p
 		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Value, sid})
 	}
 	return execBatchTx(ctx, tx, upsertHrvSampleSQL, rows)
+}
+
+// ListHrvSamplesRange returns hrv_samples rows with day_key in [from, to],
+// ordered by sampled_at ascending, for the hrv trend endpoint.
+func (s *Store) ListHrvSamplesRange(ctx context.Context, from, to string) ([]SampleValue, error) {
+	fromD, err := dateKey(from)
+	if err != nil {
+		return nil, err
+	}
+	toD, err := dateKey(to)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT sampled_at, day_key, value FROM hrv_samples WHERE day_key >= $1 AND day_key <= $2 ORDER BY sampled_at ASC`,
+		fromD, toD)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []SampleValue
+	for rows.Next() {
+		var v SampleValue
+		var day pgtype.Date
+		if err := rows.Scan(&v.SampledAt, &day, &v.Value); err != nil {
+			return nil, err
+		}
+		v.DayKey = dateKeyString(day)
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }

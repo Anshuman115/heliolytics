@@ -16,7 +16,8 @@ SELECT day_key, steps, pai_score,
        COALESCE(readiness, computed_readiness) AS readiness, spo2_avg, hrv_rmssd,
        resting_hr, resp_rate_avg, stress_avg, sleep_score, sleep_mins,
        sleep_deep_mins, sleep_rem_mins, sleep_light_mins, temp_avg_c,
-       nap_count, workout_count, activity_session_count, source_session_id, updated_at
+       nap_count, workout_count, activity_session_count, calories_total, avg_hr,
+       source_session_id, updated_at
 FROM daily_metrics
 WHERE day_key >= $1 AND day_key <= $2
 ORDER BY day_key DESC
@@ -46,6 +47,8 @@ type ListDaysRow struct {
 	NapCount             int32              `json:"nap_count"`
 	WorkoutCount         int32              `json:"workout_count"`
 	ActivitySessionCount int32              `json:"activity_session_count"`
+	CaloriesTotal        pgtype.Int4        `json:"calories_total"`
+	AvgHr                pgtype.Int4        `json:"avg_hr"`
 	SourceSessionID      pgtype.Text        `json:"source_session_id"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
 }
@@ -79,6 +82,8 @@ func (q *Queries) ListDays(ctx context.Context, arg ListDaysParams) ([]ListDaysR
 			&i.NapCount,
 			&i.WorkoutCount,
 			&i.ActivitySessionCount,
+			&i.CaloriesTotal,
+			&i.AvgHr,
 			&i.SourceSessionID,
 			&i.UpdatedAt,
 		); err != nil {

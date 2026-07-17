@@ -65,3 +65,18 @@ func strOrDash(s *string) string {
 	}
 	return *s
 }
+
+// trendPoint is the shared response shape for single-value trend endpoints
+// (hrv, rhr, vo2max stub).
+type trendPoint struct {
+	SampledAt string  `json:"sampledAt"`
+	Value     float64 `json:"value"`
+}
+
+func toTrendPoints(samples []store.SampleValue) []trendPoint {
+	out := make([]trendPoint, 0, len(samples))
+	for _, s := range samples {
+		out = append(out, trendPoint{SampledAt: s.SampledAt.Format(time.RFC3339), Value: s.Value})
+	}
+	return out
+}

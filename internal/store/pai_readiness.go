@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"errors"
 
 	"github.com/jackc/pgx/v5"
 )
@@ -25,6 +26,21 @@ const upsertRawReadinessSQL = `
 		score = EXCLUDED.score,
 		source_session_id = EXCLUDED.source_session_id,
 		updated_at = NOW()`
+
+// GetPaiScoreForDay returns the stored PAI (strain) score for a single day,
+// or nil if the day has no rollup row yet.
+func (s *Store) GetPaiScoreForDay(ctx context.Context, day string) (*int, error) {
+	var score *int
+	err := s.pool.QueryRow(ctx,
+		`SELECT pai_score FROM daily_metrics WHERE day_key = $1::date`, day).Scan(&score)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return score, nil
+}
 
 func (s *Store) UpsertPaiScores(ctx context.Context, sid string, scores map[string]int) error {
 	if sid == "" {
