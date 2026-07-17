@@ -24,7 +24,6 @@ func NewMux(st *store.Store, cfg config.Config) http.Handler {
 	apiMux.HandleFunc("/api/v1/daily-metrics", mh.days)
 	apiMux.HandleFunc("/api/v1/sleep", mh.sleep)
 	apiMux.HandleFunc("/api/v1/metrics/temperature", mh.temperature)
-	apiMux.HandleFunc("/api/v1/metrics/series", mh.series)
 	apiMux.HandleFunc("/api/v1/metrics/hr", mh.hr)
 	apiMux.HandleFunc("/api/v1/metrics/workouts", mh.workouts)
 	apiMux.HandleFunc("/api/v1/metrics/activity-sessions", mh.activitySessions)
