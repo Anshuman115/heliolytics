@@ -46,6 +46,8 @@ CREATE TABLE daily_metrics (
   nap_count                INT NOT NULL DEFAULT 0,
   workout_count            INT NOT NULL DEFAULT 0,
   activity_session_count   INT NOT NULL DEFAULT 0,
+  calories_total           INT,
+  avg_hr                   INT,
   source_session_id        TEXT,
   updated_at               TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
@@ -105,6 +107,30 @@ CREATE TABLE activity_sessions (
 
 CREATE INDEX idx_activity_day ON activity_sessions (day_key, started_at DESC);
 
+CREATE TABLE profiles (
+  id          BIGSERIAL PRIMARY KEY,
+  name        TEXT,
+  age         INT,
+  height_cm   NUMERIC(5, 1),
+  weight_kg   NUMERIC(5, 1),
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE raw_pai_scores (
+  day_key           DATE PRIMARY KEY,
+  score             INT NOT NULL,
+  source_session_id TEXT NOT NULL,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE raw_readiness (
+  day_key           DATE PRIMARY KEY,
+  score             INT NOT NULL,
+  source_session_id TEXT NOT NULL,
+  updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
 -- Continuous HR (~1/sec) from BLE 0x46
 CREATE TABLE heart_rate_samples (
   sampled_at        TIMESTAMPTZ NOT NULL,
@@ -140,20 +166,57 @@ CREATE TABLE temperature_samples (
 
 CREATE INDEX idx_temp_day ON temperature_samples (day_key, sampled_at);
 
--- Lower-rate vitals (not HR)
-CREATE TABLE health_samples (
-  metric            TEXT NOT NULL,
+-- Lower-rate vitals (split into individual hypertables, one per metric)
+CREATE TABLE hrv_samples (
   sampled_at        TIMESTAMPTZ NOT NULL,
   day_key           DATE NOT NULL,
   value             NUMERIC(6, 2) NOT NULL,
   source_session_id TEXT NOT NULL,
-  PRIMARY KEY (metric, sampled_at)
+  PRIMARY KEY (sampled_at)
 );
+CREATE INDEX idx_hrv_day ON hrv_samples (day_key, sampled_at);
 
-CREATE INDEX idx_health_day_metric
-  ON health_samples (day_key, metric, sampled_at);
+CREATE TABLE spo2_samples (
+  sampled_at        TIMESTAMPTZ NOT NULL,
+  day_key           DATE NOT NULL,
+  value             NUMERIC(6, 2) NOT NULL,
+  source_session_id TEXT NOT NULL,
+  PRIMARY KEY (sampled_at)
+);
+CREATE INDEX idx_spo2_day ON spo2_samples (day_key, sampled_at);
+
+CREATE TABLE stress_samples (
+  sampled_at        TIMESTAMPTZ NOT NULL,
+  day_key           DATE NOT NULL,
+  value             NUMERIC(6, 2) NOT NULL,
+  source_session_id TEXT NOT NULL,
+  PRIMARY KEY (sampled_at)
+);
+CREATE INDEX idx_stress_day ON stress_samples (day_key, sampled_at);
+
+CREATE TABLE resp_samples (
+  sampled_at        TIMESTAMPTZ NOT NULL,
+  day_key           DATE NOT NULL,
+  value             NUMERIC(6, 2) NOT NULL,
+  source_session_id TEXT NOT NULL,
+  PRIMARY KEY (sampled_at)
+);
+CREATE INDEX idx_resp_day ON resp_samples (day_key, sampled_at);
+
+CREATE TABLE rhr_samples (
+  sampled_at        TIMESTAMPTZ NOT NULL,
+  day_key           DATE NOT NULL,
+  value             NUMERIC(6, 2) NOT NULL,
+  source_session_id TEXT NOT NULL,
+  PRIMARY KEY (sampled_at)
+);
+CREATE INDEX idx_rhr_day ON rhr_samples (day_key, sampled_at);
 
 SELECT create_hypertable('heart_rate_samples', 'sampled_at', if_not_exists => TRUE);
 SELECT create_hypertable('step_samples', 'sampled_at', if_not_exists => TRUE);
 SELECT create_hypertable('temperature_samples', 'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('health_samples', 'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('hrv_samples', 'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('spo2_samples', 'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('stress_samples', 'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('resp_samples', 'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('rhr_samples', 'sampled_at', if_not_exists => TRUE);

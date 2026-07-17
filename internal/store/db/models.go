@@ -42,16 +42,10 @@ type DailyMetric struct {
 	NapCount             int32              `json:"nap_count"`
 	WorkoutCount         int32              `json:"workout_count"`
 	ActivitySessionCount int32              `json:"activity_session_count"`
+	CaloriesTotal        pgtype.Int4        `json:"calories_total"`
+	AvgHr                pgtype.Int4        `json:"avg_hr"`
 	SourceSessionID      pgtype.Text        `json:"source_session_id"`
 	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
-}
-
-type HealthSample struct {
-	Metric          string             `json:"metric"`
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
 }
 
 type HeartRateSample struct {
@@ -61,11 +55,56 @@ type HeartRateSample struct {
 	SourceSessionID string             `json:"source_session_id"`
 }
 
+type HrvSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Value           pgtype.Numeric     `json:"value"`
+	SourceSessionID string             `json:"source_session_id"`
+}
+
+type Profile struct {
+	ID        int64              `json:"id"`
+	Name      pgtype.Text        `json:"name"`
+	Age       pgtype.Int4        `json:"age"`
+	HeightCm  pgtype.Numeric     `json:"height_cm"`
+	WeightKg  pgtype.Numeric     `json:"weight_kg"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RawPaiScore struct {
+	DayKey          pgtype.Date        `json:"day_key"`
+	Score           int32              `json:"score"`
+	SourceSessionID string             `json:"source_session_id"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
+type RawReadiness struct {
+	DayKey          pgtype.Date        `json:"day_key"`
+	Score           int32              `json:"score"`
+	SourceSessionID string             `json:"source_session_id"`
+	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+}
+
 type RawTypeBlob struct {
 	SessionID string `json:"session_id"`
 	TypeCode  string `json:"type_code"`
 	ByteLen   int32  `json:"byte_len"`
 	Payload   []byte `json:"payload"`
+}
+
+type RespSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Value           pgtype.Numeric     `json:"value"`
+	SourceSessionID string             `json:"source_session_id"`
+}
+
+type RhrSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Value           pgtype.Numeric     `json:"value"`
+	SourceSessionID string             `json:"source_session_id"`
 }
 
 type SleepSession struct {
@@ -84,10 +123,24 @@ type SleepSession struct {
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Spo2Sample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Value           pgtype.Numeric     `json:"value"`
+	SourceSessionID string             `json:"source_session_id"`
+}
+
 type StepSample struct {
 	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
 	DayKey          pgtype.Date        `json:"day_key"`
 	Steps           int16              `json:"steps"`
+	SourceSessionID string             `json:"source_session_id"`
+}
+
+type StressSample struct {
+	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	Value           pgtype.Numeric     `json:"value"`
 	SourceSessionID string             `json:"source_session_id"`
 }
 

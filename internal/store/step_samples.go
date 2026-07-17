@@ -33,21 +33,3 @@ func (s *Store) UpsertStepSamples(ctx context.Context, sid string, pts []StepSam
 	}
 	return s.execBatch(ctx, upsertStepSampleSQL, rows)
 }
-
-// RecomputeDailySteps sets daily_metrics.steps to SUM(step_samples.steps) for
-// each given IST day. Because step_samples are idempotent per minute, this is
-// immune to the 60-minute sync overlap that the additive upsert double-counts.
-const recomputeDailyStepsSQL = `
-	UPDATE daily_metrics
-	SET steps = COALESCE(
-		(SELECT SUM(steps) FROM step_samples WHERE day_key = $1::date), 0),
-	    updated_at = NOW()
-	WHERE day_key = $1::date`
-
-func (s *Store) RecomputeDailySteps(ctx context.Context, days []string) error {
-	rows := make([]queuedRow, 0, len(days))
-	for _, day := range days {
-		rows = append(rows, queuedRow{day})
-	}
-	return s.execBatch(ctx, recomputeDailyStepsSQL, rows)
-}

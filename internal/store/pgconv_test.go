@@ -64,17 +64,6 @@ func TestValidateTempPoint(t *testing.T) {
 	}
 }
 
-func TestValidateHealthSample(t *testing.T) {
-	ok := HealthSample{Metric: "hrv", DayKey: "2026-06-10", SampledAt: time.Unix(1, 0).UTC(), Value: 42.5}
-	if err := validateHealthSample(ok); err != nil {
-		t.Fatal(err)
-	}
-	bad := HealthSample{Metric: "", DayKey: "2026-06-10", SampledAt: time.Unix(1, 0).UTC(), Value: 42.5}
-	if err := validateHealthSample(bad); err == nil {
-		t.Fatal("expected metric error")
-	}
-}
-
 func TestValidateSessionMeta(t *testing.T) {
 	if err := validateSessionMeta(SessionMeta{}); err == nil {
 		t.Fatal("expected error")

@@ -41,22 +41,6 @@ func validateTempPoint(p TempPoint) error {
 	return nil
 }
 
-func validateHealthSample(p HealthSample) error {
-	if err := textRequired(p.Metric, "health_samples.metric"); err != nil {
-		return err
-	}
-	if err := dayKeyRequired(p.DayKey, "health_samples"); err != nil {
-		return err
-	}
-	if p.SampledAt.IsZero() {
-		return fmt.Errorf("health_samples.sampled_at required")
-	}
-	if _, err := numericFromFloat(p.Value); err != nil {
-		return fmt.Errorf("health_samples.value: %w", err)
-	}
-	return nil
-}
-
 func validateHeartRateSample(p HeartRateSample) error {
 	if err := dayKeyRequired(p.DayKey, "heart_rate_samples"); err != nil {
 		return err
