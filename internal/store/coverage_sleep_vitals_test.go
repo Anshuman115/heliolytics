@@ -8,7 +8,7 @@ import (
 
 func TestGetCoverageSleepTypesNonNullWhenParsedSleepExists(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx := context.Background()
 	cleanupCoverageFixture(ctx, st)
@@ -60,7 +60,7 @@ func TestGetCoverageSleepTypesNonNullWhenParsedSleepExists(t *testing.T) {
 
 func TestGetCoverageVitalsAndDailyNonNullWhenSeeded(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx := context.Background()
 	cleanupCoverageFixture(ctx, st)

@@ -7,7 +7,7 @@ import (
 
 func TestUpsertProfileThenGet(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 	ctx := context.Background()
 
 	name := "Test User"

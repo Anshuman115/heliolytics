@@ -41,7 +41,7 @@ func cleanupCoverageFixture(ctx context.Context, st *Store) {
 
 func TestGetCoverageIncludesWorkoutTypeKeys(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	cov, err := st.GetCoverage(context.Background())
 	if err != nil {
@@ -56,7 +56,7 @@ func TestGetCoverageIncludesWorkoutTypeKeys(t *testing.T) {
 
 func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx := context.Background()
 	cleanupCoverageFixture(ctx, st)
@@ -98,7 +98,7 @@ func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
 
 func TestGetCoverageActivityTypeNonNullWhenParsedSessionExists(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 
 	ctx := context.Background()
 	cleanupCoverageFixture(ctx, st)

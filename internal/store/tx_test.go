@@ -10,7 +10,7 @@ import (
 
 func TestWithTxRollsBackOnError(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 	ctx := context.Background()
 	const sid = "tx-rollback-test-session"
 
@@ -42,7 +42,7 @@ func TestWithTxRollsBackOnError(t *testing.T) {
 
 func TestWithTxCommitsOnSuccess(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 	ctx := context.Background()
 	const sid = "tx-commit-test-session"
 

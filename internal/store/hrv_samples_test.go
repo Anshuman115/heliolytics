@@ -34,7 +34,7 @@ func TestUpsertHrvSamplesThenReadBack(t *testing.T) {
 
 func TestListHrvSamplesRange(t *testing.T) {
 	st, cleanup := testStore(t)
-	defer cleanup()
+	t.Cleanup(cleanup)
 	ctx := context.Background()
 	const dayIn = "2026-07-23"
 	const dayOut = "2026-05-01"
