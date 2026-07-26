@@ -14,16 +14,16 @@ type SleepStage struct {
 }
 
 type SleepRecord struct {
-	DayKey     string
-	StartedAt  time.Time
-	Score      int
-	TotalMin   int
-	DeepMin    int
-	RemMin     int
-	LightMin   int
-	WakeMin    int
-	IsNap      bool
-	Stages     []SleepStage
+	DayKey      string
+	StartedAt   time.Time
+	Score       int
+	TotalMin    int
+	DeepMin     int
+	RemMin      int
+	LightMin    int
+	WakeMin     int
+	IsNap       bool
+	Stages      []SleepStage
 	WindowStart time.Time
 	WindowEnd   time.Time
 }
@@ -68,6 +68,7 @@ func ParseSleep(raw []byte) []SleepRecord {
 		if len(night) > 0 {
 			main.WindowStart = night[0].Start
 			main.WindowEnd = night[len(night)-1].End
+			main.StartedAt = main.WindowStart
 		}
 		out = append(out, main)
 		out = append(out, parseNaps(rec, base)...)

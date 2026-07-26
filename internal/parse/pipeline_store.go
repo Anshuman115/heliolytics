@@ -46,6 +46,21 @@ func toSampleValues(hs []HealthSample) []store.SampleValue {
 	return out
 }
 
+func toSpo2Values(hs []HealthSample) []store.SampleValue {
+	out := make([]store.SampleValue, 0, len(hs))
+	for _, h := range hs {
+		sourceType := "0x26"
+		if h.Metric == "spo2" {
+			sourceType = "0x25"
+		}
+		out = append(out, store.SampleValue{
+			DayKey: h.DayKey, SampledAt: h.SampledAt,
+			Value: h.Value, SourceType: sourceType,
+		})
+	}
+	return out
+}
+
 func toHrRows(pts []HrSamplePoint) []store.HeartRateSample {
 	out := make([]store.HeartRateSample, len(pts))
 	for i, p := range pts {
@@ -72,6 +87,7 @@ func toWorkoutRows(recs []WorkoutRecord) []store.WorkoutRow {
 			SportType: w.SportType, SportName: w.SportName,
 			DurationSec: w.DurationSec, Calories: w.Calories,
 			AvgHr: w.AvgHr, MaxHr: w.MaxHr,
+			HasSummary: w.HasSummary, HasDetail: w.HasDetail,
 		}
 	}
 	return out

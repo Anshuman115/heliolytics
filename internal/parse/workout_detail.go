@@ -77,6 +77,8 @@ func MergeWorkouts(parts ...[]WorkoutRecord) []WorkoutRecord {
 }
 
 func mergeWorkout(a, b WorkoutRecord) WorkoutRecord {
+	hasSummary := a.HasSummary || b.HasSummary
+	hasDetail := a.HasDetail || b.HasDetail
 	if workoutRichness(b) > workoutRichness(a) {
 		a, b = b, a
 	}
@@ -99,6 +101,8 @@ func mergeWorkout(a, b WorkoutRecord) WorkoutRecord {
 	if a.SportName == "" {
 		a.SportName = SportName(a.SportType)
 	}
+	a.HasSummary = hasSummary
+	a.HasDetail = hasDetail
 	return a
 }
 

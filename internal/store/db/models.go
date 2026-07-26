@@ -129,6 +129,7 @@ type Spo2Sample struct {
 	DayKey          pgtype.Date        `json:"day_key"`
 	Value           pgtype.Numeric     `json:"value"`
 	SourceSessionID string             `json:"source_session_id"`
+	SourceType      string             `json:"source_type"`
 }
 
 type StepSample struct {
@@ -172,6 +173,8 @@ type Workout struct {
 	Calories        pgtype.Int4        `json:"calories"`
 	AvgHr           pgtype.Int4        `json:"avg_hr"`
 	MaxHr           pgtype.Int4        `json:"max_hr"`
+	HasSummary      bool               `json:"has_summary"`
+	HasDetail       bool               `json:"has_detail"`
 	SourceSessionID string             `json:"source_session_id"`
 	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
 }

@@ -61,6 +61,8 @@ type WorkoutRow struct {
 	Calories    *int
 	AvgHr       *int
 	MaxHr       *int
+	HasSummary  bool
+	HasDetail   bool
 }
 
 type ActivitySessionRow struct {

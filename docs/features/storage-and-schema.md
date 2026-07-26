@@ -17,7 +17,11 @@ PostgreSQL + TimescaleDB. Schema in `schema.sql`, incremental changes in
 | `heart_rate_samples` | Continuous HR — **hypertable** |
 | `step_samples` | Per-minute steps — **hypertable** |
 | `temperature_samples` | Skin temperature — **hypertable** |
-| `health_samples` | Per-minute vitals series — **hypertable** |
+| `hrv_samples` | HRV samples |
+| `spo2_samples` | Spot and sleep SpO2 samples, identified by source type |
+| `stress_samples` | Stress samples |
+| `resp_samples` | Respiratory-rate samples |
+| `rhr_samples` | Resting-heart-rate samples |
 
 ## Why `raw_type_blobs` exists
 
@@ -32,13 +36,17 @@ data at all.
 
 ## Hypertables
 
-Four sample tables are Timescale hypertables partitioned on `sampled_at`:
+Eight sample tables are Timescale hypertables partitioned on `sampled_at`:
 
 ```sql
 SELECT create_hypertable('heart_rate_samples', 'sampled_at', if_not_exists => TRUE);
 SELECT create_hypertable('step_samples',       'sampled_at', if_not_exists => TRUE);
 SELECT create_hypertable('temperature_samples','sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('health_samples',     'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('hrv_samples',        'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('spo2_samples',       'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('stress_samples',     'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('resp_samples',       'sampled_at', if_not_exists => TRUE);
+SELECT create_hypertable('rhr_samples',        'sampled_at', if_not_exists => TRUE);
 ```
 
 These are the per-minute/per-second tables — they grow without bound while the
@@ -80,6 +88,11 @@ where the query is dynamic or the shape doesn't suit codegen.
 | `007_sleep_stages.sql` | Per-stage spans |
 | `008_step_samples.sql` | Step sample hypertable |
 | `009_computed_readiness.sql` | Server-computed readiness column |
+| `010_split_health_samples_and_profiles.sql` | Dedicated vital tables and profile fields |
+| `011_heart_rate_source_type.sql` | Continuous/manual heart-rate source identity |
+| `012_spo2_source_type.sql` | Spot/sleep SpO2 source identity |
+| `013_repair_sleep_stage_times.sql` | Existing sleep start and nap-duration repair |
+| `014_workout_source_coverage.sql` | Separate summary/detail workout coverage |
 
 `schema.sql` is the from-scratch definition; migrations carry an existing DB
 forward. Both must end at the same shape.

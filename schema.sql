@@ -83,6 +83,8 @@ CREATE TABLE workouts (
   calories            INT,
   avg_hr              INT,
   max_hr              INT,
+  has_summary         BOOLEAN NOT NULL DEFAULT false,
+  has_detail          BOOLEAN NOT NULL DEFAULT false,
   source_session_id   TEXT NOT NULL,
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE (day_key, started_at)
@@ -182,9 +184,11 @@ CREATE TABLE spo2_samples (
   day_key           DATE NOT NULL,
   value             NUMERIC(6, 2) NOT NULL,
   source_session_id TEXT NOT NULL,
+  source_type       TEXT NOT NULL DEFAULT '0x26' CHECK (source_type IN ('0x25', '0x26')),
   PRIMARY KEY (sampled_at)
 );
 CREATE INDEX idx_spo2_day ON spo2_samples (day_key, sampled_at);
+CREATE INDEX idx_spo2_source_time ON spo2_samples (source_type, sampled_at DESC);
 
 CREATE TABLE stress_samples (
   sampled_at        TIMESTAMPTZ NOT NULL,

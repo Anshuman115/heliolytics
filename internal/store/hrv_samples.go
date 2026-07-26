@@ -12,9 +12,10 @@ import (
 // tables (hrv, spo2, stress, resp, rhr) — shared shape, each table gets its
 // own upsert function because each writes to a different table name.
 type SampleValue struct {
-	DayKey    string
-	SampledAt time.Time
-	Value     float64
+	DayKey     string
+	SampledAt  time.Time
+	Value      float64
+	SourceType string
 }
 
 const upsertHrvSampleSQL = `

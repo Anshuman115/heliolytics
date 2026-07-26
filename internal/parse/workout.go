@@ -14,6 +14,8 @@ type WorkoutRecord struct {
 	AvgHr       *int
 	MaxHr       *int
 	MinHr       *int
+	HasSummary  bool
+	HasDetail   bool
 }
 
 // ParseWorkouts splits on protobuf version marker 0a 03 32 2e ("2.").

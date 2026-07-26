@@ -30,8 +30,8 @@ ON CONFLICT (started_at, day_key) DO UPDATE SET
 
 const upsertWorkoutSQL = `
 INSERT INTO workouts (source_session_id, day_key, started_at, sport_type,
-  sport_name, duration_sec, calories, avg_hr, max_hr)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  sport_name, duration_sec, calories, avg_hr, max_hr, has_summary, has_detail)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (day_key, started_at) DO UPDATE SET
   source_session_id = EXCLUDED.source_session_id,
   sport_name = EXCLUDED.sport_name,
@@ -39,6 +39,8 @@ ON CONFLICT (day_key, started_at) DO UPDATE SET
   calories = EXCLUDED.calories,
   avg_hr = EXCLUDED.avg_hr,
   max_hr = EXCLUDED.max_hr,
+  has_summary = workouts.has_summary OR EXCLUDED.has_summary,
+  has_detail = workouts.has_detail OR EXCLUDED.has_detail,
   updated_at = NOW()`
 
 const upsertActivitySessionSQL = `
@@ -108,6 +110,7 @@ func (s *Store) UpsertWorkouts(ctx context.Context, sid string, rows []WorkoutRo
 			SportType: int32(r.SportType), SportName: textPtr(r.SportName),
 			DurationSec: int32(r.DurationSec), Calories: int4Ptr(r.Calories),
 			AvgHr: int4Ptr(r.AvgHr), MaxHr: int4Ptr(r.MaxHr),
+			HasSummary: r.HasSummary, HasDetail: r.HasDetail,
 		}); err != nil {
 			return err
 		}
@@ -201,6 +204,7 @@ func (s *Store) UpsertWorkoutsTx(ctx context.Context, tx pgx.Tx, sid string, row
 		qrows = append(qrows, queuedRow{
 			sid, day, ts, int32(r.SportType), textPtr(r.SportName),
 			int32(r.DurationSec), int4Ptr(r.Calories), int4Ptr(r.AvgHr), int4Ptr(r.MaxHr),
+			r.HasSummary, r.HasDetail,
 		})
 	}
 	return execBatchTx(ctx, tx, upsertWorkoutSQL, qrows)

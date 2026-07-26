@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParseWorkoutsProtobuf(t *testing.T) {
@@ -28,5 +29,22 @@ func TestParseWorkoutsProtobuf(t *testing.T) {
 	}
 	if w.DurationSec < 180 {
 		t.Fatalf("duration %d", w.DurationSec)
+	}
+}
+
+func TestMergeWorkoutsPreservesSourceProvenance(t *testing.T) {
+	started := time.Date(2026, 7, 25, 8, 30, 0, 0, time.UTC)
+	merged := MergeWorkouts(
+		[]WorkoutRecord{{StartedAt: started, DurationSec: 300, HasSummary: true}},
+		[]WorkoutRecord{{StartedAt: started, DurationSec: 600, HasDetail: true}},
+	)
+	if len(merged) != 1 {
+		t.Fatalf("len=%d want 1", len(merged))
+	}
+	if !merged[0].HasSummary || !merged[0].HasDetail {
+		t.Fatalf("provenance summary=%t detail=%t", merged[0].HasSummary, merged[0].HasDetail)
+	}
+	if merged[0].DurationSec != 600 {
+		t.Fatalf("duration=%d want richer detail duration", merged[0].DurationSec)
 	}
 }

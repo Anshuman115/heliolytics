@@ -17,17 +17,22 @@ func TestUpsertSpo2SamplesThenReadBack(t *testing.T) {
 	t.Cleanup(clean)
 
 	ts := time.Date(2026, 6, 22, 2, 0, 0, 0, time.UTC)
-	pts := []SampleValue{{DayKey: day, SampledAt: ts, Value: 45}}
+	pts := []SampleValue{{DayKey: day, SampledAt: ts, Value: 45, SourceType: "0x25"}}
 	if err := st.UpsertSpo2Samples(ctx, "sess-spo2-1", pts); err != nil {
 		t.Fatalf("upsert: %v", err)
 	}
 
 	var value float64
+	var sourceType string
 	if err := st.pool.QueryRow(ctx,
-		`SELECT value FROM spo2_samples WHERE day_key=$1::date`, day).Scan(&value); err != nil {
+		`SELECT value, source_type FROM spo2_samples WHERE day_key=$1::date`, day).
+		Scan(&value, &sourceType); err != nil {
 		t.Fatalf("read back: %v", err)
 	}
 	if value != 45 {
 		t.Fatalf("value=%v, want 45", value)
+	}
+	if sourceType != "0x25" {
+		t.Fatalf("source_type=%q, want 0x25", sourceType)
 	}
 }

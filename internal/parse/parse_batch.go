@@ -42,10 +42,15 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 	out.Spo2Sleep = ParseSpo2SleepSeries(blobs["0x26"])
 	out.RhrSeries = ParseRhrSeries(blobs["0x3A"])
 	out.RespRateSeries = ParseRespRateSeries(blobs["0x38"])
-	out.Workouts = MergeWorkouts(
-		ParseWorkouts(blobs["0x05"]),
-		ParseWorkoutDetails(blobs["0x06"]),
-	)
+	summaries := ParseWorkouts(blobs["0x05"])
+	for i := range summaries {
+		summaries[i].HasSummary = true
+	}
+	details := ParseWorkoutDetails(blobs["0x06"])
+	for i := range details {
+		details[i].HasDetail = true
+	}
+	out.Workouts = MergeWorkouts(summaries, details)
 	out.ActivitySessions = DetectActivitySessions(blobs["0x01"], catalogJSON, fetchEnd)
 	out.TempSeries = ParseTempSeries(blobs["0x2E"], FindEntry(cat, "0x2E"))
 	out.HrSeries = MergeHeartRateSeries(

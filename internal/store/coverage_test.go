@@ -38,6 +38,7 @@ func cleanupCoverageFixture(ctx context.Context, st *Store) {
 	_, _ = st.pool.Exec(ctx, `DELETE FROM raw_pai_scores WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM daily_metrics WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM stress_samples WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM spo2_samples WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM sync_sessions WHERE session_id = $1`, coverageTestSessionID)
 }
 
@@ -56,7 +57,7 @@ func TestGetCoverageIncludesWorkoutTypeKeys(t *testing.T) {
 	}
 }
 
-func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
+func TestGetCoverageKeepsWorkoutTypeWatermarksSeparate(t *testing.T) {
 	st, cleanup := testStore(t)
 	t.Cleanup(cleanup)
 
@@ -76,8 +77,8 @@ func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
 		t.Fatalf("insert sync_session: %v", err)
 	}
 	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO workouts (source_session_id, day_key, started_at, duration_sec, sport_type, sport_name)
-		VALUES ($1, '2026-06-06', $2, $3, 92, 'Badminton')`,
+		INSERT INTO workouts (source_session_id, day_key, started_at, duration_sec, sport_type, sport_name, has_summary)
+		VALUES ($1, '2026-06-06', $2, $3, 92, 'Badminton', true)`,
 		coverageTestSessionID, started, durationSec,
 	); err != nil {
 		t.Fatalf("insert workout: %v", err)
@@ -87,14 +88,11 @@ func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCoverage: %v", err)
 	}
-	for _, key := range []string{"0x05", "0x06"} {
-		ts := cov.Types[key]
-		if ts == nil {
-			t.Fatalf("Types[%s] want non-null", key)
-		}
-		if !ts.UTC().Equal(wantEnd) {
-			t.Fatalf("Types[%s] = %v want %v", key, ts.UTC(), wantEnd)
-		}
+	if ts := cov.Types["0x05"]; ts == nil || !ts.UTC().Equal(wantEnd) {
+		t.Fatalf("Types[0x05] = %v want %v", ts, wantEnd)
+	}
+	if ts := cov.Types["0x06"]; ts != nil {
+		t.Fatalf("Types[0x06] = %v want nil without detail provenance", ts)
 	}
 }
 

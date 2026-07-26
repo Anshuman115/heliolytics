@@ -35,7 +35,7 @@ func sumStageMins(st []SleepStage, ty int) int {
 	total := 0
 	for _, g := range st {
 		if g.Type == ty {
-			total += int(g.End.Sub(g.Start).Minutes())
+			total += int(g.End.Sub(g.Start).Minutes()) + 1
 		}
 	}
 	return total
@@ -88,12 +88,14 @@ func parseNaps(raw []byte, base int64) []SleepRecord {
 			continue
 		}
 		sec := base + int64(w.start*60)
+		rem := sumStageMins(st, 8)
+		light := sumStageMins(st, 4)
+		deep := sumStageMins(st, 5)
+		wake := sumStageMins(st, 7)
 		out = append(out, SleepRecord{
 			DayKey: IstDayKey(sec), StartedAt: EpochUTC(sec), IsNap: true,
-			Stages: st, RemMin: sumStageMins(st, 8), LightMin: sumStageMins(st, 4),
-			DeepMin: sumStageMins(st, 5), WakeMin: sumStageMins(st, 7),
-			TotalMin: sumStageMins(st, 8) + sumStageMins(st, 4) +
-				sumStageMins(st, 5) + sumStageMins(st, 7),
+			Stages: st, RemMin: rem, LightMin: light,
+			DeepMin: deep, WakeMin: wake, TotalMin: rem + light + deep,
 		})
 	}
 	return out

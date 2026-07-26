@@ -45,7 +45,7 @@ func WriteBatch(ctx context.Context, st *store.Store, sid string, meta store.Ses
 		if err := st.UpsertHrvSamplesTx(ctx, tx, sid, toSampleValues(batch.HrvSeries)); err != nil {
 			return err
 		}
-		if err := st.UpsertSpo2SamplesTx(ctx, tx, sid, toSampleValues(batch.Spo2Series)); err != nil {
+		if err := st.UpsertSpo2SamplesTx(ctx, tx, sid, toSpo2Values(batch.Spo2Series)); err != nil {
 			return err
 		}
 		if err := st.UpsertStressSamplesTx(ctx, tx, sid, toSampleValues(batch.StressSeries)); err != nil {

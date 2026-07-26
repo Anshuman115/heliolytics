@@ -66,8 +66,8 @@ func (q *Queries) ListWorkouts(ctx context.Context, arg ListWorkoutsParams) ([]L
 
 const upsertWorkout = `-- name: UpsertWorkout :exec
 INSERT INTO workouts (source_session_id, day_key, started_at, sport_type,
-  sport_name, duration_sec, calories, avg_hr, max_hr)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+  sport_name, duration_sec, calories, avg_hr, max_hr, has_summary, has_detail)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (day_key, started_at) DO UPDATE SET
   source_session_id = EXCLUDED.source_session_id,
   sport_name = EXCLUDED.sport_name,
@@ -75,6 +75,8 @@ ON CONFLICT (day_key, started_at) DO UPDATE SET
   calories = EXCLUDED.calories,
   avg_hr = EXCLUDED.avg_hr,
   max_hr = EXCLUDED.max_hr,
+  has_summary = workouts.has_summary OR EXCLUDED.has_summary,
+  has_detail = workouts.has_detail OR EXCLUDED.has_detail,
   updated_at = NOW()
 `
 
@@ -88,6 +90,8 @@ type UpsertWorkoutParams struct {
 	Calories        pgtype.Int4        `json:"calories"`
 	AvgHr           pgtype.Int4        `json:"avg_hr"`
 	MaxHr           pgtype.Int4        `json:"max_hr"`
+	HasSummary      bool               `json:"has_summary"`
+	HasDetail       bool               `json:"has_detail"`
 }
 
 func (q *Queries) UpsertWorkout(ctx context.Context, arg UpsertWorkoutParams) error {
@@ -101,6 +105,8 @@ func (q *Queries) UpsertWorkout(ctx context.Context, arg UpsertWorkoutParams) er
 		arg.Calories,
 		arg.AvgHr,
 		arg.MaxHr,
+		arg.HasSummary,
+		arg.HasDetail,
 	)
 	return err
 }
