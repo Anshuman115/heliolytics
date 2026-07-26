@@ -13,6 +13,9 @@ func ParseWorkoutsFromDetailBlob(raw []byte) []WorkoutRecord {
 	if len(raw) < len(psmHeader) {
 		return nil
 	}
+	if timestamped := parseTimestampedDetailSessions(raw); len(timestamped) > 0 {
+		return timestamped
+	}
 	var out []WorkoutRecord
 	seen := map[int64]bool{}
 	for i := 0; i+len(psmHeader) <= len(raw); i++ {

@@ -48,3 +48,37 @@ func TestMergeWorkoutsPreservesSourceProvenance(t *testing.T) {
 		t.Fatalf("duration=%d want richer detail duration", merged[0].DurationSec)
 	}
 }
+
+func TestParseWorkoutDetailsUsesTimestampedSessionEnvelopes(t *testing.T) {
+	first := time.Date(2026, 7, 26, 9, 14, 18, 0, time.UTC)
+	second := first.Add(10 * time.Minute)
+	raw := appendDetailBlock(nil, first.UnixMilli(), detailSessionStartMarker)
+	raw = appendDetailBlock(raw, first.Add(33*time.Second).UnixMilli(), []byte{0x00, 0x00, 0x08, 0x03})
+	raw = appendDetailBlock(raw, second.UnixMilli(), detailSessionStartMarker)
+
+	details := ParseWorkoutDetails(raw)
+	if len(details) != 2 {
+		t.Fatalf("len=%d want 2", len(details))
+	}
+	if !details[0].StartedAt.Equal(first) || details[0].DurationSec != 33 {
+		t.Fatalf("first=%+v", details[0])
+	}
+	if !details[1].StartedAt.Equal(second) || details[1].DurationSec != 1 {
+		t.Fatalf("second=%+v", details[1])
+	}
+
+	summary := WorkoutRecord{StartedAt: first, DurationSec: 252, HasSummary: true}
+	details[0].HasDetail = true
+	merged := MergeWorkouts([]WorkoutRecord{summary}, details[:1])
+	if len(merged) != 1 || !merged[0].HasDetail || merged[0].DurationSec != 252 {
+		t.Fatalf("merged=%+v", merged)
+	}
+}
+
+func appendDetailBlock(raw []byte, millis int64, marker []byte) []byte {
+	raw = append(raw, psmHeader...)
+	for index := 0; index < detailTimestampBytes; index++ {
+		raw = append(raw, byte(millis>>(8*index)))
+	}
+	return append(raw, marker...)
+}
