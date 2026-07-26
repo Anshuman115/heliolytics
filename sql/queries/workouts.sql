@@ -4,11 +4,12 @@ INSERT INTO workouts (source_session_id, day_key, started_at, sport_type,
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 ON CONFLICT (day_key, started_at) DO UPDATE SET
   source_session_id = EXCLUDED.source_session_id,
-  sport_name = EXCLUDED.sport_name,
-  duration_sec = EXCLUDED.duration_sec,
-  calories = EXCLUDED.calories,
-  avg_hr = EXCLUDED.avg_hr,
-  max_hr = EXCLUDED.max_hr,
+  sport_type = CASE WHEN EXCLUDED.has_summary THEN EXCLUDED.sport_type ELSE workouts.sport_type END,
+  sport_name = CASE WHEN EXCLUDED.has_summary THEN EXCLUDED.sport_name ELSE workouts.sport_name END,
+  duration_sec = CASE WHEN EXCLUDED.has_summary OR NOT workouts.has_summary THEN EXCLUDED.duration_sec ELSE workouts.duration_sec END,
+  calories = COALESCE(EXCLUDED.calories, workouts.calories),
+  avg_hr = COALESCE(EXCLUDED.avg_hr, workouts.avg_hr),
+  max_hr = COALESCE(EXCLUDED.max_hr, workouts.max_hr),
   has_summary = workouts.has_summary OR EXCLUDED.has_summary,
   has_detail = workouts.has_detail OR EXCLUDED.has_detail,
   updated_at = NOW();

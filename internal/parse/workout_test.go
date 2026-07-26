@@ -75,6 +75,28 @@ func TestParseWorkoutDetailsUsesTimestampedSessionEnvelopes(t *testing.T) {
 	}
 }
 
+func TestParseWorkoutDetailsBySegmentsIgnoresTrailerStreams(t *testing.T) {
+	first := time.Date(2026, 7, 7, 2, 21, 41, 0, time.UTC)
+	trailer := first.Add(73*time.Minute + 12*time.Second)
+	second := time.Date(2026, 7, 8, 2, 32, 3, 0, time.UTC)
+	raw := appendDetailBlock(nil, first.UnixMilli(), detailSessionStartMarker)
+	raw = appendDetailBlock(raw, trailer.UnixMilli(), detailSessionStartMarker)
+	secondOffset := len(raw)
+	raw = appendDetailBlock(raw, second.UnixMilli(), detailSessionStartMarker)
+	entry := &CatalogEntry{RoundSegments: []RoundSegment{
+		{ByteOffset: 0},
+		{ByteOffset: secondOffset},
+	}}
+
+	details := ParseWorkoutDetailsBySegments(raw, entry)
+	if len(details) != 2 {
+		t.Fatalf("len=%d want 2", len(details))
+	}
+	if !details[0].StartedAt.Equal(first) || !details[1].StartedAt.Equal(second) {
+		t.Fatalf("details=%+v", details)
+	}
+}
+
 func appendDetailBlock(raw []byte, millis int64, marker []byte) []byte {
 	raw = append(raw, psmHeader...)
 	for index := 0; index < detailTimestampBytes; index++ {

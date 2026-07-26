@@ -46,7 +46,7 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 	for i := range summaries {
 		summaries[i].HasSummary = true
 	}
-	details := ParseWorkoutDetails(blobs["0x06"])
+	details := ParseWorkoutDetailsBySegments(blobs["0x06"], FindEntry(cat, "0x06"))
 	for i := range details {
 		details[i].HasDetail = true
 	}

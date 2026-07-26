@@ -8,6 +8,29 @@ func ParseWorkoutDetails(raw []byte) []WorkoutRecord {
 	return ParseWorkoutsFromDetailBlob(raw)
 }
 
+// ParseWorkoutDetailsBySegments treats each device fetch round as one workout.
+// A round can contain multiple sensor streams with their own psmh start marker.
+func ParseWorkoutDetailsBySegments(raw []byte, entry *CatalogEntry) []WorkoutRecord {
+	if entry == nil || len(entry.RoundSegments) == 0 {
+		return ParseWorkoutDetails(raw)
+	}
+	out := make([]WorkoutRecord, 0, len(entry.RoundSegments))
+	for index, segment := range entry.RoundSegments {
+		end := len(raw)
+		if index+1 < len(entry.RoundSegments) {
+			end = entry.RoundSegments[index+1].ByteOffset
+		}
+		if segment.ByteOffset < 0 || segment.ByteOffset >= end || end > len(raw) {
+			continue
+		}
+		workouts := ParseWorkoutDetails(raw[segment.ByteOffset:end])
+		if len(workouts) > 0 {
+			out = append(out, workouts[0])
+		}
+	}
+	return out
+}
+
 // ParseWorkoutsFromDetailBlob splits on psmh headers and parses protobuf summaries.
 func ParseWorkoutsFromDetailBlob(raw []byte) []WorkoutRecord {
 	if len(raw) < len(psmHeader) {
