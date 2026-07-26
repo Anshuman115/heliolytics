@@ -34,6 +34,8 @@ func cleanupCoverageFixture(ctx context.Context, st *Store) {
 	_, _ = st.pool.Exec(ctx, `DELETE FROM sleep_sessions WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM workouts WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM activity_sessions WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM step_samples WHERE source_session_id = $1`, coverageTestSessionID)
+	_, _ = st.pool.Exec(ctx, `DELETE FROM raw_pai_scores WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM daily_metrics WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM stress_samples WHERE source_session_id = $1`, coverageTestSessionID)
 	_, _ = st.pool.Exec(ctx, `DELETE FROM sync_sessions WHERE session_id = $1`, coverageTestSessionID)
@@ -96,7 +98,7 @@ func TestGetCoverageWorkoutTypesNonNullWhenParsedWorkoutExists(t *testing.T) {
 	}
 }
 
-func TestGetCoverageActivityTypeNonNullWhenParsedSessionExists(t *testing.T) {
+func TestGetCoverageIncludesDerivedActivityInDataThrough(t *testing.T) {
 	st, cleanup := testStore(t)
 	t.Cleanup(cleanup)
 
@@ -127,11 +129,10 @@ func TestGetCoverageActivityTypeNonNullWhenParsedSessionExists(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetCoverage: %v", err)
 	}
-	ts := cov.Types["0x3B"]
-	if ts == nil {
-		t.Fatal("Types[0x3B] want non-null")
+	if cov.DataThrough == nil || !cov.DataThrough.UTC().Equal(wantEnd) {
+		t.Fatalf("DataThrough = %v want derived activity end %v", cov.DataThrough, wantEnd)
 	}
-	if !ts.UTC().Equal(wantEnd) {
-		t.Fatalf("Types[0x3B] = %v want %v", ts.UTC(), wantEnd)
+	if _, exists := cov.Types["0x3B"]; exists {
+		t.Fatal("unparsed 0x3B must not be advertised as synced coverage")
 	}
 }

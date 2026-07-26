@@ -137,6 +137,7 @@ CREATE TABLE heart_rate_samples (
   day_key           DATE NOT NULL,
   bpm               SMALLINT NOT NULL CHECK (bpm BETWEEN 30 AND 220),
   source_session_id TEXT NOT NULL,
+  source_type       TEXT NOT NULL DEFAULT '0x46' CHECK (source_type IN ('0x01', '0x46')),
   PRIMARY KEY (sampled_at)
 );
 

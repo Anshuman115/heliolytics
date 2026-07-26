@@ -107,12 +107,13 @@ func (q *Queries) ListHeartRateSamplesCompact(ctx context.Context, arg ListHeart
 }
 
 const upsertHeartRateSample = `-- name: UpsertHeartRateSample :exec
-INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id)
-VALUES ($1, $2, $3, $4)
+INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id, source_type)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (sampled_at) DO UPDATE SET
   bpm = EXCLUDED.bpm,
   day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id
+  source_session_id = EXCLUDED.source_session_id,
+  source_type = EXCLUDED.source_type
 `
 
 type UpsertHeartRateSampleParams struct {
@@ -120,6 +121,7 @@ type UpsertHeartRateSampleParams struct {
 	DayKey          pgtype.Date        `json:"day_key"`
 	Bpm             int16              `json:"bpm"`
 	SourceSessionID string             `json:"source_session_id"`
+	SourceType      string             `json:"source_type"`
 }
 
 func (q *Queries) UpsertHeartRateSample(ctx context.Context, arg UpsertHeartRateSampleParams) error {
@@ -128,6 +130,7 @@ func (q *Queries) UpsertHeartRateSample(ctx context.Context, arg UpsertHeartRate
 		arg.DayKey,
 		arg.Bpm,
 		arg.SourceSessionID,
+		arg.SourceType,
 	)
 	return err
 }

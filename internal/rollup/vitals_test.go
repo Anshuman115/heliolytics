@@ -57,3 +57,47 @@ func TestRecomputeDailyVitalsUsesSleepWindow(t *testing.T) {
 		t.Fatalf("hrv_rmssd=%v, want 50 (daytime sample must be excluded)", hrv)
 	}
 }
+
+func TestRecomputeDailyVitalsUsesStageTimeline(t *testing.T) {
+	st := testStore(t)
+	ctx := context.Background()
+	const day = "2026-06-28"
+
+	clean := func() {
+		st.Pool().Exec(ctx, `DELETE FROM hrv_samples WHERE day_key=$1::date`, day)
+		st.Pool().Exec(ctx, `DELETE FROM sleep_sessions WHERE day_key=$1::date`, day)
+		st.Pool().Exec(ctx, `DELETE FROM daily_metrics WHERE day_key=$1::date`, day)
+	}
+	clean()
+	t.Cleanup(clean)
+	st.Pool().Exec(ctx, `INSERT INTO daily_metrics (day_key) VALUES ($1::date)`, day)
+
+	stageStart := time.Date(2026, 6, 27, 20, 30, 0, 0, time.UTC)
+	stageEnd := stageStart.Add(8 * time.Hour)
+	err := st.UpsertSleepSessions(ctx, "sess-stage-window", []store.SleepRow{{
+		DayKey: day, StartedAt: stageEnd.Add(30 * time.Minute), Score: 80,
+		TotalMins: 450, Stages: []store.SleepStagePoint{{
+			Start: stageStart, End: stageEnd, Type: 4,
+		}},
+	}})
+	if err != nil {
+		t.Fatalf("seed sleep: %v", err)
+	}
+	if err := st.UpsertHrvSamples(ctx, "sess-stage-hrv", []store.SampleValue{{
+		DayKey: day, SampledAt: stageStart.Add(time.Hour), Value: 48,
+	}}); err != nil {
+		t.Fatalf("seed hrv: %v", err)
+	}
+
+	if err := RecomputeDailyVitals(ctx, st, []string{day}); err != nil {
+		t.Fatalf("recompute: %v", err)
+	}
+	var hrv *int
+	if err := st.Pool().QueryRow(ctx,
+		`SELECT hrv_rmssd FROM daily_metrics WHERE day_key=$1::date`, day).Scan(&hrv); err != nil {
+		t.Fatalf("read: %v", err)
+	}
+	if hrv == nil || *hrv != 48 {
+		t.Fatalf("hrv_rmssd=%v, want 48 from stage timeline", hrv)
+	}
+}

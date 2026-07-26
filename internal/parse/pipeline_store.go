@@ -49,7 +49,9 @@ func toSampleValues(hs []HealthSample) []store.SampleValue {
 func toHrRows(pts []HrSamplePoint) []store.HeartRateSample {
 	out := make([]store.HeartRateSample, len(pts))
 	for i, p := range pts {
-		out[i] = store.HeartRateSample{DayKey: p.DayKey, SampledAt: p.Ts, Bpm: p.Bpm}
+		out[i] = store.HeartRateSample{
+			DayKey: p.DayKey, SampledAt: p.Ts, Bpm: p.Bpm, SourceType: p.SourceType,
+		}
 	}
 	return out
 }

@@ -8,9 +8,10 @@ import (
 const hrSessionHeaderSize = 6
 
 type HrSamplePoint struct {
-	Ts     time.Time
-	DayKey string
-	Bpm    int
+	Ts         time.Time
+	DayKey     string
+	Bpm        int
+	SourceType string
 }
 
 // ParseContinuousHr parses 0x46 PPG session blobs: 6-byte header + 1 BPM/sec.
@@ -36,7 +37,7 @@ func ParseContinuousHr(raw []byte) []HrSamplePoint {
 				continue
 			}
 			out = append(out, HrSamplePoint{
-				Ts: EpochUTC(sec), DayKey: IstDayKey(sec), Bpm: int(b),
+				Ts: EpochUTC(sec), DayKey: IstDayKey(sec), Bpm: int(b), SourceType: "0x46",
 			})
 			sec++
 		}

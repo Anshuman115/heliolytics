@@ -46,9 +46,12 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 		ParseWorkouts(blobs["0x05"]),
 		ParseWorkoutDetails(blobs["0x06"]),
 	)
-	out.ActivitySessions = ParseActivitySessions(blobs["0x3B"])
+	out.ActivitySessions = DetectActivitySessions(blobs["0x01"], catalogJSON, fetchEnd)
 	out.TempSeries = ParseTempSeries(blobs["0x2E"], FindEntry(cat, "0x2E"))
-	out.HrSeries = ParseContinuousHr(blobs["0x46"])
+	out.HrSeries = MergeHeartRateSeries(
+		ParseActivityHrSeries(blobs["0x01"], catalogJSON, fetchEnd),
+		ParseContinuousHr(blobs["0x46"]),
+	)
 	out.StepSeries = ParseStepSeries(blobs["0x01"], catalogJSON, fetchEnd)
 	return out
 }

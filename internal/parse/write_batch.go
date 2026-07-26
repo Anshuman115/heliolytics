@@ -88,6 +88,9 @@ func runRollup(ctx context.Context, st *store.Store, days []string) error {
 	if err := rollup.RecomputeDailyVitals(ctx, st, days); err != nil {
 		return err
 	}
+	if err := rollup.RecomputeDailyRhr(ctx, st, days); err != nil {
+		return err
+	}
 	if err := rollup.RecomputeDailySleep(ctx, st, days); err != nil {
 		return err
 	}

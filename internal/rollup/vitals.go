@@ -2,12 +2,10 @@ package rollup
 
 import (
 	"context"
-	"errors"
 	"log"
 	"time"
 
 	"github.com/heliolytics/api/internal/store"
-	"github.com/jackc/pgx/v5"
 )
 
 // recomputeHrvSQL averages hrv_samples.value within the sleep window and
@@ -70,21 +68,32 @@ func RecomputeDailyVitals(ctx context.Context, st *store.Store, days []string) e
 }
 
 func bestSleepWindow(ctx context.Context, st *store.Store, day string) (start, end time.Time, ok bool, err error) {
-	var totalMins int
-	queryErr := st.Pool().QueryRow(ctx, `
-		SELECT started_at, total_mins FROM sleep_sessions
-		WHERE day_key = $1::date AND is_nap = false
-		ORDER BY score DESC
-		LIMIT 1`, day).Scan(&start, &totalMins)
-	if queryErr != nil {
-		if errors.Is(queryErr, pgx.ErrNoRows) {
-			// No non-nap sleep session that day is not a hard error, just "no window."
-			return time.Time{}, time.Time{}, false, nil
-		}
-		// A real DB/connection error must propagate — swallowing it here would
-		// report the whole recompute as successful while silently skipping
-		// this day's vitals.
-		return time.Time{}, time.Time{}, false, queryErr
+	sessions, err := st.ListSleep(ctx, day, day)
+	if err != nil {
+		return time.Time{}, time.Time{}, false, err
 	}
-	return start, start.Add(time.Duration(totalMins) * time.Minute), true, nil
+	var best *store.SleepMetric
+	for i := range sessions {
+		if sessions[i].IsNap || best != nil && sessions[i].Score <= best.Score {
+			continue
+		}
+		best = &sessions[i]
+	}
+	if best == nil {
+		return time.Time{}, time.Time{}, false, nil
+	}
+	if len(best.Stages) > 0 {
+		start, end = best.Stages[0].Start, best.Stages[0].End
+		for _, stage := range best.Stages[1:] {
+			if stage.Start.Before(start) {
+				start = stage.Start
+			}
+			if stage.End.After(end) {
+				end = stage.End
+			}
+		}
+		return start, end, true, nil
+	}
+	duration := time.Duration(best.TotalMins+best.WakeMins) * time.Minute
+	return best.StartedAt, best.StartedAt.Add(duration), true, nil
 }

@@ -9,20 +9,22 @@ import (
 )
 
 type HeartRateSample struct {
-	DayKey    string
-	SampledAt time.Time
-	Bpm       int
+	DayKey     string
+	SampledAt  time.Time
+	Bpm        int
+	SourceType string
 }
 
 // Mirrors sql/queries/heart_rate_samples.sql:UpsertHeartRateSample. Inline so
 // rows can be pipelined as one batch; sqlc only generates a per-row Exec.
 const upsertHeartRateSQL = `
-	INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id)
-	VALUES ($1, $2, $3, $4)
+	INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id, source_type)
+	VALUES ($1, $2, $3, $4, $5)
 	ON CONFLICT (sampled_at) DO UPDATE SET
 	  bpm = EXCLUDED.bpm,
 	  day_key = EXCLUDED.day_key,
-	  source_session_id = EXCLUDED.source_session_id`
+	  source_session_id = EXCLUDED.source_session_id,
+	  source_type = EXCLUDED.source_type`
 
 func (s *Store) UpsertHeartRateSamples(ctx context.Context, sid string, pts []HeartRateSample) error {
 	if sid == "" {
@@ -41,7 +43,7 @@ func (s *Store) UpsertHeartRateSamples(ctx context.Context, sid string, pts []He
 		if err != nil {
 			return err
 		}
-		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid})
+		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid, p.SourceType})
 	}
 	return s.execBatch(ctx, upsertHeartRateSQL, rows)
 }
@@ -65,7 +67,7 @@ func (s *Store) UpsertHeartRateSamplesTx(ctx context.Context, tx pgx.Tx, sid str
 		if err != nil {
 			return err
 		}
-		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid})
+		rows = append(rows, queuedRow{ts, day, int16(p.Bpm), sid, p.SourceType})
 	}
 	return execBatchTx(ctx, tx, upsertHeartRateSQL, rows)
 }

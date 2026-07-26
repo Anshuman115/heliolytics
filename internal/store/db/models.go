@@ -53,6 +53,7 @@ type HeartRateSample struct {
 	DayKey          pgtype.Date        `json:"day_key"`
 	Bpm             int16              `json:"bpm"`
 	SourceSessionID string             `json:"source_session_id"`
+	SourceType      string             `json:"source_type"`
 }
 
 type HrvSample struct {

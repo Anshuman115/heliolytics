@@ -1,10 +1,11 @@
 -- name: UpsertHeartRateSample :exec
-INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id)
-VALUES ($1, $2, $3, $4)
+INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id, source_type)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (sampled_at) DO UPDATE SET
   bpm = EXCLUDED.bpm,
   day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id;
+  source_session_id = EXCLUDED.source_session_id,
+  source_type = EXCLUDED.source_type;
 
 -- name: ListHeartRateSamples :many
 SELECT day_key, sampled_at, bpm
@@ -30,4 +31,3 @@ SELECT
 FROM computed
 GROUP BY day_key, day_start
 ORDER BY day_key ASC;
-

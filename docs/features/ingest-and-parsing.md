@@ -32,7 +32,7 @@ Dispatches each blob to its type parser (`parse_batch.go` → `catalog.go`):
 
 | Code | Parser | Produces |
 |---|---|---|
-| `0x01` | `activity.go` | Per-minute HR / steps / activity |
+| `0x01` | `activity.go`, `activity_hr.go`, `activity_sessions.go` | Per-minute HR / steps and sustained activity sessions |
 | `0x05`,`0x06` | `protobuf.go` | Workout summary + per-second detail |
 | `0x0D` | `pai.go` | PAI scores |
 | `0x25`,`0x26` | `spo2.go` | SpO₂ spot + sleep |
@@ -40,9 +40,8 @@ Dispatches each blob to its type parser (`parse_batch.go` → `catalog.go`):
 | `0x38` | resp rate | Sleep respiratory rate |
 | `0x39` | readiness | Device-reported readiness |
 | `0x3A` | `resting_hr.go` | Resting HR |
-| `0x3B` | `activity_session.go` | Auto-detected sessions |
 | `0x46` | `continuous_hr.go` | Continuous PPG HR (~1/sec) |
-| `0x48`,`0x4E` | `sleep.go`, `sleep_nap.go` | Sleep sessions + naps |
+| `0x48` | `sleep.go` | Sleep sessions + naps |
 | `0x49` | `hrv.go` | HRV RMSSD |
 
 Timestamps come from the **per-page** `roundSegments` anchors, never a single global

@@ -51,6 +51,9 @@ func validateHeartRateSample(p HeartRateSample) error {
 	if p.Bpm < 30 || p.Bpm > 220 {
 		return fmt.Errorf("heart_rate_samples.bpm out of range")
 	}
+	if p.SourceType != "0x01" && p.SourceType != "0x46" {
+		return fmt.Errorf("heart_rate_samples.source_type invalid")
+	}
 	return nil
 }
 
