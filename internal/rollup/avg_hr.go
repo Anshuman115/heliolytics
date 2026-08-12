@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // RecomputeDailyAvgHr fills daily_metrics.avg_hr from the continuous
@@ -17,7 +15,7 @@ const recomputeDailyAvgHrSQL = `
 	    updated_at = NOW()
 	WHERE day_key = $1::date`
 
-func RecomputeDailyAvgHr(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyAvgHr(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup avg_hr days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyAvgHrSQL, days)
 }

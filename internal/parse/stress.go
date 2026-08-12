@@ -11,6 +11,9 @@ func ParseStress(raw []byte, entry *CatalogEntry) []StressSample {
 	}
 	var out []StressSample
 	if len(entry.RoundSegments) > 0 {
+		if err := validateRoundSegments("0x13", raw, 1, entry.RoundSegments); err != nil {
+			return nil
+		}
 		for si, seg := range entry.RoundSegments {
 			start := seg.ByteOffset
 			end := len(raw)
@@ -29,6 +32,9 @@ func ParseStress(raw []byte, entry *CatalogEntry) []StressSample {
 		return out
 	}
 	rs := ParseRoundStartIst(entry.RoundStart)
+	if !IsPlausibleUnixSec(rs) {
+		return nil
+	}
 	return parseStressChunk(raw, rs)
 }
 

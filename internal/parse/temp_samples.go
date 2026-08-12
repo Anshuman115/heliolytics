@@ -17,6 +17,9 @@ func ParseTempSeries(raw []byte, entry *CatalogEntry) []TempSamplePoint {
 	}
 	var out []TempSamplePoint
 	if len(entry.RoundSegments) > 0 {
+		if err := validateRoundSegments("0x2E", raw, 8, entry.RoundSegments); err != nil {
+			return nil
+		}
 		for si, seg := range entry.RoundSegments {
 			start := seg.ByteOffset
 			end := len(raw)
@@ -34,7 +37,11 @@ func ParseTempSeries(raw []byte, entry *CatalogEntry) []TempSamplePoint {
 		}
 		return out
 	}
-	return parseTempSeriesChunk(raw, ParseRoundStartIst(entry.RoundStart))
+	rs := ParseRoundStartIst(entry.RoundStart)
+	if !IsPlausibleUnixSec(rs) {
+		return nil
+	}
+	return parseTempSeriesChunk(raw, rs)
 }
 
 func parseTempSeriesChunk(raw []byte, rs int64) []TempSamplePoint {

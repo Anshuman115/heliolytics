@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/heliolytics/api/internal/readiness"
+	"github.com/heliolytics/api/internal/store/db"
 )
 
 // RecomputeReadiness computes and stores the recovery score for each given IST
@@ -11,8 +12,12 @@ import (
 // the same data yields the same score. Days still in cold-start (no stable
 // baseline) are left unchanged.
 func (s *Store) RecomputeReadiness(ctx context.Context, days []string) error {
+	return recomputeReadiness(ctx, s.pool, days)
+}
+
+func recomputeReadiness(ctx context.Context, target db.DBTX, days []string) error {
 	for _, day := range days {
-		hist, err := s.readinessHistory(ctx, day)
+		hist, err := readinessHistory(ctx, target, day)
 		if err != nil {
 			return err
 		}
@@ -22,7 +27,7 @@ func (s *Store) RecomputeReadiness(ctx context.Context, days []string) error {
 		}
 		// Write to computed_readiness only; the device 0x39 `readiness` column is
 		// authoritative and reads COALESCE(readiness, computed_readiness).
-		if _, err := s.pool.Exec(ctx,
+		if _, err := target.Exec(ctx,
 			`UPDATE daily_metrics SET computed_readiness = $2, updated_at = NOW()
 			 WHERE day_key = $1::date`, day, score); err != nil {
 			return err
@@ -34,7 +39,11 @@ func (s *Store) RecomputeReadiness(ctx context.Context, days []string) error {
 // readinessHistory returns up to 60 trailing days of vitals (oldest→newest,
 // target day last) for the readiness baseline.
 func (s *Store) readinessHistory(ctx context.Context, day string) ([]readiness.DayVitals, error) {
-	rows, err := s.pool.Query(ctx, `
+	return readinessHistory(ctx, s.pool, day)
+}
+
+func readinessHistory(ctx context.Context, target db.DBTX, day string) ([]readiness.DayVitals, error) {
+	rows, err := target.Query(ctx, `
 		SELECT hrv_rmssd, resting_hr, resp_rate_avg, sleep_score
 		FROM daily_metrics
 		WHERE day_key <= $1::date

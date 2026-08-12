@@ -14,6 +14,9 @@ func ParseWorkoutDetailsBySegments(raw []byte, entry *CatalogEntry) []WorkoutRec
 	if entry == nil || len(entry.RoundSegments) == 0 {
 		return ParseWorkoutDetails(raw)
 	}
+	if err := validateRoundSegments("0x06", raw, 1, entry.RoundSegments); err != nil {
+		return nil
+	}
 	out := make([]WorkoutRecord, 0, len(entry.RoundSegments))
 	for index, segment := range entry.RoundSegments {
 		end := len(raw)

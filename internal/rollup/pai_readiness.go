@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // RecomputeDailyPai and RecomputeDailyReadiness copy the day's value from
@@ -20,7 +18,7 @@ const recomputeDailyPaiSQL = `
 	    updated_at = NOW()
 	WHERE day_key = $1::date`
 
-func RecomputeDailyPai(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyPai(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup pai days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyPaiSQL, days)
 }
@@ -31,7 +29,7 @@ const recomputeDailyReadinessSQL = `
 	    updated_at = NOW()
 	WHERE day_key = $1::date`
 
-func RecomputeDailyReadiness(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyReadiness(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup readiness days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyReadinessSQL, days)
 }

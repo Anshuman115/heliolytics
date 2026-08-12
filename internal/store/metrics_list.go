@@ -28,6 +28,10 @@ func (s *Store) ListDays(ctx context.Context, from, to string) ([]DayMetric, err
 }
 
 func (s *Store) ListSleep(ctx context.Context, from, to string) ([]SleepMetric, error) {
+	return listSleep(ctx, s.q, from, to)
+}
+
+func listSleep(ctx context.Context, q *db.Queries, from, to string) ([]SleepMetric, error) {
 	fromD, err := dateKey(from)
 	if err != nil {
 		return nil, err
@@ -36,7 +40,7 @@ func (s *Store) ListSleep(ctx context.Context, from, to string) ([]SleepMetric, 
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.q.ListSleep(ctx, db.ListSleepParams{DayKey: fromD, DayKey_2: toD})
+	rows, err := q.ListSleep(ctx, db.ListSleepParams{DayKey: fromD, DayKey_2: toD})
 	if err != nil {
 		return nil, err
 	}

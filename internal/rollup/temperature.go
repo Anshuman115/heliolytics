@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // recomputeDailyTemperatureSQL sets daily_metrics.temp_avg_c to the average of
@@ -18,7 +16,7 @@ const recomputeDailyTemperatureSQL = `
 
 // RecomputeDailyTemperature recomputes daily_metrics.temp_avg_c for each day
 // in days by averaging temperature_samples straight from the database.
-func RecomputeDailyTemperature(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyTemperature(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup temperature days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyTemperatureSQL, days)
 }

@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 const recomputeDailyRhrSQL = `
@@ -16,7 +14,7 @@ const recomputeDailyRhrSQL = `
 	), resting_hr), updated_at = NOW()
 	WHERE day_key = $1::date`
 
-func RecomputeDailyRhr(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyRhr(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup rhr days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyRhrSQL, days)
 }

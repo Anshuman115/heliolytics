@@ -17,7 +17,10 @@ func TestRunIngestEndToEndFromFixtures(t *testing.T) {
 		}
 		blobs[code] = raw
 	}
-	parsed := ParseBlobs(nil, blobs, time.Now().UTC())
+	parsed, err := ParseBlobs(nil, blobs, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("parse blobs: %v", err)
+	}
 	agg := Aggregate(parsed)
 	if len(agg.Workouts) == 0 {
 		t.Fatal("want workouts in aggregated batch")

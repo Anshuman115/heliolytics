@@ -12,7 +12,10 @@ import (
 	"time"
 )
 
-const TokenWindow = 5 * time.Minute
+const (
+	TokenWindow     = 5 * time.Minute
+	TokenFutureSkew = 2 * time.Second
+)
 
 func SignToken(secret string) (string, error) {
 	if secret == "" {
@@ -58,7 +61,7 @@ func VerifyTokenDetail(secret, token string) TokenVerifyResult {
 	}
 	tokenTime := time.Unix(ts, 0)
 	age := time.Since(tokenTime)
-	if age < 0 {
+	if age < -TokenFutureSkew {
 		return TokenVerifyResult{
 			Reason: "token_in_future",
 			Detail: fmt.Sprintf("skew=%s", (-age).Round(time.Second)),
@@ -70,9 +73,6 @@ func VerifyTokenDetail(secret, token string) TokenVerifyResult {
 			Detail: fmt.Sprintf("age=%s window=%s", age.Round(time.Second), TokenWindow),
 		}
 	}
-	if !defaultNonceStore.UseOnce(parts[1], tokenTime) {
-		return TokenVerifyResult{Reason: "nonce_replay"}
-	}
 	got, err := hex.DecodeString(parts[2])
 	if err != nil {
 		return TokenVerifyResult{Reason: "bad_signature_hex", Detail: err.Error()}
@@ -83,6 +83,9 @@ func VerifyTokenDetail(secret, token string) TokenVerifyResult {
 			Reason: "signature_mismatch",
 			Detail: "HELIOLYTICS_SIGNING_SECRET must match the app API key",
 		}
+	}
+	if !defaultNonceStore.UseOnce(parts[1], tokenTime) {
+		return TokenVerifyResult{Reason: "nonce_replay"}
 	}
 	return TokenVerifyResult{OK: true}
 }

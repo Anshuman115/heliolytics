@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // RecomputeDailySleep fills sleep_score/mins/deep/rem/light from the day's
@@ -44,7 +42,7 @@ const recomputeDailySleepSQL = `
 	LEFT JOIN best ON true
 	WHERE d.day_key = $1::date`
 
-func RecomputeDailySleep(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailySleep(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup sleep days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailySleepSQL, days)
 }

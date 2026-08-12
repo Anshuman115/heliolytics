@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // calories_total is summed here rather than in its own function because it's
@@ -17,7 +15,7 @@ const recomputeDailyWorkoutCountsSQL = `
 	    updated_at = NOW()
 	WHERE day_key = $1::date`
 
-func RecomputeDailyWorkoutCounts(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyWorkoutCounts(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup workout_counts days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyWorkoutCountsSQL, days)
 }

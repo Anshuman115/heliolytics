@@ -8,14 +8,16 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// WriteBatch persists one sync's parsed rows inside a single transaction,
-// then — only after that transaction commits — recomputes daily_metrics for
-// every touched day by reading the rows back from the DB. This ordering is
-// the whole point: rollup must never see anything except what's actually
-// durable, so a crash between "write raw rows" and "commit" can never leave
-// daily_metrics reflecting data that didn't make it to disk.
+// WriteBatch persists one sync and recomputes its daily metrics in one
+// transaction. Any write or rollup failure rolls the entire ingest back.
 func WriteBatch(ctx context.Context, st *store.Store, sid string, meta store.SessionMeta, blobs map[string][]byte, batch AggregatedBatch) error {
-	err := st.WithTx(ctx, func(tx pgx.Tx) error {
+	return writeBatch(ctx, st, sid, meta, blobs, batch, runRollup)
+}
+
+type rollupRunner func(context.Context, rollup.Target, []string) error
+
+func writeBatch(ctx context.Context, st *store.Store, sid string, meta store.SessionMeta, blobs map[string][]byte, batch AggregatedBatch, recompute rollupRunner) error {
+	return st.WithTx(ctx, func(tx pgx.Tx) error {
 		if err := st.UpsertSessionTx(ctx, tx, meta); err != nil {
 			return err
 		}
@@ -63,19 +65,14 @@ func WriteBatch(ctx context.Context, st *store.Store, sid string, meta store.Ses
 		if err := st.UpsertReadinessScoresTx(ctx, tx, sid, batch.ReadinessScores); err != nil {
 			return err
 		}
-		return st.EnsureDailyMetricsRowsTx(ctx, tx, batch.TouchedDays)
+		if err := st.EnsureDailyMetricsRowsTx(ctx, tx, batch.TouchedDays); err != nil {
+			return err
+		}
+		return recompute(ctx, store.NewTxView(tx), batch.TouchedDays)
 	})
-	if err != nil {
-		return err
-	}
-
-	// Everything above is now durable. Rollup reads it back — never the
-	// in-memory batch — which is what makes daily_metrics correct regardless
-	// of how many syncs it took to fully populate a day.
-	return runRollup(ctx, st, batch.TouchedDays)
 }
 
-func runRollup(ctx context.Context, st *store.Store, days []string) error {
+func runRollup(ctx context.Context, st rollup.Target, days []string) error {
 	if len(days) == 0 {
 		return nil
 	}

@@ -7,10 +7,20 @@ import (
 
 func stringsTrimRoundStart(raw string) string {
 	raw = strings.TrimSuffix(raw, "Z")
-	if i := strings.Index(raw, "."); i >= 0 {
-		raw = raw[:i]
+	if len(raw) < 19 {
+		return ""
 	}
-	return raw
+	if suffix := raw[19:]; suffix != "" {
+		if suffix[0] != '.' || len(suffix) == 1 {
+			return ""
+		}
+		for _, digit := range suffix[1:] {
+			if digit < '0' || digit > '9' {
+				return ""
+			}
+		}
+	}
+	return raw[:19]
 }
 
 const istOffsetSec = 5*3600 + 30*60
@@ -26,10 +36,9 @@ func IstDayKey(epochSec int64) string {
 // to skip the segment rather than assigning data to 1970-01-01.
 func ParseRoundStartIst(raw string) int64 {
 	raw = stringsTrimRoundStart(raw)
-	if len(raw) < 19 {
+	if raw == "" {
 		return -1
 	}
-	raw = raw[:19]
 	t, err := time.Parse("2006-01-02T15:04:05", raw)
 	if err != nil {
 		return -1

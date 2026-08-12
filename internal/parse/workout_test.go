@@ -84,8 +84,8 @@ func TestParseWorkoutDetailsBySegmentsIgnoresTrailerStreams(t *testing.T) {
 	secondOffset := len(raw)
 	raw = appendDetailBlock(raw, second.UnixMilli(), detailSessionStartMarker)
 	entry := &CatalogEntry{RoundSegments: []RoundSegment{
-		{ByteOffset: 0},
-		{ByteOffset: secondOffset},
+		{ByteOffset: 0, RoundStart: "2026-07-07T07:51:41.000"},
+		{ByteOffset: secondOffset, RoundStart: "2026-07-08T08:02:03.000"},
 	}}
 
 	details := ParseWorkoutDetailsBySegments(raw, entry)

@@ -2,14 +2,14 @@ package parse
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/heliolytics/api/internal/store"
 )
 
-// RunIngest parses raw sync blobs and persists the result inside a single
-// transaction, then recomputes daily_metrics for every touched day. See
-// WriteBatch for why the rollup step must happen after commit, not during.
+// RunIngest parses raw sync blobs, then persists rows and recomputes touched
+// daily metrics inside one transaction.
 func RunIngest(
 	ctx context.Context,
 	st *store.Store,
@@ -17,7 +17,10 @@ func RunIngest(
 	blobs map[string][]byte,
 	fetchEnd time.Time,
 ) error {
-	parsed := ParseBlobs(meta.CatalogJSON, blobs, fetchEnd)
+	parsed, err := ParseBlobs(meta.CatalogJSON, blobs, fetchEnd)
+	if err != nil {
+		return fmt.Errorf("parse blobs: %w", err)
+	}
 	agg := Aggregate(parsed)
 	return WriteBatch(ctx, st, meta.ID, meta, blobs, agg)
 }

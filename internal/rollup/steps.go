@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // recomputeDailyStepsSQL sets daily_metrics.steps to SUM(step_samples.steps)
@@ -20,7 +18,7 @@ const recomputeDailyStepsSQL = `
 
 // RecomputeDailySteps recomputes daily_metrics.steps for each day in days by
 // summing step_samples straight from the database.
-func RecomputeDailySteps(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailySteps(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup steps days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyStepsSQL, days)
 }

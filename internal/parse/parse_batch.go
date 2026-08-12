@@ -23,8 +23,14 @@ type ParsedBatch struct {
 	StepSeries       []StepSample
 }
 
-func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time) ParsedBatch {
-	cat := ParseCatalog(catalogJSON)
+func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time) (ParsedBatch, error) {
+	cat, err := ParseCatalog(catalogJSON)
+	if err != nil {
+		return ParsedBatch{}, err
+	}
+	if err := validateCatalogAnchors(cat, blobs, fetchEnd); err != nil {
+		return ParsedBatch{}, err
+	}
 	out := ParsedBatch{Catalog: cat, StepsByDay: map[string]int{}}
 
 	if raw, ok := blobs["0x01"]; ok && len(raw) > 0 {
@@ -58,7 +64,7 @@ func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time)
 		ParseContinuousHr(blobs["0x46"]),
 	)
 	out.StepSeries = ParseStepSeries(blobs["0x01"], catalogJSON, fetchEnd)
-	return out
+	return out, nil
 }
 
 func (b ParsedBatch) healthSeries() []HealthSample {

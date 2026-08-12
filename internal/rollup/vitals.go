@@ -43,7 +43,7 @@ const recomputeRespSQL = `
 // finds the day's best non-nap sleep window first, then averages samples
 // falling inside it. Mirrors what internal/parse/vitals_rollup.go used to do
 // from in-memory samples; this version reads the DB instead.
-func RecomputeDailyVitals(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyVitals(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup vitals days=%v", days)
 	for _, day := range days {
 		start, end, ok, err := bestSleepWindow(ctx, st, day)
@@ -54,20 +54,20 @@ func RecomputeDailyVitals(ctx context.Context, st *store.Store, days []string) e
 			log.Printf("rollup vitals day=%s skip=no_sleep_window", day)
 			continue
 		}
-		if _, err := st.Pool().Exec(ctx, recomputeHrvSQL, day, start, end); err != nil {
+		if err := st.ExecSQL(ctx, recomputeHrvSQL, day, start, end); err != nil {
 			return err
 		}
-		if _, err := st.Pool().Exec(ctx, recomputeSpo2SQL, day, start, end); err != nil {
+		if err := st.ExecSQL(ctx, recomputeSpo2SQL, day, start, end); err != nil {
 			return err
 		}
-		if _, err := st.Pool().Exec(ctx, recomputeRespSQL, day, start, end); err != nil {
+		if err := st.ExecSQL(ctx, recomputeRespSQL, day, start, end); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func bestSleepWindow(ctx context.Context, st *store.Store, day string) (start, end time.Time, ok bool, err error) {
+func bestSleepWindow(ctx context.Context, st Target, day string) (start, end time.Time, ok bool, err error) {
 	sessions, err := st.ListSleep(ctx, day, day)
 	if err != nil {
 		return time.Time{}, time.Time{}, false, err

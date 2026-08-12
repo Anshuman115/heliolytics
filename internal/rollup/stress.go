@@ -3,8 +3,6 @@ package rollup
 import (
 	"context"
 	"log"
-
-	"github.com/heliolytics/api/internal/store"
 )
 
 // RecomputeDailyStress uses the latest stress_samples reading for the day,
@@ -19,7 +17,7 @@ const recomputeDailyStressSQL = `
 	), updated_at = NOW()
 	WHERE day_key = $1::date`
 
-func RecomputeDailyStress(ctx context.Context, st *store.Store, days []string) error {
+func RecomputeDailyStress(ctx context.Context, st Target, days []string) error {
 	log.Printf("rollup stress days=%v", days)
 	return st.ExecDayKeys(ctx, recomputeDailyStressSQL, days)
 }

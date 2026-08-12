@@ -49,7 +49,11 @@ func parseActivityMinutes(raw, catalogJSON []byte, fetchEnd time.Time) []activit
 	if len(raw) < activityRecordStride {
 		return nil
 	}
-	entry := FindEntry(ParseCatalog(catalogJSON), "0x01")
+	cat, err := ParseCatalog(catalogJSON)
+	if err != nil {
+		return nil
+	}
+	entry := FindEntry(cat, "0x01")
 	segments := buildByteSegments(raw, entry, fetchEnd, activityRecordStride)
 	var out []activityMinute
 	for i, segment := range segments {

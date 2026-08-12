@@ -13,7 +13,10 @@ func TestAggregateCountsNapFromParsedSleep(t *testing.T) {
 	if err != nil {
 		t.Skip("sleep dump missing")
 	}
-	parsed := ParseBlobs(nil, map[string][]byte{"0x48": raw}, time.Now().UTC())
+	parsed, err := ParseBlobs(nil, map[string][]byte{"0x48": raw}, time.Now().UTC())
+	if err != nil {
+		t.Fatalf("parse blobs: %v", err)
+	}
 	agg := Aggregate(parsed)
 	// Nap counts are no longer aggregated in-memory (internal/rollup computes
 	// them from the DB after commit) — but Aggregate must still pass every

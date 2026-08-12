@@ -13,10 +13,7 @@ func testStore(t *testing.T) (*Store, func()) {
 	t.Helper()
 	url := os.Getenv("TEST_DATABASE_URL")
 	if url == "" {
-		url = os.Getenv("DATABASE_URL")
-	}
-	if url == "" {
-		t.Skip("TEST_DATABASE_URL or DATABASE_URL not set")
+		t.Skip("TEST_DATABASE_URL not set")
 	}
 	ctx := context.Background()
 	st, err := New(ctx, url)

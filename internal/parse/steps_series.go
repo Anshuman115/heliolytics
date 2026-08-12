@@ -18,7 +18,11 @@ func ParseStepSeries(raw []byte, catalogJSON []byte, fetchEnd time.Time) []StepS
 	if len(raw) < stride {
 		return nil
 	}
-	entry := FindEntry(ParseCatalog(catalogJSON), "0x01")
+	cat, err := ParseCatalog(catalogJSON)
+	if err != nil {
+		return nil
+	}
+	entry := FindEntry(cat, "0x01")
 	segs := buildByteSegments(raw, entry, fetchEnd, stride)
 	if len(segs) == 0 {
 		return nil

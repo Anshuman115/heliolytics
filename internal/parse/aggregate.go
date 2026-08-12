@@ -1,8 +1,8 @@
 package parse
 
 // AggregatedBatch holds one sync's parsed rows, grouped by destination table.
-// No daily_metrics fields here — those are filled by internal/rollup after
-// commit, reading back from the tables these rows land in.
+// No daily_metrics fields here. Internal rollups fill those from canonical
+// rows inside the ingest transaction.
 type AggregatedBatch struct {
 	Sleep            []SleepRecord
 	Workouts         []WorkoutRecord
@@ -21,8 +21,7 @@ type AggregatedBatch struct {
 }
 
 // Aggregate regroups a ParsedBatch into per-table row slices ready for the
-// store layer. It performs no daily rollup itself — that happens after the
-// write transaction commits, by reading the committed rows back from the DB.
+// store layer. It performs no daily rollup itself.
 func Aggregate(parsed ParsedBatch) AggregatedBatch {
 	pai := map[string]int{}
 	for _, p := range parsed.Pai {

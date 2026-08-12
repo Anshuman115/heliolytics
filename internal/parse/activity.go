@@ -14,7 +14,11 @@ func SumStepsByDay(raw []byte, catalogJSON []byte, fetchEnd time.Time) map[strin
 	if len(raw) < stride {
 		return nil
 	}
-	entry := FindEntry(ParseCatalog(catalogJSON), "0x01")
+	cat, err := ParseCatalog(catalogJSON)
+	if err != nil {
+		return nil
+	}
+	entry := FindEntry(cat, "0x01")
 	segs := buildByteSegments(raw, entry, fetchEnd, stride)
 	if len(segs) == 0 {
 		return nil
@@ -43,26 +47,37 @@ type byteSeg struct {
 }
 
 func buildByteSegments(raw []byte, e *CatalogEntry, fetchEnd time.Time, stride int) []byteSeg {
+	if stride <= 0 || len(raw) < stride {
+		return nil
+	}
 	if e != nil && len(e.RoundSegments) > 0 {
 		out := make([]byteSeg, 0, len(e.RoundSegments))
+		previous := -1
 		for _, s := range e.RoundSegments {
-			if s.ByteOffset >= len(raw) {
-				continue
+			rs := ParseRoundStartIst(s.RoundStart)
+			if s.ByteOffset < 0 || s.ByteOffset >= len(raw) || s.ByteOffset%stride != 0 ||
+				s.ByteOffset <= previous || !IsPlausibleUnixSec(rs) {
+				return nil
 			}
-			out = append(out, byteSeg{s.ByteOffset, ParseRoundStartIst(s.RoundStart)})
+			out = append(out, byteSeg{s.ByteOffset, rs})
+			previous = s.ByteOffset
 		}
-		if len(out) > 0 {
-			return out
-		}
+		return out
 	}
 	if e != nil && e.RoundStart != "" {
-		return []byteSeg{{0, ParseRoundStartIst(e.RoundStart)}}
+		rs := ParseRoundStartIst(e.RoundStart)
+		if !IsPlausibleUnixSec(rs) {
+			return nil
+		}
+		return []byteSeg{{0, rs}}
 	}
 	n := len(raw) / stride
 	endSec := fetchEnd.UTC().Unix()
 	base := endSec - int64(n-1)*60
-	bestRs := base
-	return []byteSeg{{0, bestRs}}
+	if n == 0 || !IsPlausibleUnixSec(base) || !IsPlausibleUnixSec(endSec) {
+		return nil
+	}
+	return []byteSeg{{0, base}}
 }
 
 func countStepsRaw(raw []byte, start, end, stride int) int {

@@ -10,7 +10,11 @@ func ParseActivityHrSeries(raw, catalogJSON []byte, fetchEnd time.Time) []HrSamp
 	if len(raw) < stride {
 		return nil
 	}
-	entry := FindEntry(ParseCatalog(catalogJSON), "0x01")
+	cat, err := ParseCatalog(catalogJSON)
+	if err != nil {
+		return nil
+	}
+	entry := FindEntry(cat, "0x01")
 	segments := buildByteSegments(raw, entry, fetchEnd, stride)
 	var out []HrSamplePoint
 	for i, segment := range segments {

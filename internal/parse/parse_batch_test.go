@@ -13,7 +13,10 @@ func TestParseBlobsSleepFromDump(t *testing.T) {
 	if err != nil {
 		t.Skip("dump missing")
 	}
-	batch := ParseBlobs(nil, map[string][]byte{"0x48": raw}, time.Time{})
+	batch, err := ParseBlobs(nil, map[string][]byte{"0x48": raw}, time.Time{})
+	if err != nil {
+		t.Fatalf("parse blobs: %v", err)
+	}
 	if len(batch.Sleep) == 0 {
 		t.Fatal("expected sleep records from 0x48 blob")
 	}
