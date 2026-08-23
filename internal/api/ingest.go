@@ -1,7 +1,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -13,8 +15,15 @@ import (
 )
 
 type ingestHandler struct {
-	st *store.Store
+	st        *store.Store
+	maxBytes  int64
+	runIngest func(context.Context, *store.Store, store.SessionMeta, map[string][]byte, time.Time) error
 }
+
+const (
+	maxIngestBytes     int64 = 128 << 20
+	maxMultipartMemory int64 = 32 << 20
+)
 
 func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 	log.Printf("ingest start remote=%s content_length=%d", r.RemoteAddr, r.ContentLength)
@@ -23,11 +32,22 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 		return
 	}
-	if err := r.ParseMultipartForm(128 << 20); err != nil {
+	limit := h.maxBytes
+	if limit == 0 {
+		limit = maxIngestBytes
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, limit)
+	if err := r.ParseMultipartForm(maxMultipartMemory); err != nil {
 		log.Printf("ingest reject reason=bad_multipart err=%v", err)
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, "request too large", http.StatusRequestEntityTooLarge)
+			return
+		}
 		http.Error(w, "bad multipart", http.StatusBadRequest)
 		return
 	}
+	defer r.MultipartForm.RemoveAll()
 	log.Printf("ingest multipart ok parts=%d", len(r.MultipartForm.File))
 	sessionJSON, err := readPart(r, "session")
 	if err != nil {
@@ -92,14 +112,25 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 		if name == "session" || name == "catalog" {
 			continue
 		}
+		if len(headers) == 0 {
+			log.Printf("ingest reject reason=missing_blob_header name=%s", name)
+			http.Error(w, "invalid raw part", http.StatusBadRequest)
+			return
+		}
 		fh := headers[0]
 		f, err := fh.Open()
 		if err != nil {
-			log.Printf("ingest blob open failed name=%s err=%v", name, err)
-			continue
+			log.Printf("ingest reject reason=blob_open_failed name=%s err=%v", name, err)
+			http.Error(w, "invalid raw part", http.StatusBadRequest)
+			return
 		}
-		raw, _ := io.ReadAll(f)
-		f.Close()
+		raw, readErr := io.ReadAll(f)
+		closeErr := f.Close()
+		if readErr != nil || closeErr != nil {
+			log.Printf("ingest reject reason=blob_read_failed name=%s read_err=%v close_err=%v", name, readErr, closeErr)
+			http.Error(w, "invalid raw part", http.StatusBadRequest)
+			return
+		}
 		typeCode := strings.TrimSuffix(name, "_raw.bin")
 		if typeCode == name {
 			log.Printf("ingest blob skipped name=%s (unexpected filename)", name)
@@ -109,7 +140,11 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 		log.Printf("ingest blob read type=%s bytes=%d", typeCode, len(raw))
 	}
 	log.Printf("ingest parsing session=%s blob_types=%d", sess.SessionID, len(blobs))
-	if err := parse.RunIngest(ctx, h.st, meta, blobs, fetchEnd); err != nil {
+	runIngest := h.runIngest
+	if runIngest == nil {
+		runIngest = parse.RunIngest
+	}
+	if err := runIngest(ctx, h.st, meta, blobs, fetchEnd); err != nil {
 		log.Printf("ingest error session=%s: %v", sess.SessionID, err)
 		http.Error(w, "ingest error", http.StatusInternalServerError)
 		return
