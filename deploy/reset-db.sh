@@ -4,7 +4,7 @@ cd "$(dirname "$0")"
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  echo "Created .env from .env.example — edit HELIOLYTICS_SIGNING_SECRET, HELIOLYTICS_WEB_PASSWORD, POSTGRES_PASSWORD."
+  echo "Created .env from .env.example. Configure signing, login, session, and database secrets."
 fi
 
 echo "Stopping stack and deleting Postgres volume (all data lost)..."

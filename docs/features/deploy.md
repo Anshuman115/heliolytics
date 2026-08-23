@@ -54,7 +54,8 @@ Env only — never committed:
 |---|---|
 | `HELIOLYTICS_SIGNING_SECRET` | `api` + `web` — **must match** |
 | `POSTGRES_PASSWORD` | `db` + `api` DSN |
-| `HELIOLYTICS_WEB_PASSWORD` | `web` login |
+| `HELIOLYTICS_WEB_PASSWORD_HASH` | `web` password verification |
+| `HELIOLYTICS_SESSION_SECRET` | `web` browser-session signing |
 | `REPARSE_ENABLED` / `REPARSE_SECRET` | `api`, default off |
 | `API_PORT` / `WEB_PORT` | Host bind, default 8080 / 3000 |
 

@@ -102,7 +102,7 @@ Full Docker stack (API + DB + web; requires a sibling `Heliolytics_Web` checkout
 
 ```bash
 cd deploy
-cp .env.example .env   # set HELIOLYTICS_SIGNING_SECRET, POSTGRES_PASSWORD, HELIOLYTICS_WEB_PASSWORD
+cp .env.example .env   # configure API, browser-session, login-hash, and database secrets
 ./install.sh
 ```
 
