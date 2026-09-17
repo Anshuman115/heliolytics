@@ -34,6 +34,10 @@ _learnspace/
 lessons/
 .github/
 
-# Docs: feature docs are published; reference manuals stay local.
+# Documentation: only feature docs are published.
 docs/*
 !docs/features/
+!docs/features/**
+
+# Local reference documentation
+docs/local/

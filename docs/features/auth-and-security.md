@@ -1,7 +1,7 @@
-# Feature — Auth & security
+# Feature : Auth & security
 
 There is no user login on the API. It's a single-owner system: one shared signing
-secret gates every request.
+secret gates data requests. `/health` is public.
 
 ## The token
 
@@ -15,7 +15,7 @@ sig   = HMAC-SHA256(secret, "ts:nonce")
 
 `internal/auth/signing.go` mints (`SignToken`) and verifies (`VerifyToken` /
 `VerifyTokenDetail`). `TokenVerifyResult` carries a `Reason` so failures are
-diagnosable in logs without leaking the secret to the client — the HTTP response
+diagnosable in logs without leaking the secret to the client : the HTTP response
 stays a bare 401.
 
 ### Three implementations, one format
@@ -31,15 +31,28 @@ byte-for-byte on the `"ts:nonce"` string being signed.
 
 ## Replay defense
 
-Two layers:
+Verification allows at most two seconds of future clock skew. This covers
+whole-second client timestamps arriving just before the server's clock reaches the
+same second, while larger future offsets are rejected. Tokens more than five
+minutes old are still rejected.
 
-1. **Time window** — `TokenWindow = 5 * time.Minute`. Tokens outside it are rejected,
-   so a captured token dies quickly.
-2. **Nonce store** — `internal/auth/nonce_store.go` remembers nonces within the
+Replay defense has two layers:
+
+1. **Time window** : `TokenWindow = 5 * time.Minute`, with the bounded future
+   tolerance above. A captured token dies quickly.
+2. **Nonce store** : `internal/auth/nonce_store.go` remembers nonces within the
    window and rejects reuse. The window bounds memory: nonces older than it are
    evicted.
 
-Comparison uses `crypto/subtle` constant-time equality — never `==` on signatures.
+The nonce store and rate limiter live in process memory, not a shared database.
+They are not a distributed multi-instance replay/limit service.
+
+The server validates the timestamp and signature before recording the nonce. An
+invalid signature therefore cannot consume a nonce that a later valid request uses.
+After a valid signature is accepted, the nonce is consumed atomically and any
+replay is rejected.
+
+Signature comparison uses `crypto/subtle` constant-time equality, never `==`.
 
 ## Rate limiting
 
@@ -49,11 +62,11 @@ Client identity comes from the remote address, **unless `TRUST_PROXY=true`**, in
 which case forwarded headers are honored. Get this wrong and you either rate-limit
 everyone as one client (behind a proxy without the flag) or let anyone spoof their
 identity via a header (flag on without a trusted proxy in front). Set it only when
-Caddy is actually terminating.
+a trusted reverse proxy is actually terminating traffic.
 
 ## Config
 
-`internal/config/config.go` — env only, no config file:
+`internal/config/config.go` : env only, no config file:
 
 | Var | Default | Notes |
 |---|---|---|
@@ -65,14 +78,15 @@ Caddy is actually terminating.
 | `REPARSE_SECRET` | *(empty)* | Separate secret for reparse |
 | `TRUST_PROXY` | `false` | Honor forwarded client IP |
 
-Secrets are **never** committed — they come from the environment. See
-`deploy/deployment.md`.
+Secrets are **never** committed : they come from the environment. See
+`docs/local/deployment.md`.
 
 ## Reparse is separately gated
 
-`/api/v1/reparse` needs both `REPARSE_ENABLED=true` and its own `REPARSE_SECRET`,
-distinct from the main signing secret. It rewrites historical data, so it's off in
-production and enabled only for a deliberate migration.
+`/api/v1/reparse` is disabled unless `REPARSE_ENABLED=true`. The code checks
+`X-Reparse-Secret` only when `REPARSE_SECRET` is non-empty. Configure an independent
+secret before enabling it. The handler replays the latest stored session; it is
+not a full-history migration runner. The normal HMAC check still applies.
 
 ## Key files
 

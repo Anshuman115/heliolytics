@@ -1,108 +1,75 @@
-# Feature — Storage & schema
+# Storage and schema
 
-PostgreSQL + TimescaleDB. Schema in `schema.sql`, incremental changes in
-`migrations/`.
+Source review: 7 September 2026. Describes the local code, not a live deployment check.
 
-## Tables
+PostgreSQL stores the data. TimescaleDB adds time partitioning to eight sample
+tables. sqlc turns selected SQL queries into Go functions.
+
+## Current tables
 
 | Table | Holds |
 |---|---|
-| `sync_sessions` | One row per upload — the provenance record |
-| `raw_type_blobs` | **The raw strap bytes as uploaded** |
-| `daily_metrics` | Per-day rollups (steps, calories, scores) |
-| `sleep_sessions` | Nights + naps |
-| `sleep_stages` | Per-stage spans within a session |
-| `workouts` | User-started workouts |
-| `activity_sessions` | Auto-detected sessions |
-| `heart_rate_samples` | Continuous HR — **hypertable** |
-| `step_samples` | Per-minute steps — **hypertable** |
-| `temperature_samples` | Skin temperature — **hypertable** |
-| `hrv_samples` | HRV samples |
-| `spo2_samples` | Spot and sleep SpO2 samples, identified by source type |
-| `stress_samples` | Stress samples |
-| `resp_samples` | Respiratory-rate samples |
-| `rhr_samples` | Resting-heart-rate samples |
+| `sync_sessions` | Upload metadata and ingest time |
+| `raw_type_blobs` | Original bytes for each session and type |
+| `daily_metrics` | One summary row per day |
+| `sleep_sessions` | Nights, naps and stage JSON in `stages_json` |
+| `workouts` | User-started activities, summary/detail coverage flags |
+| `activity_sessions` | Activities inferred from minute records |
+| `profiles` | Personal profile, used as one stored profile |
+| `raw_pai_scores` | Parsed daily PAI values |
+| `raw_readiness` | Parsed device readiness values |
+| `heart_rate_samples` | HR with `0x01` / `0x46` source identity |
+| `step_samples` | Minute steps |
+| `temperature_samples` | Skin temperature |
+| `hrv_samples` | HRV |
+| `spo2_samples` | SpO2 with spot/sleep source identity |
+| `stress_samples` | Stress |
+| `resp_samples` | Breathing rate |
+| `rhr_samples` | Resting HR |
 
-## Why `raw_type_blobs` exists
+The eight tables ending in `_samples` above are hypertables on `sampled_at`.
+The current schema has neither `health_samples` nor `sleep_stages`.
 
-This is the design decision that makes everything else recoverable.
+## Why keep several levels?
 
-The server keeps the raw bytes forever, not just the parsed rows. When a parser bug
-is found, `/api/v1/reparse` replays stored blobs through the fixed code — no need to
-ask the strap for data it may have already rotated away.
+Raw blobs allow parsing work to be revisited. Parsed observations power detailed
+charts. Daily rows answer day-screen requests without loading all samples.
+The phone may cache parsed responses; it does not own this canonical history.
 
-It also means the phone can stay dumb: it uploads and forgets, holding no health
-data at all.
+Normal ingest writes original blobs, parsed rows and daily rollups in one
+transaction. Rollups read stored observations, so an upload containing only one
+signal does not replace the entire day with that partial upload.
 
-## Hypertables
+## Coverage
 
-Eight sample tables are Timescale hypertables partitioned on `sampled_at`:
+`coverage.go` reports the latest stored observation/session end and last ingest.
+`coverage_types.go` maps all fourteen fetched codes to their own watermarks.
+Workout summary/detail and spot/sleep SpO2 have separate source coverage.
+Sleep coverage uses stage end times when available, otherwise elapsed sleep plus
+wake time. `0x48` coverage uses main sleep, not a later nap.
 
-```sql
-SELECT create_hypertable('heart_rate_samples', 'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('step_samples',       'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('temperature_samples','sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('hrv_samples',        'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('spo2_samples',       'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('stress_samples',     'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('resp_samples',       'sampled_at', if_not_exists => TRUE);
-SELECT create_hypertable('rhr_samples',        'sampled_at', if_not_exists => TRUE);
-```
+A latest timestamp is a sync-planning watermark. It does not certify that every
+minute before it is present.
 
-These are the per-minute/per-second tables — they grow without bound while the
-rollup tables stay small. Range queries over `sampled_at` are the dominant read
-pattern, which is exactly what chunk pruning accelerates.
+## SQL and migrations
 
-The rollup tables (`daily_metrics`, `sleep_sessions`, `workouts`) are plain
-Postgres — a few rows per day doesn't justify partitioning.
+Edit `sql/queries/*.sql`, then regenerate `internal/store/db`. Handwritten pgx
+queries also exist in `internal/store` and `internal/rollup`.
 
-## Coverage query
-
-`internal/store/coverage.go` computes `dataThrough` as `MAX(ts)` across a `UNION ALL`
-of every sample and session table — using end times, not start times, for sessions:
-
-```sql
-SELECT started_at + make_interval(secs => duration_sec) FROM workouts
-UNION ALL SELECT started_at + make_interval(mins => total_mins) FROM sleep_sessions
-```
-
-A workout that started before the last sync but ended after it must count as covered
-through its **end**, or the next sync re-fetches it.
-
-## sqlc
-
-`sql/queries/*.sql` → generated `internal/store/db/*.sql.go`.
-
-**Never hand-edit `internal/store/db/`.** Edit the `.sql` and regenerate — hand edits
-vanish on the next run.
-
-Some store code (`coverage.go`, `readiness.go`) is hand-written pgx rather than sqlc,
-where the query is dynamic or the shape doesn't suit codegen.
-
-## Migrations
-
-`migrations/` holds numbered incremental changes:
-
-| File | Adds |
+| Migration | Purpose |
 |---|---|
-| `007_sleep_stages.sql` | Per-stage spans |
-| `008_step_samples.sql` | Step sample hypertable |
-| `009_computed_readiness.sql` | Server-computed readiness column |
-| `010_split_health_samples_and_profiles.sql` | Dedicated vital tables and profile fields |
-| `011_heart_rate_source_type.sql` | Continuous/manual heart-rate source identity |
+| `007_sleep_stages.sql` | Add wake minutes, nap flag, stage JSON to sleep sessions |
+| `008_step_samples.sql` | Add minute steps |
+| `009_computed_readiness.sql` | Add fallback recovery column |
+| `010_split_health_samples_and_profiles.sql` | Split vitals and add profiles/raw scores |
+| `011_heart_rate_source_type.sql` | Activity/continuous HR source identity |
 | `012_spo2_source_type.sql` | Spot/sleep SpO2 source identity |
-| `013_repair_sleep_stage_times.sql` | Existing sleep start and nap-duration repair |
-| `014_workout_source_coverage.sql` | Separate summary/detail workout coverage |
+| `013_repair_sleep_stage_times.sql` | Repair existing sleep timing |
+| `014_workout_source_coverage.sql` | Separate summary/detail flags |
 
-`schema.sql` is the from-scratch definition; migrations carry an existing DB
-forward. Both must end at the same shape.
+`schema.sql` initializes an empty DB volume. Numbered migrations are not run by
+container startup. Inspect an existing DB's shape and applied changes before
+choosing migrations; some scripts assume older tables exist.
 
-## Idempotency
-
-Writes upsert (`metrics_upsert.go`). Re-uploading the same sync session is safe —
-required, because a fetch can be re-run after a partial failure.
-`row_validate.go` rejects impossible rows before insert.
-
-## Reset
-
-`deploy/reset-db.sh` drops and recreates. Destructive — dev only.
+There is no automated raw-blob retention, owner export or history deletion route.
+`deploy/reset-db.sh` deletes the full database volume. It is not a migration tool.
