@@ -15,7 +15,7 @@ fi
 if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && ! grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.\+' .env 2>/dev/null; then
   echo "Warning: CLOUDFLARE_TUNNEL_TOKEN empty — cloudflared will not connect."
   echo "  Local dev: use http://127.0.0.1:\${API_PORT:-8080} and :\${WEB_PORT:-3000}"
-  echo "  Production: set token in .env (see deploy/deployment.md)"
+  echo "  Production: set token in .env (see docs/local/deployment.md)"
 fi
 
 docker compose build

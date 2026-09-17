@@ -1,6 +1,6 @@
 -- Heliolytics PostgreSQL + TimescaleDB schema v3
 -- Fresh DB only: deploy/reset-db.sh (point init at this file on v3 branch)
--- v2 frozen: see schema.sql + SCHEMA_DESIGN.md — do not edit for v3 work
+-- v2 frozen: see schema.sql + docs/local/SCHEMA_DESIGN.md — do not edit for v3 work
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 
