@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 var ist = time.FixedZone("IST", 5*3600+30*60)

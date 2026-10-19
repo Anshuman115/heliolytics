@@ -9,9 +9,9 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/heliolytics/api/internal/api"
-	"github.com/heliolytics/api/internal/config"
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/api"
+	"github.com/Anshuman115/heliolytics/internal/config"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 func main() {

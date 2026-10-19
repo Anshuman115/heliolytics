@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 func (h *metricsHandler) dailyHealthScores(w http.ResponseWriter, r *http.Request) {

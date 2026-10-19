@@ -41,21 +41,35 @@ does not own sync progress; the server does.
 
 ## Stack
 
-`go.mod` declares Go 1.22 and pgx/v5. HTTP uses the standard library. PostgreSQL
-with TimescaleDB stores the data, sqlc generates part of the query layer, and
-Docker Compose runs the database, API, web app and tunnel connector.
+The module path is `github.com/Anshuman115/heliolytics`. `go.mod` records Go
+1.26.9 as the minimum Go version, requires pgx/v5 v5.9.2, and lists
+`golang.org/x/text` v0.41.0 as an indirect requirement. HTTP uses the standard
+library. PostgreSQL with TimescaleDB stores the data, sqlc generates part of the
+query layer, and Docker Compose runs the database, adminer, the API, the web app
+and the tunnel connector.
 
 ## Run and verify
 
+The commands below need Go 1.26.9. Running the server also needs the database and
+configuration described in `deploy/`.
+
 ```sh
 go run ./cmd/server
-go test ./...
+go test -count=1 ./...
 go vet ./...
 ```
 
+`-count=1` disables the test cache, so results are not reused from earlier runs.
+Database integration tests need `TEST_DATABASE_URL` pointing at a throwaway
+TimescaleDB initialized from `schema.sql`. Raw-fixture tests skip when their dump
+files are absent. Skipped tests do not cover those cases.
+
+Before a release, run `govulncheck ./...` and `govulncheck -mode=binary` on the
+built Linux ARM64 binary. Both must report no vulnerabilities.
+
 Validation: not run for this revision. Database and dump-based tests skip when
-their prerequisites are absent, so read the skip list before treating an
-integration suite as verified.
+their prerequisites are absent, so read the skip messages from `go test -v`
+before treating an integration suite as verified.
 
 ## Local notes
 

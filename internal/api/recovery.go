@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/heliolytics/api/internal/readiness"
+	"github.com/Anshuman115/heliolytics/internal/readiness"
 )
 
 func (h *metricsHandler) recovery(w http.ResponseWriter, r *http.Request) {

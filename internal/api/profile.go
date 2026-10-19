@@ -5,7 +5,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 type profileHandler struct {

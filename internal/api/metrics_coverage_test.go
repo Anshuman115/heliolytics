@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 func TestCoverageResponseSerializesWorkoutTypesAsNull(t *testing.T) {

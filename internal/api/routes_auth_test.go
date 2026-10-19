@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/heliolytics/api/internal/auth"
-	"github.com/heliolytics/api/internal/config"
+	"github.com/Anshuman115/heliolytics/internal/auth"
+	"github.com/Anshuman115/heliolytics/internal/config"
 )
 
 func TestProtectedRouteRequiresValidOneTimeToken(t *testing.T) {

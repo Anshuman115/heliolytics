@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/heliolytics/api/internal/auth"
+	"github.com/Anshuman115/heliolytics/internal/auth"
 )
 
 func HMACToken(secret string) func(http.Handler) http.Handler {

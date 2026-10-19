@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 // RunIngest parses raw sync blobs, then persists rows and recomputes touched

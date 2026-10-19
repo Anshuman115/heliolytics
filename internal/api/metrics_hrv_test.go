@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/heliolytics/api/internal/auth"
-	"github.com/heliolytics/api/internal/config"
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/auth"
+	"github.com/Anshuman115/heliolytics/internal/config"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 const hrvTestSigningSecret = "test-secret-value"

@@ -3,9 +3,9 @@ package api
 import (
 	"net/http"
 
-	"github.com/heliolytics/api/internal/config"
-	"github.com/heliolytics/api/internal/middleware"
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/config"
+	"github.com/Anshuman115/heliolytics/internal/middleware"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 func NewMux(st *store.Store, cfg config.Config) http.Handler {

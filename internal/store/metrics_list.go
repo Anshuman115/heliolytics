@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/heliolytics/api/internal/store/db"
+	"github.com/Anshuman115/heliolytics/internal/store/db"
 )
 
 func (s *Store) ListDays(ctx context.Context, from, to string) ([]DayMetric, error) {

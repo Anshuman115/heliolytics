@@ -3,7 +3,7 @@ package rollup
 import (
 	"context"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 // Target is implemented by the normal store and by the current ingest

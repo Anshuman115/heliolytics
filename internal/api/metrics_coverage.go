@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 func (h *metricsHandler) coverage(w http.ResponseWriter, r *http.Request) {

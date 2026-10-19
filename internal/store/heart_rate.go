@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/heliolytics/api/internal/store/db"
+	"github.com/Anshuman115/heliolytics/internal/store/db"
 	"github.com/jackc/pgx/v5"
 )
 

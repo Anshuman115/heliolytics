@@ -1,6 +1,6 @@
 package parse
 
-import "github.com/heliolytics/api/internal/store"
+import "github.com/Anshuman115/heliolytics/internal/store"
 
 func toSleepRows(recs []SleepRecord) []store.SleepRow {
 	out := make([]store.SleepRow, len(recs))

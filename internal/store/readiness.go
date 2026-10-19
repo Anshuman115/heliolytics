@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 
-	"github.com/heliolytics/api/internal/readiness"
-	"github.com/heliolytics/api/internal/store/db"
+	"github.com/Anshuman115/heliolytics/internal/readiness"
+	"github.com/Anshuman115/heliolytics/internal/store/db"
 )
 
 // RecomputeReadiness computes and stores the recovery score for each given IST

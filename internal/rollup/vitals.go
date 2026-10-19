@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 // recomputeHrvSQL averages hrv_samples.value within the sleep window and

@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/heliolytics/api/internal/parse"
+	"github.com/Anshuman115/heliolytics/internal/parse"
 )
 
 func (h *metricsHandler) activitySessions(w http.ResponseWriter, r *http.Request) {

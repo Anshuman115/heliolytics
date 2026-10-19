@@ -3,8 +3,8 @@ package parse
 import (
 	"context"
 
-	"github.com/heliolytics/api/internal/rollup"
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/rollup"
+	"github.com/Anshuman115/heliolytics/internal/store"
 	"github.com/jackc/pgx/v5"
 )
 

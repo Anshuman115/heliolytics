@@ -10,8 +10,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/heliolytics/api/internal/parse"
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/parse"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 type ingestHandler struct {
