@@ -78,8 +78,8 @@ a trusted reverse proxy is actually terminating traffic.
 | `REPARSE_SECRET` | *(empty)* | Separate secret for reparse |
 | `TRUST_PROXY` | `false` | Honor forwarded client IP |
 
-Secrets are **never** committed : they come from the environment. See
-`docs/local/deployment.md`.
+Secrets come from the environment. The repository ships placeholders only, and the
+local-only deployment notes describe first-run setup.
 
 ## Reparse is separately gated
 

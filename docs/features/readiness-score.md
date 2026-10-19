@@ -1,6 +1,6 @@
 # Readiness and recovery
 
-Source review: 7 September 2026. These are application rules, not a clinical assessment.
+These are application rules, not a clinical assessment.
 
 ## Two different sources
 
@@ -68,4 +68,4 @@ recompute everywhere after a source edit. Review the recalculation scope before
 changing the formula.
 
 See `internal/readiness/readiness_test.go` for formula examples. Those tests were
-not rerun during this documentation update.
+not rerun for this revision.

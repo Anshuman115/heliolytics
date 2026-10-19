@@ -41,3 +41,7 @@ docs/*
 
 # Local reference documentation
 docs/local/
+
+# Agent instructions are local-only
+AGENTS.md
+CLAUDE.md

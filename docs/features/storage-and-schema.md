@@ -1,7 +1,5 @@
 # Storage and schema
 
-Source review: 7 September 2026. Describes the local code, not a live deployment check.
-
 PostgreSQL stores the data. TimescaleDB adds time partitioning to eight sample
 tables. sqlc turns selected SQL queries into Go functions.
 

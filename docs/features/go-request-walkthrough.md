@@ -1,6 +1,6 @@
 # Follow one Go request
 
-Source review: 7 September 2026. Read [Go basics](go-basics.md) first.
+Read [Go basics](go-basics.md) first.
 
 Suppose a screen asks for 1 September. The dates here are examples, not your data.
 

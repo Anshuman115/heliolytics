@@ -1,6 +1,6 @@
 # Learn Go through Heliolytics
 
-Source review: 7 September 2026. Start here if Go is new to you.
+Start here if Go is new to you.
 This covers the Go used by this backend, not the whole language.
 
 ## 1. A package is a group of related files
@@ -110,7 +110,7 @@ Check errors before using the result. A panic is not the usual request-error pat
 
 `gofmt` formats code, `go test` runs tests, and `go vet` checks suspicious patterns.
 `sqlc generate` creates database code from SQL. These commands are explained here;
-this documentation update did not run the application or its tests.
+the application and its tests were not run for this revision.
 
 Next: [trace an actual request](go-request-walkthrough.md).
 For language practice: [A Tour of Go](https://go.dev/tour/).

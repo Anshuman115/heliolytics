@@ -1,7 +1,5 @@
 # Ingest and parsing
 
-Source review: 7 September 2026. Describes the local code, not a live deployment check.
-
 Flutter uploads raw bytes. Go turns them into typed observations, then daily rows.
 
 ## HTTP boundary

@@ -1,7 +1,5 @@
 # Metrics API
 
-Source review: 7 September 2026. Describes the local code, not a live deployment check.
-
 The route registry is `internal/api/routes.go`. Successful responses use named
 JSON fields such as `days` or `workouts`; errors generally use HTTP status and plain
 text. There is no universal `data` wrapper.

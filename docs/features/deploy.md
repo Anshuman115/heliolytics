@@ -1,9 +1,5 @@
 # Deployment overview
 
-Source review: 7 September 2026. Describes the local code, not a live deployment check.
-
-Read [the deployment guide](../local/deployment.md) for steps.
-
 | Service | Source | Host access |
 |---|---|---|
 | `db` | `timescale/timescaledb:latest-pg16` | Docker network only |
