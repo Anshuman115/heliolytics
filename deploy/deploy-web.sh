@@ -4,7 +4,7 @@
 # API or the strap sync path).
 #
 # Usage:
-#   ./deploy-web.sh           # build from the current Heliolytics_Web checkout
+#   ./deploy-web.sh           # build from the current heliolytics-web checkout
 #   PULL=1 ./deploy-web.sh    # git pull the web repo first, then build
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -14,7 +14,7 @@ if ! command -v docker >/dev/null; then
   exit 1
 fi
 
-WEB_DIR="../../Heliolytics_Web"
+WEB_DIR="../../heliolytics-web"
 if [[ ! -d "$WEB_DIR" ]]; then
   echo "Web checkout not found at $WEB_DIR (sibling of this repo)." >&2
   exit 1
