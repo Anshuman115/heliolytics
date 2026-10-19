@@ -3,8 +3,9 @@
 | Service | Source | Host access |
 |---|---|---|
 | `db` | `timescale/timescaledb:latest-pg16` | Docker network only |
+| `adminer` | `adminer` image | `127.0.0.1:8081` |
 | `api` | Backend Dockerfile at repo root | `127.0.0.1:8080` by default |
-| `web` | Sibling `Heliolytics_Web` | `127.0.0.1:3000` by default |
+| `web` | Sibling `heliolytics-web` | `127.0.0.1:3000` by default |
 | `cloudflared` | Tunnel connector | Outbound tunnel |
 
 Compose lives in `deploy/docker-compose.yml`. The API waits for database health. Web waits for API health. Web accesses Go at `http://api:8080` on the Docker network.

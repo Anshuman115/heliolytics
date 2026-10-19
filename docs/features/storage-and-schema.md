@@ -24,7 +24,7 @@ PostgreSQL stores the data. TimescaleDB adds time partitioning to eight sample t
 | `resp_samples` | Breathing rate |
 | `rhr_samples` | Resting HR |
 
-The eight tables ending in `_samples` above are hypertables on `sampled_at`. The current schema has neither `health_samples` nor `sleep_stages`.
+The eight tables ending in `_samples` above are hypertables on `sampled_at`.
 
 ## Storage levels
 

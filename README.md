@@ -19,9 +19,9 @@ web clients.
 
 | Repo | Responsibility |
 |---|---|
-| Heliolytics_App | Pair with the strap, fetch bytes, upload, display server results |
-| Heliolytics | Parse bytes, store samples, calculate daily summaries, serve JSON |
-| Heliolytics_Web | Read the API on the Next.js server, then render charts |
+| heliolytics-app | Pair with the strap, fetch bytes, upload, display server results |
+| heliolytics | Parse bytes, store samples, calculate daily summaries, serve JSON |
+| heliolytics-web | Read the API on the Next.js server, then render charts |
 
 The phone caches parsed responses. It does not decode historical health blobs and
 does not own sync progress; the server does.

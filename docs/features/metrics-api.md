@@ -28,8 +28,6 @@ Paths below start with `/api/v1` unless shown otherwise. App means the Flutter c
 | `POST /api/v1/ingest` | Accept multipart sync | App |
 | `POST /api/v1/reparse` | Replay latest stored session | Operator; disabled by default |
 
-The former paths `/api/v1/metrics/days` and `/api/v1/metrics/sleep` are not registered.
-
 ## Dates and response shapes
 
 Most history routes accept inclusive `from` and `to` date keys. Defaults in `metrics_common.go` start 30 days before today, or 90 for workouts and automatic sessions. Both endpoints are inclusive. These defaults are not exact row counts.

@@ -18,9 +18,8 @@ type Config struct {
 	TrustProxy        bool
 }
 
-// SHA-256 digests of known development signing secrets. Digests are used so the
-// literal values are not repeated in the repository, since both were published in
-// its history and remain recoverable from it.
+// SHA-256 digests of known development signing secrets. Comparison uses digests so
+// the literals are not stored in the repository.
 var weakSigningSecretDigests = []string{
 	"b3cf5152a10b7a596ff461bfb6e04203341d08239fc80a56ce135f187ef29e6e",
 	"93ec5f0a32098f9e89c82e40979731bbe9cf5f391008333cd96ed586187d4d36",

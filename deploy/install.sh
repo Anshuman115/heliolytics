@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 if [[ ! -f .env ]]; then
-  echo "Creating .env from .env.example — edit secrets before sharing URLs."
+  echo "Creating .env from .env.example; edit secrets before sharing URLs."
   cp .env.example .env
 fi
 
@@ -13,7 +13,7 @@ if ! command -v docker >/dev/null; then
 fi
 
 if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && ! grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.\+' .env 2>/dev/null; then
-  echo "Warning: CLOUDFLARE_TUNNEL_TOKEN empty — cloudflared will not connect."
+  echo "Warning: CLOUDFLARE_TUNNEL_TOKEN empty; cloudflared will not connect."
   echo "  Local dev: use http://127.0.0.1:\${API_PORT:-8080} and :\${WEB_PORT:-3000}"
   echo "  Production: set token in .env (see docs/local/deployment.md)"
 fi
