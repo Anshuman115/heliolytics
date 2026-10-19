@@ -1,13 +1,10 @@
 # Metrics API
 
-The route registry is `internal/api/routes.go`. Successful responses use named
-JSON fields such as `days` or `workouts`; errors generally use HTTP status and plain
-text. There is no universal `data` wrapper.
+The route registry is `internal/api/routes.go`. Successful responses use named JSON fields such as `days` or `workouts`. Errors generally use an HTTP status and plain text. There is no universal `data` wrapper.
 
-## Routes and actual consumers
+## Routes and current consumers
 
-Paths below start with `/api/v1` unless shown otherwise. App means the Flutter
-client; Web means the Next.js server-side client.
+Paths below start with `/api/v1` unless shown otherwise. App means the Flutter client. Web means the Next.js server-side client.
 
 | Method and path | Response / purpose | Current consumer |
 |---|---|---|
@@ -33,31 +30,24 @@ client; Web means the Next.js server-side client.
 
 The former paths `/api/v1/metrics/days` and `/api/v1/metrics/sleep` are not registered.
 
-## Dates and shapes
+## Dates and response shapes
 
-Most history routes accept inclusive `from` and `to` date keys. Defaults in
-`metrics_common.go` start 30 days before today, or 90 for workouts/auto sessions.
-Both endpoints are inclusive; these defaults are not exact row counts.
+Most history routes accept inclusive `from` and `to` date keys. Defaults in `metrics_common.go` start 30 days before today, or 90 for workouts and automatic sessions. Both endpoints are inclusive. These defaults are not exact row counts.
+
 Recovery and strain require `day=YYYY-MM-DD`.
 
-Compact blocks carry a `startTime`, second `offsets`, and `values`, plus day/metric
-identity as applicable. Clients pair each offset with its value and rebuild time.
-This expands timestamps, not health blobs. A consumer must follow each endpoint's
-actual response shape rather than assume every route returns a flat list.
+Compact blocks carry a `startTime`, second `offsets`, and `values`, plus day or metric identity as applicable. Clients pair each offset with its value and rebuild time. This expands timestamps, not health blobs. A consumer must follow each endpoint's actual response shape rather than assume that every route returns a flat list.
 
-Profile writes use `height_cm` and `weight_kg`; daily metric JSON uses names such
-as `dayKey` and `hrvRmssd`. Profile and daily metric casing are different contracts.
+Profile writes use `height_cm` and `weight_kg`. Daily metric JSON uses names such as `dayKey` and `hrvRmssd`. Profile and daily metric casing are different contracts.
 
-`/recovery` always computes the backend formula. The readiness in daily metrics
-prefers the device's score. These can differ; do not label them interchangeable.
+`/recovery` always computes the backend formula. Readiness in daily metrics prefers the device's score. These can differ and are not interchangeable.
 
 ## Request path
 
 Logging -> rate limiter -> HMAC verifier -> handler -> store -> JSON.
 `/health` bypasses that chain and checks the database.
 
-Flutter fetches day bundles plus separate health tiles; heavy series are requested
-on detail screens. Web currently starts eight reads on the server for its dashboard.
+Flutter fetches day bundles plus separate health tiles. Heavy series are requested on detail screens. Web currently starts eight reads on the server for its dashboard.
 
 ## Source files
 
@@ -67,3 +57,5 @@ on detail screens. Web currently starts eight reads on the server for its dashbo
 - `sql/queries`: handwritten sqlc queries; `internal/store/db` is generated.
 
 See [the request walkthrough](go-request-walkthrough.md) for a line-by-line example.
+
+Validation: not run for this revision.

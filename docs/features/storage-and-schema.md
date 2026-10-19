@@ -1,7 +1,6 @@
 # Storage and schema
 
-PostgreSQL stores the data. TimescaleDB adds time partitioning to eight sample
-tables. sqlc turns selected SQL queries into Go functions.
+PostgreSQL stores the data. TimescaleDB adds time partitioning to eight sample tables. sqlc turns selected SQL queries into Go functions.
 
 ## Current tables
 
@@ -25,34 +24,25 @@ tables. sqlc turns selected SQL queries into Go functions.
 | `resp_samples` | Breathing rate |
 | `rhr_samples` | Resting HR |
 
-The eight tables ending in `_samples` above are hypertables on `sampled_at`.
-The current schema has neither `health_samples` nor `sleep_stages`.
+The eight tables ending in `_samples` above are hypertables on `sampled_at`. The current schema has neither `health_samples` nor `sleep_stages`.
 
-## Why keep several levels?
+## Storage levels
 
-Raw blobs allow parsing work to be revisited. Parsed observations power detailed
-charts. Daily rows answer day-screen requests without loading all samples.
-The phone may cache parsed responses; it does not own this canonical history.
+Raw blobs allow parsing work to be revisited. Parsed observations power detailed charts. Daily rows answer day-screen requests without loading all samples. The phone may cache parsed responses, but it does not own canonical history.
 
-Normal ingest writes original blobs, parsed rows and daily rollups in one
-transaction. Rollups read stored observations, so an upload containing only one
-signal does not replace the entire day with that partial upload.
+Normal ingest writes original blobs, parsed rows and daily rollups in one transaction. Rollups read stored observations, so an upload containing only one signal does not replace the entire day with that partial upload.
 
 ## Coverage
 
-`coverage.go` reports the latest stored observation/session end and last ingest.
-`coverage_types.go` maps all fourteen fetched codes to their own watermarks.
-Workout summary/detail and spot/sleep SpO2 have separate source coverage.
-Sleep coverage uses stage end times when available, otherwise elapsed sleep plus
-wake time. `0x48` coverage uses main sleep, not a later nap.
+`coverage.go` reports the latest stored observation or session end and last ingest. `coverage_types.go` maps all fourteen fetched codes to their own watermarks. Workout summary/detail and spot/sleep SpO2 have separate source coverage.
 
-A latest timestamp is a sync-planning watermark. It does not certify that every
-minute before it is present.
+Sleep coverage uses stage end times when available. Otherwise, it uses elapsed sleep plus wake time. `0x48` coverage uses main sleep, not a later nap.
+
+A latest timestamp is a sync-planning watermark. It does not certify that every minute before it is present.
 
 ## SQL and migrations
 
-Edit `sql/queries/*.sql`, then regenerate `internal/store/db`. Handwritten pgx
-queries also exist in `internal/store` and `internal/rollup`.
+Edit `sql/queries/*.sql`, then regenerate `internal/store/db`. Handwritten pgx queries also exist in `internal/store` and `internal/rollup`.
 
 | Migration | Purpose |
 |---|---|
@@ -65,9 +55,8 @@ queries also exist in `internal/store` and `internal/rollup`.
 | `013_repair_sleep_stage_times.sql` | Repair existing sleep timing |
 | `014_workout_source_coverage.sql` | Separate summary/detail flags |
 
-`schema.sql` initializes an empty DB volume. Numbered migrations are not run by
-container startup. Inspect an existing DB's shape and applied changes before
-choosing migrations; some scripts assume older tables exist.
+`schema.sql` initializes an empty DB volume. Numbered migrations are not run by container startup. Inspect an existing DB's shape and applied changes before choosing migrations. Some scripts assume older tables exist.
 
-There is no automated raw-blob retention, owner export or history deletion route.
-`deploy/reset-db.sh` deletes the full database volume. It is not a migration tool.
+There is no automated raw-blob retention, owner export or history deletion route. `deploy/reset-db.sh` deletes the full database volume. It is not a migration tool.
+
+Validation: not run for this revision.
