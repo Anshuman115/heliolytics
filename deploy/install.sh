@@ -1,31 +1,35 @@
 #!/usr/bin/env bash
+# Creates the private deploy/.env from the template and stops.
+# It never builds, pulls, starts or contacts anything, and it never generates secrets.
 set -euo pipefail
-cd "$(dirname "$0")"
+umask 077
 
-if [[ ! -f .env ]]; then
-  echo "Creating .env from .env.example; edit secrets before sharing URLs."
-  cp .env.example .env
+script_dir=
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+cd -- "$script_dir"
+
+if [[ -f .env ]]; then
+  printf 'deploy/.env already exists; leaving its bytes unchanged.\n'
+  printf 'Next steps:\n'
+  printf '  1. Fill every empty value in deploy/.env; keep the password hash single-quoted.\n'
+  printf '  2. Run deploy/validate-env.sh with the canonical project, env and compose files.\n'
+  printf '  3. Build and start explicitly: docker compose --project-name deploy up -d --build\n'
+  exit 0
 fi
 
-if ! command -v docker >/dev/null; then
-  echo "Docker is required. Install: https://docs.docker.com/engine/install/"
+if [[ ! -f .env.example ]]; then
+  printf 'deploy/.env.example is missing; restore it from the repository.\n' >&2
   exit 1
 fi
 
-if [[ -z "${CLOUDFLARE_TUNNEL_TOKEN:-}" ]] && ! grep -q '^CLOUDFLARE_TUNNEL_TOKEN=.\+' .env 2>/dev/null; then
-  echo "Warning: CLOUDFLARE_TUNNEL_TOKEN empty; cloudflared will not connect."
-  echo "  Local dev: use http://127.0.0.1:\${API_PORT:-8080} and :\${WEB_PORT:-3000}"
-  echo "  Production: set token in .env (see docs/local/deployment.md)"
-fi
+cp -- .env.example .env
+chmod 600 -- .env
 
-docker compose build
-docker compose up -d
-echo ""
-echo "Heliolytics stack is up."
-echo "  API (local): http://127.0.0.1:${API_PORT:-8080}/health"
-echo "  Web (local): http://127.0.0.1:${WEB_PORT:-3000}/login"
-echo "  Public HTTPS: via Cloudflare tunnel hostnames (see Zero Trust dashboard)"
-echo ""
-echo "Flutter app API key = HELIOLYTICS_SIGNING_SECRET from deploy/.env"
-echo "Web password hash   = HELIOLYTICS_WEB_PASSWORD_HASH from deploy/.env"
-echo "Browser sessions    = HELIOLYTICS_SESSION_SECRET from deploy/.env"
+printf 'Created deploy/.env mode 0600 from the template.\n'
+printf 'Every required value is still empty, so validation will fail until you fill it.\n'
+printf 'Next steps:\n'
+printf '  1. Generate secrets with openssl rand -hex 32 and the hash with npm run auth:hash-password.\n'
+printf '  2. Fill deploy/.env; keep HELIOLYTICS_WEB_PASSWORD_HASH single-quoted as one line.\n'
+printf '  3. Run deploy/validate-env.sh with the canonical project, env and compose files.\n'
+printf '  4. Build and start explicitly: docker compose --project-name deploy up -d --build\n'
+exit 0

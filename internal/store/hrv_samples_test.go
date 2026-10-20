@@ -2,66 +2,60 @@ package store
 
 import (
 	"context"
+	"errors"
+	"math"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
-func TestUpsertHrvSamplesThenReadBack(t *testing.T) {
-	st, cleanup := testStore(t)
-	t.Cleanup(cleanup)
-	ctx := context.Background()
-	const day = "2026-06-22"
+func TestHRVSamplesRoundTrip(t *testing.T) {
+	st := newTestStore(t)
+	at := time.Date(2026, 10, 1, 20, 0, 0, 0, time.UTC)
+	seedSession(t, st, "hrv-round-trip", at.Add(-time.Hour), at)
 
-	clean := func() { st.pool.Exec(ctx, `DELETE FROM hrv_samples WHERE day_key=$1::date`, day) }
-	clean()
-	t.Cleanup(clean)
-
-	ts := time.Date(2026, 6, 22, 2, 0, 0, 0, time.UTC)
-	pts := []SampleValue{{DayKey: day, SampledAt: ts, Value: 45}}
-	if err := st.UpsertHrvSamples(ctx, "sess-hrv-1", pts); err != nil {
-		t.Fatalf("upsert: %v", err)
+	mut, err := writeHRVTx(t, st, []HRVSample{{At: at, RMSSDMS: 48.5}}, "hrv-round-trip", at)
+	if err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	if !mut.Changed {
+		t.Fatal("new sample did not report a change")
 	}
 
-	var value float64
-	if err := st.pool.QueryRow(ctx,
-		`SELECT value FROM hrv_samples WHERE day_key=$1::date`, day).Scan(&value); err != nil {
-		t.Fatalf("read back: %v", err)
+	rows, err := listHRV(context.Background(), st.q, at.Add(-time.Hour), at.Add(time.Hour))
+	if err != nil {
+		t.Fatalf("read: %v", err)
 	}
-	if value != 45 {
-		t.Fatalf("value=%v, want 45", value)
+	if len(rows) != 1 || rows[0].RMSSDMS != 48.5 {
+		t.Fatalf("rows = %+v", rows)
 	}
 }
 
-func TestListHrvSamplesRange(t *testing.T) {
-	st, cleanup := testStore(t)
-	t.Cleanup(cleanup)
-	ctx := context.Background()
-	const dayIn = "2026-07-23"
-	const dayOut = "2026-05-01"
+func TestHRVSamplesRejectOutOfRangeValues(t *testing.T) {
+	st := newTestStore(t)
+	at := time.Date(2026, 10, 1, 20, 0, 0, 0, time.UTC)
+	seedSession(t, st, "hrv-range", at.Add(-time.Hour), at)
 
-	clean := func() {
-		st.pool.Exec(ctx, `DELETE FROM hrv_samples WHERE day_key IN ($1::date, $2::date)`, dayIn, dayOut)
+	for _, value := range []float64{0, -1, 301, math.NaN(), math.Inf(1)} {
+		_, err := writeHRVTx(t, st, []HRVSample{{At: at, RMSSDMS: value}}, "hrv-range", at)
+		var invalid *InvalidRowError
+		if !errors.As(err, &invalid) {
+			t.Fatalf("rmssd=%v err = %v, want an invalid row error", value, err)
+		}
 	}
-	clean()
-	t.Cleanup(clean)
+	if n := countRows(t, st, "hrv_samples"); n != 0 {
+		t.Fatalf("rows after rejected writes = %d, want 0", n)
+	}
+}
 
-	inRange := SampleValue{DayKey: dayIn, SampledAt: time.Date(2026, 7, 23, 3, 0, 0, 0, time.UTC), Value: 52}
-	outOfRange := SampleValue{DayKey: dayOut, SampledAt: time.Date(2026, 5, 1, 3, 0, 0, 0, time.UTC), Value: 99}
-	if err := st.UpsertHrvSamples(ctx, "sess-hrv-range", []SampleValue{inRange, outOfRange}); err != nil {
-		t.Fatalf("upsert: %v", err)
-	}
-
-	got, err := st.ListHrvSamplesRange(ctx, "2026-07-01", "2026-07-30")
-	if err != nil {
-		t.Fatalf("ListHrvSamplesRange: %v", err)
-	}
-	if len(got) != 1 {
-		t.Fatalf("got %d samples, want 1: %+v", len(got), got)
-	}
-	if got[0].Value != 52 {
-		t.Fatalf("value=%v, want 52", got[0].Value)
-	}
-	if got[0].DayKey != dayIn {
-		t.Fatalf("day_key=%s, want %s", got[0].DayKey, dayIn)
-	}
+func writeHRVTx(t *testing.T, st *Store, rows []HRVSample, sessionID string, observedAt time.Time) (Mutation, error) {
+	t.Helper()
+	var out Mutation
+	err := st.WithTx(context.Background(), func(tx pgx.Tx) error {
+		var err error
+		out, err = st.WriteHRV(context.Background(), tx, rows, sessionID, observedAt)
+		return err
+	})
+	return out, err
 }

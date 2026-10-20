@@ -1,0 +1,198 @@
+{
+  "window": {
+    "startedAt": "2026-06-22T17:07:40Z",
+    "endedAt": "2026-06-22T17:08:11Z"
+  },
+  "types": {
+    "0x01": {
+      "status": "accepted",
+      "rows": 4218,
+      "dropped": 6,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T16:58:00Z",
+      "warnings": []
+    },
+    "0x05": {
+      "status": "accepted",
+      "rows": 1,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T03:49:59Z",
+      "warnings": []
+    },
+    "0x06": {
+      "status": "accepted",
+      "rows": 0,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T03:49:59Z",
+      "warnings": []
+    },
+    "0x0D": {
+      "status": "accepted",
+      "rows": 2,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T17:07:00Z",
+      "warnings": []
+    },
+    "0x13": {
+      "status": "accepted",
+      "rows": 263,
+      "dropped": 1858,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T17:05:00Z",
+      "warnings": []
+    },
+    "0x26": {
+      "status": "raw_only",
+      "rows": 0,
+      "dropped": 13,
+      "trailingBytes": 0,
+      "processedThrough": null,
+      "warnings": ["spo2_sleep_placeholder offset=1 count=13"]
+    },
+    "0x2E": {
+      "status": "accepted",
+      "rows": 2120,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T17:06:00Z",
+      "warnings": []
+    },
+    "0x38": {
+      "status": "accepted",
+      "rows": 413,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T15:59:01Z",
+      "warnings": []
+    },
+    "0x46": {
+      "status": "accepted",
+      "rows": 180,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T02:23:15Z",
+      "warnings": []
+    },
+    "0x48": {
+      "status": "accepted",
+      "rows": 2,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T15:50:00Z",
+      "warnings": []
+    },
+    "0x49": {
+      "status": "accepted",
+      "rows": 306,
+      "dropped": 0,
+      "trailingBytes": 0,
+      "processedThrough": "2026-06-22T15:58:22Z",
+      "warnings": []
+    }
+  },
+  "steps": {
+    "nonzero_minutes": 176,
+    "zero_minutes": 1933,
+    "sentinel_minutes": 3,
+    "sum": 4564,
+    "day_sums": { "2026-06-21": 856, "2026-06-22": 3708 },
+    "first_minute": "2026-06-21T05:46:00Z",
+    "last_minute": "2026-06-22T16:58:00Z"
+  },
+  "heart_rate": {
+    "rows": 2109,
+    "first": "2026-06-21T05:46:00Z",
+    "last": "2026-06-22T16:58:00Z",
+    "day_means": { "2026-06-21": 67.1, "2026-06-22": 67.4 },
+    "zepp_backed": true
+  },
+  "continuous_heart_rate": {
+    "rows": 180,
+    "first": "2026-06-22T02:20:16Z",
+    "last": "2026-06-22T02:23:15Z",
+    "first_bpm": 99,
+    "last_bpm": 104,
+    "zepp_backed": false
+  },
+  "temperature": {
+    "first_hundredths_c": 3212,
+    "min_hundredths_c": 2868,
+    "max_hundredths_c": 3500,
+    "zepp_backed": false
+  },
+  "hrv": {
+    "rows": 306,
+    "min_rmssd": 39,
+    "max_rmssd": 131,
+    "timezone": 22,
+    "zepp_backed": false
+  },
+  "respiration": {
+    "rows": 413,
+    "min_br_min": 14,
+    "max_br_min": 19,
+    "timezone": 22,
+    "zepp_backed": false
+  },
+  "stress": {
+    "rows": 263,
+    "min": 4,
+    "max": 62,
+    "sentinel_bytes": 1858,
+    "zepp_backed": false
+  },
+  "pai": [
+    { "day_key": "2026-06-21", "score": 81, "sampled_at": "2026-06-21T18:29:01Z" },
+    { "day_key": "2026-06-22", "score": 82, "sampled_at": "2026-06-22T17:07:00Z" }
+  ],
+  "sleep": {
+    "main": {
+      "day_key": "2026-06-22",
+      "started_at": "2026-06-21T19:50:00Z",
+      "ended_at": "2026-06-22T01:00:00Z",
+      "is_nap": false,
+      "score": 62,
+      "total_mins": 307,
+      "deep_mins": 59,
+      "rem_mins": 84,
+      "light_mins": 164,
+      "wake_mins": 3,
+      "stages": 17,
+      "stages_truncated": false
+    },
+    "nap": {
+      "day_key": "2026-06-22",
+      "started_at": "2026-06-22T14:36:00Z",
+      "ended_at": "2026-06-22T15:50:00Z",
+      "is_nap": true,
+      "score": null,
+      "total_mins": 74,
+      "deep_mins": 10,
+      "rem_mins": 5,
+      "light_mins": 59,
+      "wake_mins": 0,
+      "stages": 5,
+      "stages_truncated": false
+    },
+    "zepp_backed": true
+  },
+  "workout": {
+    "sport_type": 92,
+    "sport_name": "Badminton",
+    "started_at": "2026-06-22T02:20:16Z",
+    "ended_at": "2026-06-22T03:49:59Z",
+    "duration_sec": 5383,
+    "calories": 666,
+    "avg_hr": 122,
+    "max_hr": 172,
+    "min_hr": 65,
+    "has_detail": true,
+    "detail_blocks": 164,
+    "first_detail_at": "2026-06-22T02:20:16.280Z",
+    "last_detail_at": "2026-06-22T03:49:55.980Z",
+    "zepp_backed": true
+  }
+}

@@ -21,6 +21,15 @@ vendor/
 deploy/.env
 build.env
 
+# Deploy private backup configuration, staging and local overrides
+deploy/backup.env
+deploy/.backup/
+deploy/*.dump
+deploy/*.dump.sha256
+deploy/*.dump.info
+deploy/docker-compose.override.yml
+.d01-sandbox/
+
 # OS / IDE
 .DS_Store
 .idea/

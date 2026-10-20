@@ -2,18 +2,25 @@ package api
 
 import (
 	"net/http"
+
+	"github.com/Anshuman115/heliolytics/internal/middleware"
 )
 
+// temperature serves the compact on-wrist temperature series. Ambient rows are
+// excluded by the store reader.
 func (h *metricsHandler) temperature(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	from, to, failure := h.rangeBounds(r, maxSampleRangeDays)
+	if failure != nil {
+		middleware.WriteError(w, failure)
 		return
 	}
-	from, to := dayRange(r)
 	days, err := h.st.ListTemperatureCompact(r.Context(), from, to)
 	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
+		writeStoreFailure(w, "temperature", err)
 		return
 	}
-	writeJSON(w, map[string]any{"days": days})
+	for i := range days {
+		normalizeCompact(&days[i])
+	}
+	writeJSON(w, http.StatusOK, compactDaysResponse{Days: days})
 }

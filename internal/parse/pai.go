@@ -3,63 +3,81 @@ package parse
 import (
 	"encoding/binary"
 	"math"
+	"sort"
 )
 
 const (
-	paiRecordSize = 102 // 0x05 marker → next marker, on Helio firmware
-	paiMarkerByte = 0x05
-	paiScoreOff   = 59 // float32 LE PAI total, offset from the 0x05 marker
-	paiScoreMax   = 1000.0
+	paiStride     = 102
+	paiMarker     = 0x05
+	paiEpochAt    = 1
+	paiTimezoneAt = 5
+	paiScoreAt    = 59
+	paiMaxScore   = 1000.0
 )
 
-type PaiScore struct {
-	DayKey string
-	Score  int
+// parsePAI decodes 102-byte records that start with the 0x05 marker. The score
+// is the float32 total at marker+59, never a byte read from the exponent.
+func parsePAI(raw []byte, window Window) ([]PAIRow, TypeResult, error) {
+	offsets, trailing, err := fixedRecords(typePAI, raw, paiStride)
+	if err != nil {
+		return nil, TypeResult{}, err
+	}
+	byDay := make(map[string]PAIRow, len(offsets))
+	dropped := 0
+	for _, off := range offsets {
+		if raw[off] != paiMarker {
+			return nil, TypeResult{}, newError(ErrCodeInvalidFraming, typePAI, off,
+				"record does not start with the 0x05 marker")
+		}
+		if raw[off+paiTimezoneAt] != istTimezoneQuarter {
+			return nil, TypeResult{}, timezoneError(typePAI, off+paiTimezoneAt, raw[off+paiTimezoneAt])
+		}
+		epoch := int64(binary.LittleEndian.Uint32(raw[off+paiEpochAt:]))
+		score, ok := paiScore(raw[off : off+paiStride])
+		at := EpochUTC(epoch)
+		if !ok || !window.contains(at) {
+			dropped++
+			continue
+		}
+		row := PAIRow{SampledAt: at, DayKey: IstDayKey(epoch), Score: score}
+		previous, exists := byDay[row.DayKey]
+		if !exists || !row.SampledAt.Before(previous.SampledAt) {
+			byDay[row.DayKey] = row
+		}
+	}
+	out := make([]PAIRow, 0, len(byDay))
+	for _, row := range byDay {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].DayKey != out[j].DayKey {
+			return out[i].DayKey < out[j].DayKey
+		}
+		return out[i].SampledAt.Before(out[j].SampledAt)
+	})
+	result := TypeResult{
+		Status:        statusFor(trailing),
+		Rows:          len(out),
+		Dropped:       dropped,
+		TrailingBytes: trailing,
+	}
+	if trailing > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "trailing_fragment", ByteOffset: len(raw) - trailing, Count: trailing,
+		})
+	}
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].SampledAt)
+	}
+	return out, result, nil
 }
 
-// ParsePai scans for 0x05-marked records. Each record holds an absolute epoch
-// (u32 LE at marker+1) and the PAI total as a float32 LE at marker+59. The
-// score is NOT an integer byte — earlier firmware-agnostic byte scans landed on
-// a float's exponent byte and returned bogus values (e.g. 61 instead of 81).
-func ParsePai(raw []byte) []PaiScore {
-	type slot struct {
-		sec   int64
-		score int
-	}
-	byDay := map[string]slot{}
-	for i := 0; i+paiScoreOff+4 <= len(raw); i++ {
-		if raw[i] != paiMarkerByte {
-			continue
-		}
-		sec := int64(binary.LittleEndian.Uint32(raw[i+1:]))
-		if !IsPlausibleUnixSec(sec) {
-			continue
-		}
-		score, ok := paiTotal(raw[i:])
-		if !ok {
-			continue
-		}
-		dk := IstDayKey(sec)
-		if prev, ok := byDay[dk]; !ok || sec >= prev.sec {
-			byDay[dk] = slot{sec: sec, score: score}
-		}
-	}
-	out := make([]PaiScore, 0, len(byDay))
-	for dk, s := range byDay {
-		out = append(out, PaiScore{DayKey: dk, Score: s.score})
-	}
-	return out
-}
-
-// paiTotal reads the float32 PAI total at the fixed in-record offset.
-func paiTotal(rec []byte) (int, bool) {
-	if len(rec) < paiScoreOff+4 {
+// paiScore reads the fixed in-record float32 total.
+func paiScore(record []byte) (int, bool) {
+	value := math.Float32frombits(binary.LittleEndian.Uint32(record[paiScoreAt:]))
+	total := float64(value)
+	if math.IsNaN(total) || math.IsInf(total, 0) || total < 0 || total > paiMaxScore {
 		return 0, false
 	}
-	v := math.Float32frombits(binary.LittleEndian.Uint32(rec[paiScoreOff:]))
-	f := float64(v)
-	if math.IsNaN(f) || math.IsInf(f, 0) || f <= 0 || f > paiScoreMax {
-		return 0, false
-	}
-	return int(math.Round(f)), true
+	return int(math.Round(total)), true
 }

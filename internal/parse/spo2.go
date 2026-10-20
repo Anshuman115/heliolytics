@@ -1,65 +1,121 @@
 package parse
 
-import "encoding/binary"
+import (
+	"bytes"
+	"encoding/binary"
+	"sort"
+)
 
-const spo2RecordSize = 65
-const spo2SleepRecordSize = 30
-const spo2HeaderByte = 0x02
+const (
+	spo2Stride        = 65
+	spo2SleepStride   = 30
+	spo2ModeAutomatic = 0x80
+	spo2MinPct        = 70
+	spo2MaxPct        = 100
+)
 
-type Spo2Sample struct {
-	DayKey    string
-	SampledAt int64
-	Percent   int
+// spO2SleepPlaceholder is the payload every 0x26 record carries on this
+// firmware: 100, duration 64, high 100s, low 99s and a fixed signal tail. It is
+// a firmware constant, not an optical measurement.
+var spO2SleepPlaceholder = []byte{
+	0x64, 0x40,
+	0x64, 0x64, 0x64, 0x64, 0x64, 0x64,
+	0x63, 0x63, 0x63, 0x63, 0x63, 0x63,
+	0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x40, 0x00,
+	0x00, 0x00, 0x00, 0x00,
 }
 
-func decodeSpo2Pct(raw byte) int {
-	v := int(raw)
-	if v >= 128 {
-		v -= 128
-	}
-	return v
+type spo2Key struct {
+	at     int64
+	source string
 }
 
-func ParseSpo2(raw []byte) []Spo2Sample {
-	payload := spo2Payload(raw)
-	if payload == nil {
-		return nil
+// parseSpO2 decodes 0x25 optical samples. The low seven bits are the value and
+// bit seven records an automatic measurement.
+func parseSpO2(raw []byte, catalog Catalog, window Window) ([]SpO2Row, TypeResult, error) {
+	records, trailing, err := headeredRecords(typeSpO2, raw, FindEntry(catalog, typeSpO2), spo2Stride)
+	if err != nil {
+		return nil, TypeResult{}, err
 	}
-	var out []Spo2Sample
-	for i := 0; i+spo2RecordSize <= len(payload); i += spo2RecordSize {
-		sec := int64(binary.LittleEndian.Uint32(payload[i:]))
-		pct := decodeSpo2Pct(payload[i+4])
-		if pct < 70 || pct > 100 || !IsPlausibleUnixSec(sec) {
+	byKey := make(map[spo2Key]SpO2Row, len(records))
+	dropped := 0
+	for _, record := range records {
+		epoch := int64(binary.LittleEndian.Uint32(raw[record.off:]))
+		at := EpochUTC(epoch)
+		rawValue := raw[record.off+4]
+		pct := int(rawValue & 0x7f)
+		mode := "manual"
+		if rawValue&spo2ModeAutomatic != 0 {
+			mode = "auto"
+		}
+		beyondRound := record.nextRound != nil && at.After(*record.nextRound)
+		if !window.contains(at) || beyondRound || pct < spo2MinPct || pct > spo2MaxPct {
+			dropped++
 			continue
 		}
-		out = append(out, Spo2Sample{DayKey: IstDayKey(sec), SampledAt: sec, Percent: pct})
+		byKey[spo2Key{at.Unix(), typeSpO2}] = SpO2Row{
+			SampledAt: at, Source: typeSpO2, Pct: pct, Mode: mode,
+		}
 	}
-	return out
+	out := make([]SpO2Row, 0, len(byKey))
+	for _, row := range byKey {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	result := TypeResult{
+		Status:        statusFor(trailing),
+		Rows:          len(out),
+		Dropped:       dropped,
+		TrailingBytes: trailing,
+	}
+	if trailing > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "trailing_fragment", ByteOffset: len(raw) - trailing, Count: trailing,
+		})
+	}
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].SampledAt)
+	}
+	return out, result, nil
 }
 
-func spo2Payload(raw []byte) []byte {
-	if len(raw) >= spo2RecordSize && len(raw)%spo2RecordSize == 0 {
-		return raw
+// parseSpO2Sleep classifies 0x26 records. Every record stays raw: placeholders
+// are firmware constants and unvalidated payloads have no confirmed meaning.
+func parseSpO2Sleep(raw []byte, catalog Catalog) (TypeResult, error) {
+	records, trailing, err := headeredRecords(typeSpO2Sleep, raw, FindEntry(catalog, typeSpO2Sleep), spo2SleepStride)
+	if err != nil {
+		return TypeResult{}, err
 	}
-	if len(raw) > 1 && (len(raw)-1)%spo2RecordSize == 0 {
-		return raw[1:]
-	}
-	return nil
-}
-
-// ParseSpo2Sleep — 1 header byte (0x02) + 30-byte epoch records.
-func ParseSpo2Sleep(raw []byte) []Spo2Sample {
-	if len(raw) == 0 || raw[0] != spo2HeaderByte {
-		return nil
-	}
-	var out []Spo2Sample
-	for i := 1; i+spo2SleepRecordSize <= len(raw); i += spo2SleepRecordSize {
-		sec := int64(binary.LittleEndian.Uint32(raw[i:]))
-		pct := int(raw[i+4])
-		if pct <= 0 || pct > 100 || !IsPlausibleUnixSec(sec) {
+	placeholders, unvalidated := 0, 0
+	firstPlaceholder, firstUnvalidated := -1, -1
+	for _, record := range records {
+		payload := raw[record.off+4 : record.off+4+len(spO2SleepPlaceholder)]
+		if bytes.Equal(payload, spO2SleepPlaceholder) {
+			placeholders++
+			if firstPlaceholder < 0 {
+				firstPlaceholder = record.off
+			}
 			continue
 		}
-		out = append(out, Spo2Sample{DayKey: IstDayKey(sec), SampledAt: sec, Percent: pct})
+		unvalidated++
+		if firstUnvalidated < 0 {
+			firstUnvalidated = record.off
+		}
 	}
-	return out
+	result := TypeResult{
+		Status:        "raw_only",
+		Dropped:       placeholders + unvalidated,
+		TrailingBytes: trailing,
+	}
+	if placeholders > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "spo2_sleep_placeholder", ByteOffset: firstPlaceholder, Count: placeholders,
+		})
+	}
+	if unvalidated > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "spo2_sleep_unvalidated", ByteOffset: firstUnvalidated, Count: unvalidated,
+		})
+	}
+	return result, nil
 }

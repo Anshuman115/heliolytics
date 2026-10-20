@@ -11,48 +11,66 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const latestHrvOnDay = `-- name: LatestHrvOnDay :one
-SELECT value FROM hrv_samples
-WHERE day_key = $1
-ORDER BY sampled_at DESC
-LIMIT 1
+const hrvDayBounds = `-- name: HrvDayBounds :many
+(SELECT day_key FROM hrv_samples ORDER BY sampled_at ASC LIMIT 1)
+UNION ALL
+(SELECT day_key FROM hrv_samples ORDER BY sampled_at DESC LIMIT 1)
 `
 
-func (q *Queries) LatestHrvOnDay(ctx context.Context, dayKey pgtype.Date) (pgtype.Numeric, error) {
-	row := q.db.QueryRow(ctx, latestHrvOnDay, dayKey)
-	var value pgtype.Numeric
-	err := row.Scan(&value)
-	return value, err
-}
-
-const listHrvSamplesRange = `-- name: ListHrvSamplesRange :many
-SELECT sampled_at, day_key, value
-FROM hrv_samples
-WHERE day_key >= $1 AND day_key <= $2
-ORDER BY sampled_at ASC
-`
-
-type ListHrvSamplesRangeParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
-}
-
-type ListHrvSamplesRangeRow struct {
-	SampledAt pgtype.Timestamptz `json:"sampled_at"`
-	DayKey    pgtype.Date        `json:"day_key"`
-	Value     pgtype.Numeric     `json:"value"`
-}
-
-func (q *Queries) ListHrvSamplesRange(ctx context.Context, arg ListHrvSamplesRangeParams) ([]ListHrvSamplesRangeRow, error) {
-	rows, err := q.db.Query(ctx, listHrvSamplesRange, arg.DayKey, arg.DayKey_2)
+func (q *Queries) HrvDayBounds(ctx context.Context) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, hrvDayBounds)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListHrvSamplesRangeRow{}
+	items := []pgtype.Date{}
 	for rows.Next() {
-		var i ListHrvSamplesRangeRow
-		if err := rows.Scan(&i.SampledAt, &i.DayKey, &i.Value); err != nil {
+		var day_key pgtype.Date
+		if err := rows.Scan(&day_key); err != nil {
+			return nil, err
+		}
+		items = append(items, day_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHrvSamples = `-- name: ListHrvSamples :many
+SELECT sampled_at, rmssd_ms::float8 AS rmssd, session_id, observed_at
+FROM hrv_samples
+WHERE sampled_at >= $1 AND sampled_at < $2
+ORDER BY sampled_at ASC
+`
+
+type ListHrvSamplesParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+}
+
+type ListHrvSamplesRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Rmssd      float64            `json:"rmssd"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+}
+
+func (q *Queries) ListHrvSamples(ctx context.Context, arg ListHrvSamplesParams) ([]ListHrvSamplesRow, error) {
+	rows, err := q.db.Query(ctx, listHrvSamples, arg.FromAt, arg.ToAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHrvSamplesRow{}
+	for rows.Next() {
+		var i ListHrvSamplesRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.Rmssd,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -63,51 +81,89 @@ func (q *Queries) ListHrvSamplesRange(ctx context.Context, arg ListHrvSamplesRan
 	return items, nil
 }
 
-const meanHrvInWindow = `-- name: MeanHrvInWindow :one
-SELECT AVG(value)::float8 AS avg_value, COUNT(*) AS n
+const listHrvSamplesByKeys = `-- name: ListHrvSamplesByKeys :many
+SELECT sampled_at, rmssd_ms::float8 AS rmssd, session_id, observed_at
 FROM hrv_samples
-WHERE sampled_at >= $1 AND sampled_at <= $2
+WHERE sampled_at = ANY($1::timestamptz[])
+ORDER BY sampled_at ASC
 `
 
-type MeanHrvInWindowParams struct {
-	SampledAt   pgtype.Timestamptz `json:"sampled_at"`
-	SampledAt_2 pgtype.Timestamptz `json:"sampled_at_2"`
+type ListHrvSamplesByKeysRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Rmssd      float64            `json:"rmssd"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-type MeanHrvInWindowRow struct {
-	AvgValue float64 `json:"avg_value"`
-	N        int64   `json:"n"`
+func (q *Queries) ListHrvSamplesByKeys(ctx context.Context, keys []pgtype.Timestamptz) ([]ListHrvSamplesByKeysRow, error) {
+	rows, err := q.db.Query(ctx, listHrvSamplesByKeys, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHrvSamplesByKeysRow{}
+	for rows.Next() {
+		var i ListHrvSamplesByKeysRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.Rmssd,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) MeanHrvInWindow(ctx context.Context, arg MeanHrvInWindowParams) (MeanHrvInWindowRow, error) {
-	row := q.db.QueryRow(ctx, meanHrvInWindow, arg.SampledAt, arg.SampledAt_2)
-	var i MeanHrvInWindowRow
-	err := row.Scan(&i.AvgValue, &i.N)
-	return i, err
+const maxHrvSampleAt = `-- name: MaxHrvSampleAt :one
+SELECT sampled_at FROM hrv_samples
+WHERE ($1::text IS NULL OR session_id = $1::text)
+ORDER BY sampled_at DESC
+LIMIT 1
+`
+
+func (q *Queries) MaxHrvSampleAt(ctx context.Context, sessionID pgtype.Text) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, maxHrvSampleAt, sessionID)
+	var sampled_at pgtype.Timestamptz
+	err := row.Scan(&sampled_at)
+	return sampled_at, err
 }
 
-const upsertHrvSample = `-- name: UpsertHrvSample :exec
-INSERT INTO hrv_samples (sampled_at, day_key, value, source_session_id)
-VALUES ($1, $2, $3, $4)
+const upsertHrvSamples = `-- name: UpsertHrvSamples :exec
+INSERT INTO hrv_samples (sampled_at, rmssd_ms, session_id, observed_at)
+SELECT v.sampled_at, v.rmssd, v.session_id, v.observed_at
+FROM ROWS FROM (
+  unnest($1::timestamptz[]),
+  unnest($2::real[]),
+  unnest($3::text[]),
+  unnest($4::timestamptz[])
+) AS v(sampled_at, rmssd, session_id, observed_at)
 ON CONFLICT (sampled_at) DO UPDATE SET
-  value = EXCLUDED.value,
-  day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id
+  rmssd_ms = EXCLUDED.rmssd_ms,
+  session_id = EXCLUDED.session_id,
+  observed_at = EXCLUDED.observed_at
+WHERE (EXCLUDED.observed_at, EXCLUDED.session_id COLLATE "C")
+      >= (hrv_samples.observed_at, hrv_samples.session_id COLLATE "C")
 `
 
-type UpsertHrvSampleParams struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+type UpsertHrvSamplesParams struct {
+	SampledAt  []pgtype.Timestamptz `json:"sampled_at"`
+	Rmssd      []float32            `json:"rmssd"`
+	SessionID  []string             `json:"session_id"`
+	ObservedAt []pgtype.Timestamptz `json:"observed_at"`
 }
 
-func (q *Queries) UpsertHrvSample(ctx context.Context, arg UpsertHrvSampleParams) error {
-	_, err := q.db.Exec(ctx, upsertHrvSample,
+func (q *Queries) UpsertHrvSamples(ctx context.Context, arg UpsertHrvSamplesParams) error {
+	_, err := q.db.Exec(ctx, upsertHrvSamples,
 		arg.SampledAt,
-		arg.DayKey,
-		arg.Value,
-		arg.SourceSessionID,
+		arg.Rmssd,
+		arg.SessionID,
+		arg.ObservedAt,
 	)
 	return err
 }

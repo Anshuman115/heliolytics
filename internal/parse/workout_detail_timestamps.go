@@ -1,69 +1,52 @@
 package parse
 
-const (
-	detailTimestampBytes = 6
-	detailMinEpochMillis = int64(946684800000)
-	detailMaxEpochMillis = int64(4102444800000)
-	detailFallbackGapMs  = int64(2 * 60 * 1000)
+import (
+	"bytes"
+	"time"
 )
 
-var detailSessionStartMarker = []byte{0x00, 0x00, 0x04, 0x04}
+var workoutDetailHeader = []byte{1, 12, 'p', 's', 'm', 'h'}
 
-type detailSession struct {
-	startedMs int64
-	lastMs    int64
+const workoutDetailTimestampSize = 6
+
+var workoutDetailHeaderSize = len(workoutDetailHeader) + workoutDetailTimestampSize
+
+// detailBlock is one psmh stream block: the offset of its header and the
+// millisecond instant stored right after it.
+type detailBlock struct {
+	off int
+	at  time.Time
 }
 
-func parseTimestampedDetailSessions(raw []byte) []WorkoutRecord {
-	var sessions []detailSession
-	for offset := 0; offset+len(psmHeader) <= len(raw); offset++ {
-		if !matchHeader(raw, offset) {
-			continue
+// parseWorkoutDetailBlocks walks the detail stream. The payload is not a fixed
+// record type: each block starts with a header and carries sensor payload until
+// the next header.
+func parseWorkoutDetailBlocks(raw []byte) ([]detailBlock, error) {
+	if !bytes.HasPrefix(raw, workoutDetailHeader) {
+		return nil, newError(ErrCodeInvalidFraming, typeWorkoutDetail, 0,
+			"payload does not start with a detail block header")
+	}
+	var out []detailBlock
+	pos := 0
+	for {
+		if !bytes.HasPrefix(raw[pos:], workoutDetailHeader) {
+			return nil, newError(ErrCodeInvalidFraming, typeWorkoutDetail, pos,
+				"unexpected detail block boundary")
 		}
-		millis, ok := detailBlockMillis(raw, offset)
-		if !ok {
-			continue
+		if len(raw)-pos < workoutDetailHeaderSize {
+			return nil, newError(ErrCodeInvalidFraming, typeWorkoutDetail, pos,
+				"detail block header is truncated")
 		}
-		startsSession := matchDetailStartMarker(raw, offset)
-		if len(sessions) == 0 || startsSession || millis-sessions[len(sessions)-1].lastMs > detailFallbackGapMs {
-			sessions = append(sessions, detailSession{startedMs: millis, lastMs: millis})
-			continue
+		millis := int64(0)
+		for index := range workoutDetailTimestampSize {
+			millis |= int64(raw[pos+len(workoutDetailHeader)+index]) << (8 * index)
 		}
-		sessions[len(sessions)-1].lastMs = millis
-	}
-
-	out := make([]WorkoutRecord, 0, len(sessions))
-	for _, session := range sessions {
-		durationSec := int((session.lastMs - session.startedMs) / 1000)
-		if durationSec < 1 {
-			durationSec = 1
+		out = append(out, detailBlock{off: pos, at: time.UnixMilli(millis).UTC()})
+		next := bytes.Index(raw[pos+len(workoutDetailHeader):], workoutDetailHeader)
+		if next < 0 {
+			break
 		}
-		startedSec := session.startedMs / 1000
-		out = append(out, WorkoutRecord{
-			DayKey:      IstDayKey(startedSec),
-			StartedAt:   EpochUTC(startedSec),
-			DurationSec: durationSec,
-		})
+		pos += len(workoutDetailHeader) + next
 	}
-	return out
-}
-
-func detailBlockMillis(raw []byte, offset int) (int64, bool) {
-	start := offset + len(psmHeader)
-	if start+detailTimestampBytes > len(raw) {
-		return 0, false
-	}
-	var millis int64
-	for index := 0; index < detailTimestampBytes; index++ {
-		millis |= int64(raw[start+index]) << (8 * index)
-	}
-	return millis, millis >= detailMinEpochMillis && millis <= detailMaxEpochMillis
-}
-
-func matchDetailStartMarker(raw []byte, offset int) bool {
-	start := offset + len(psmHeader) + detailTimestampBytes
-	if start+len(detailSessionStartMarker) > len(raw) {
-		return false
-	}
-	return matchBytes(raw, start, detailSessionStartMarker)
+	return out, nil
 }

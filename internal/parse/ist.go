@@ -1,48 +1,55 @@
 package parse
 
-import (
-	"strings"
-	"time"
-)
+import "time"
 
-func stringsTrimRoundStart(raw string) string {
-	raw = strings.TrimSuffix(raw, "Z")
-	if len(raw) < 19 {
-		return ""
+const istOffsetSec int64 = 5*3600 + 30*60
+
+// IstDayKey returns the IST calendar date of a UTC epoch second.
+func IstDayKey(epochSec int64) string {
+	days := floorDiv(epochSec+istOffsetSec, 86400)
+	return time.Unix(days*86400, 0).UTC().Format("2006-01-02")
+}
+
+func floorDiv(value, divisor int64) int64 {
+	if value >= 0 {
+		return value / divisor
 	}
-	if suffix := raw[19:]; suffix != "" {
-		if suffix[0] != '.' || len(suffix) == 1 {
-			return ""
+	return -((-value + divisor - 1) / divisor)
+}
+
+// ParseRoundStartIst converts an offsetless IST wall clock round start to a UTC
+// epoch second. Malformed input, a Z suffix and explicit offsets return -1.
+func ParseRoundStartIst(raw string) int64 {
+	sec, _, ok := parseRoundStart(raw)
+	if !ok {
+		return -1
+	}
+	return sec
+}
+
+// parseRoundStart reports the epoch second and whether the fraction is nonzero.
+func parseRoundStart(raw string) (sec int64, fraction bool, ok bool) {
+	if len(raw) < 19 {
+		return 0, false, false
+	}
+	if len(raw) > 19 {
+		if raw[19] != '.' || len(raw) == 20 || len(raw) > 29 {
+			return 0, false, false
 		}
-		for _, digit := range suffix[1:] {
-			if digit < '0' || digit > '9' {
-				return ""
+		for i := 20; i < len(raw); i++ {
+			if raw[i] < '0' || raw[i] > '9' {
+				return 0, false, false
+			}
+			if raw[i] != '0' {
+				fraction = true
 			}
 		}
 	}
-	return raw[:19]
-}
-
-const istOffsetSec = 5*3600 + 30*60
-
-func IstDayKey(epochSec int64) string {
-	dayNum := (epochSec + istOffsetSec) / 86400
-	t := time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC).AddDate(0, 0, int(dayNum))
-	return t.Format("2006-01-02")
-}
-
-// ParseRoundStartIst converts a catalog roundStart string to a UTC Unix timestamp.
-// Returns -1 if the string is empty or malformed so callers can use IsPlausibleUnixSec
-// to skip the segment rather than assigning data to 1970-01-01.
-func ParseRoundStartIst(raw string) int64 {
-	raw = stringsTrimRoundStart(raw)
-	if raw == "" {
-		return -1
-	}
-	t, err := time.Parse("2006-01-02T15:04:05", raw)
+	parsed, err := time.Parse("2006-01-02T15:04:05", raw[:19])
 	if err != nil {
-		return -1
+		return 0, false, false
 	}
-	utc := time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), 0, time.UTC)
-	return utc.Add(-5*time.Hour - 30*time.Minute).Unix()
+	utc := time.Date(parsed.Year(), parsed.Month(), parsed.Day(),
+		parsed.Hour(), parsed.Minute(), parsed.Second(), 0, time.UTC)
+	return utc.Unix() - istOffsetSec, fraction, true
 }

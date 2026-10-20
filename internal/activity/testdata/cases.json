@@ -1,0 +1,212 @@
+{
+  "start": "2026-03-01T10:00:00Z",
+  "params": {
+    "cadenceMin": 80,
+    "gapMax": 2,
+    "durationMin": 10,
+    "runCadence": 130
+  },
+  "cases": [
+    {
+      "name": "empty_minutes",
+      "steps": [],
+      "expect": []
+    },
+    {
+      "name": "known_zero_minutes_only",
+      "steps": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "expect": []
+    },
+    {
+      "name": "high_hr_without_movement",
+      "steps": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+      "hrs": [150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150, 150],
+      "expect": []
+    },
+    {
+      "name": "cadence_80_qualifies",
+      "steps": [80, 80, 80, 80, 80, 80, 80, 80, 80, 80],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "nine_moving_minutes",
+      "steps": [80, 80, 80, 80, 80, 80, 80, 80, 80],
+      "expect": []
+    },
+    {
+      "name": "one_zero_gap_joins",
+      "steps": [80, 80, 80, 80, 80, 0, 80, 80, 80, 80, 80],
+      "expect": [
+        {"startSec": 0, "endSec": 660, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "two_zero_gaps_join",
+      "steps": [80, 80, 80, 80, 80, 0, 0, 80, 80, 80, 80, 80],
+      "expect": [
+        {"startSec": 0, "endSec": 720, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "three_zero_gaps_split",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        0, 0, 0,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80
+      ],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 800, "label": "Walk"},
+        {"startSec": 780, "endSec": 1380, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "absent_bucket_splits",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        null,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80
+      ],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 800, "label": "Walk"},
+        {"startSec": 660, "endSec": 1260, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "cadence_79_below_threshold",
+      "steps": [79, 79, 79, 79, 79, 79, 79, 79, 79, 79],
+      "expect": []
+    },
+    {
+      "name": "leading_trailing_zeros",
+      "steps": [0, 0, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 0, 0],
+      "expect": [
+        {"startSec": 120, "endSec": 720, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "run_130_cadence",
+      "steps": [130, 130, 130, 130, 130, 130, 130, 130, 130, 130],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 1300, "label": "Run"}
+      ]
+    },
+    {
+      "name": "walk_129_cadence",
+      "steps": [129, 129, 129, 129, 129, 129, 129, 129, 129, 129],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 1290, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "mean_1299_stays_walk",
+      "steps": [130, 130, 130, 130, 130, 130, 130, 130, 130, 129],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 1299, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "hr_half_up_rounding",
+      "steps": [80, 80, 80, 80, 80, 80, 80, 80, 80, 80],
+      "hrs": [100, 101],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 800, "label": "Walk", "avgHr": 101, "maxHr": 101, "minHr": 100}
+      ]
+    },
+    {
+      "name": "interval_covered_by_workout",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80
+      ],
+      "workouts": [{"startSec": 0, "endSec": 1200}],
+      "expect": []
+    },
+    {
+      "name": "adjacent_walks_survive_workout",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80
+      ],
+      "workouts": [{"startSec": 900, "endSec": 2100}],
+      "expect": [
+        {"startSec": 0, "endSec": 900, "steps": 1200, "label": "Walk"},
+        {"startSec": 2100, "endSec": 3000, "steps": 1200, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "workout_inside_minute",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80
+      ],
+      "workouts": [{"startSec": 630, "endSec": 730}],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 800, "label": "Walk"},
+        {"startSec": 780, "endSec": 1500, "steps": 960, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "workout_touches_session_end",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80,
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80
+      ],
+      "workouts": [
+        {"startSec": 600, "endSec": 1200},
+        {"startSec": 630, "endSec": 720}
+      ],
+      "expect": [
+        {"startSec": 0, "endSec": 600, "steps": 800, "label": "Walk"},
+        {"startSec": 1200, "endSec": 1800, "steps": 800, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "cross_midnight_ist",
+      "start": "2026-03-01T18:25:00Z",
+      "steps": [
+        80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80
+      ],
+      "expect": [
+        {"startSec": 0, "endSec": 900, "steps": 1200, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "gap_bucket_steps_counted",
+      "steps": [80, 80, 80, 80, 80, 3, 80, 80, 80, 80, 80],
+      "expect": [
+        {"startSec": 0, "endSec": 660, "steps": 803, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "gap_time_dilutes_cadence",
+      "steps": [130, 130, 130, 130, 130, 0, 130, 130, 130, 130, 130],
+      "expect": [
+        {"startSec": 0, "endSec": 660, "steps": 1300, "label": "Walk"}
+      ]
+    },
+    {
+      "name": "grid_robust_walks_and_run",
+      "steps": [
+        120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120, 120,
+        0, 0, 0, 0,
+        135, 135, 135, 135, 135, 135, 135, 135, 135, 135, 135, 135, 135, 135, 135
+      ],
+      "expect": [
+        {"startSec": 0, "endSec": 900, "steps": 1800, "label": "Walk"},
+        {"startSec": 1140, "endSec": 2040, "steps": 2025, "label": "Run"}
+      ]
+    },
+    {
+      "name": "workout_cannot_bridge_gap",
+      "steps": [80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80],
+      "workouts": [{"startSec": 300, "endSec": 360}],
+      "expect": []
+    }
+  ]
+}

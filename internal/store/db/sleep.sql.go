@@ -11,52 +11,65 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listSleep = `-- name: ListSleep :many
-SELECT day_key, started_at, score, total_mins, deep_mins, rem_mins, light_mins,
-       wake_mins, is_nap, stages_json
-FROM sleep_sessions
-WHERE day_key >= $1 AND day_key <= $2
-ORDER BY started_at DESC
+const deleteSleepSessionsIn = `-- name: DeleteSleepSessionsIn :exec
+DELETE FROM sleep_sessions WHERE started_at = ANY($1::timestamptz[])
 `
 
-type ListSleepParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+func (q *Queries) DeleteSleepSessionsIn(ctx context.Context, keys []pgtype.Timestamptz) error {
+	_, err := q.db.Exec(ctx, deleteSleepSessionsIn, keys)
+	return err
 }
 
-type ListSleepRow struct {
-	DayKey     pgtype.Date        `json:"day_key"`
-	StartedAt  pgtype.Timestamptz `json:"started_at"`
-	Score      int32              `json:"score"`
-	TotalMins  int32              `json:"total_mins"`
-	DeepMins   int32              `json:"deep_mins"`
-	RemMins    int32              `json:"rem_mins"`
-	LightMins  int32              `json:"light_mins"`
-	WakeMins   int32              `json:"wake_mins"`
-	IsNap      bool               `json:"is_nap"`
-	StagesJson []byte             `json:"stages_json"`
+const listSleepSessions = `-- name: ListSleepSessions :many
+SELECT started_at, ended_at, day_key, is_nap, score, total_mins, deep_mins,
+       rem_mins, light_mins, wake_mins, stages, stages_truncated
+FROM sleep_sessions
+WHERE day_key >= $1 AND day_key <= $2
+ORDER BY day_key ASC, started_at ASC
+`
+
+type ListSleepSessionsParams struct {
+	FromDay pgtype.Date `json:"from_day"`
+	ToDay   pgtype.Date `json:"to_day"`
 }
 
-func (q *Queries) ListSleep(ctx context.Context, arg ListSleepParams) ([]ListSleepRow, error) {
-	rows, err := q.db.Query(ctx, listSleep, arg.DayKey, arg.DayKey_2)
+type ListSleepSessionsRow struct {
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	EndedAt         pgtype.Timestamptz `json:"ended_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
+	IsNap           bool               `json:"is_nap"`
+	Score           pgtype.Int2        `json:"score"`
+	TotalMins       int16              `json:"total_mins"`
+	DeepMins        int16              `json:"deep_mins"`
+	RemMins         int16              `json:"rem_mins"`
+	LightMins       int16              `json:"light_mins"`
+	WakeMins        int16              `json:"wake_mins"`
+	Stages          []byte             `json:"stages"`
+	StagesTruncated bool               `json:"stages_truncated"`
+}
+
+func (q *Queries) ListSleepSessions(ctx context.Context, arg ListSleepSessionsParams) ([]ListSleepSessionsRow, error) {
+	rows, err := q.db.Query(ctx, listSleepSessions, arg.FromDay, arg.ToDay)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListSleepRow{}
+	items := []ListSleepSessionsRow{}
 	for rows.Next() {
-		var i ListSleepRow
+		var i ListSleepSessionsRow
 		if err := rows.Scan(
-			&i.DayKey,
 			&i.StartedAt,
+			&i.EndedAt,
+			&i.DayKey,
+			&i.IsNap,
 			&i.Score,
 			&i.TotalMins,
 			&i.DeepMins,
 			&i.RemMins,
 			&i.LightMins,
 			&i.WakeMins,
-			&i.IsNap,
-			&i.StagesJson,
+			&i.Stages,
+			&i.StagesTruncated,
 		); err != nil {
 			return nil, err
 		}
@@ -68,50 +81,154 @@ func (q *Queries) ListSleep(ctx context.Context, arg ListSleepParams) ([]ListSle
 	return items, nil
 }
 
+const listSleepSessionsOverlapping = `-- name: ListSleepSessionsOverlapping :many
+SELECT started_at, ended_at, day_key, is_nap, score, total_mins, deep_mins,
+       rem_mins, light_mins, wake_mins, stages, stages_truncated, observed_at,
+       session_id
+FROM sleep_sessions
+WHERE started_at < $1 AND ended_at > $2
+ORDER BY started_at ASC
+`
+
+type ListSleepSessionsOverlappingParams struct {
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+	FromAt pgtype.Timestamptz `json:"from_at"`
+}
+
+func (q *Queries) ListSleepSessionsOverlapping(ctx context.Context, arg ListSleepSessionsOverlappingParams) ([]SleepSession, error) {
+	rows, err := q.db.Query(ctx, listSleepSessionsOverlapping, arg.ToAt, arg.FromAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []SleepSession{}
+	for rows.Next() {
+		var i SleepSession
+		if err := rows.Scan(
+			&i.StartedAt,
+			&i.EndedAt,
+			&i.DayKey,
+			&i.IsNap,
+			&i.Score,
+			&i.TotalMins,
+			&i.DeepMins,
+			&i.RemMins,
+			&i.LightMins,
+			&i.WakeMins,
+			&i.Stages,
+			&i.StagesTruncated,
+			&i.ObservedAt,
+			&i.SessionID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const maxSleepEndAt = `-- name: MaxSleepEndAt :one
+SELECT ended_at FROM sleep_sessions
+WHERE ($1::text IS NULL OR session_id = $1::text)
+ORDER BY ended_at DESC
+LIMIT 1
+`
+
+func (q *Queries) MaxSleepEndAt(ctx context.Context, sessionID pgtype.Text) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, maxSleepEndAt, sessionID)
+	var ended_at pgtype.Timestamptz
+	err := row.Scan(&ended_at)
+	return ended_at, err
+}
+
+const sleepDayBounds = `-- name: SleepDayBounds :many
+(SELECT day_key FROM sleep_sessions ORDER BY day_key ASC LIMIT 1)
+UNION ALL
+(SELECT day_key FROM sleep_sessions ORDER BY day_key DESC LIMIT 1)
+`
+
+func (q *Queries) SleepDayBounds(ctx context.Context) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, sleepDayBounds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Date{}
+	for rows.Next() {
+		var day_key pgtype.Date
+		if err := rows.Scan(&day_key); err != nil {
+			return nil, err
+		}
+		items = append(items, day_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const upsertSleepSession = `-- name: UpsertSleepSession :exec
-INSERT INTO sleep_sessions (source_session_id, day_key, started_at, score,
-  total_mins, deep_mins, rem_mins, light_mins, wake_mins, is_nap, stages_json)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
-ON CONFLICT (started_at, day_key) DO UPDATE SET
-  source_session_id = EXCLUDED.source_session_id,
+INSERT INTO sleep_sessions (started_at, ended_at, day_key, is_nap, score,
+  total_mins, deep_mins, rem_mins, light_mins, wake_mins, stages,
+  stages_truncated, observed_at, session_id)
+VALUES (
+  $1, $2, $3, $4,
+  $5, $6, $7, $8,
+  $9, $10, $11,
+  $12, $13, $14
+)
+ON CONFLICT (started_at) DO UPDATE SET
+  ended_at = EXCLUDED.ended_at,
+  day_key = EXCLUDED.day_key,
+  is_nap = EXCLUDED.is_nap,
   score = EXCLUDED.score,
   total_mins = EXCLUDED.total_mins,
   deep_mins = EXCLUDED.deep_mins,
   rem_mins = EXCLUDED.rem_mins,
   light_mins = EXCLUDED.light_mins,
   wake_mins = EXCLUDED.wake_mins,
-  is_nap = EXCLUDED.is_nap,
-  stages_json = EXCLUDED.stages_json,
-  updated_at = NOW()
+  stages = EXCLUDED.stages,
+  stages_truncated = EXCLUDED.stages_truncated,
+  observed_at = EXCLUDED.observed_at,
+  session_id = EXCLUDED.session_id
 `
 
 type UpsertSleepSessionParams struct {
-	SourceSessionID string             `json:"source_session_id"`
-	DayKey          pgtype.Date        `json:"day_key"`
 	StartedAt       pgtype.Timestamptz `json:"started_at"`
-	Score           int32              `json:"score"`
-	TotalMins       int32              `json:"total_mins"`
-	DeepMins        int32              `json:"deep_mins"`
-	RemMins         int32              `json:"rem_mins"`
-	LightMins       int32              `json:"light_mins"`
-	WakeMins        int32              `json:"wake_mins"`
+	EndedAt         pgtype.Timestamptz `json:"ended_at"`
+	DayKey          pgtype.Date        `json:"day_key"`
 	IsNap           bool               `json:"is_nap"`
-	StagesJson      []byte             `json:"stages_json"`
+	Score           pgtype.Int2        `json:"score"`
+	TotalMins       int16              `json:"total_mins"`
+	DeepMins        int16              `json:"deep_mins"`
+	RemMins         int16              `json:"rem_mins"`
+	LightMins       int16              `json:"light_mins"`
+	WakeMins        int16              `json:"wake_mins"`
+	Stages          []byte             `json:"stages"`
+	StagesTruncated bool               `json:"stages_truncated"`
+	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
+	SessionID       string             `json:"session_id"`
 }
 
 func (q *Queries) UpsertSleepSession(ctx context.Context, arg UpsertSleepSessionParams) error {
 	_, err := q.db.Exec(ctx, upsertSleepSession,
-		arg.SourceSessionID,
-		arg.DayKey,
 		arg.StartedAt,
+		arg.EndedAt,
+		arg.DayKey,
+		arg.IsNap,
 		arg.Score,
 		arg.TotalMins,
 		arg.DeepMins,
 		arg.RemMins,
 		arg.LightMins,
 		arg.WakeMins,
-		arg.IsNap,
-		arg.StagesJson,
+		arg.Stages,
+		arg.StagesTruncated,
+		arg.ObservedAt,
+		arg.SessionID,
 	)
 	return err
 }

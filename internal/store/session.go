@@ -1,84 +1,148 @@
 package store
 
 import (
+	"bytes"
 	"context"
-	"time"
+	"crypto/sha256"
+	"errors"
+	"fmt"
+	"sort"
 
+	"github.com/Anshuman115/heliolytics/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type SessionMeta struct {
-	ID          string
-	DeviceMAC   string
-	StartedAt   time.Time
-	EndedAt     *time.Time
-	BatteryPct  *int
-	CatalogJSON []byte
+// WriteSession stores one immutable envelope with its complete raw set. It
+// returns true when an identical envelope already exists, which is a legal
+// retry and never permission to skip parsing.
+func (s *Store) WriteSession(ctx context.Context, tx pgx.Tx, meta SessionMeta,
+	catalog []byte, blobs []RawBlob) (bool, error) {
+	if err := validateSessionMeta(meta); err != nil {
+		return false, err
+	}
+	canonicalCatalog, err := canonicalJSON(catalog)
+	if err != nil {
+		return false, invalidRow("sync_sessions", "catalog is not a JSON value")
+	}
+	normalized, err := normalizeBlobs(blobs)
+	if err != nil {
+		return false, err
+	}
+
+	q := db.New(tx)
+	stored, err := q.GetSessionEnvelope(ctx, meta.ID)
+	switch {
+	case err == nil:
+		if err := compareStoredSession(ctx, q, stored, meta, canonicalCatalog, normalized); err != nil {
+			return false, err
+		}
+		return true, nil
+	case errors.Is(err, pgx.ErrNoRows):
+	default:
+		return false, err
+	}
+
+	if err := q.InsertSession(ctx, db.InsertSessionParams{
+		SessionID:  meta.ID,
+		DeviceMac:  meta.DeviceMAC,
+		StartedAt:  tsAt(meta.StartedAt),
+		EndedAt:    tsAt(meta.EndedAt),
+		BatteryPct: int2Ptr(meta.BatteryPct),
+		Catalog:    canonicalCatalog,
+	}); err != nil {
+		return false, err
+	}
+	if len(normalized) == 0 {
+		return false, nil
+	}
+	params := db.InsertRawBlobsParams{
+		SessionID: make([]string, 0, len(normalized)),
+		TypeCode:  make([]string, 0, len(normalized)),
+		Sha256:    make([][]byte, 0, len(normalized)),
+		Payload:   make([][]byte, 0, len(normalized)),
+	}
+	for _, b := range normalized {
+		sum := b.SHA256
+		params.SessionID = append(params.SessionID, meta.ID)
+		params.TypeCode = append(params.TypeCode, b.TypeCode)
+		params.Sha256 = append(params.Sha256, sum[:])
+		params.Payload = append(params.Payload, b.Payload)
+	}
+	return false, q.InsertRawBlobs(ctx, params)
 }
 
-func (s *Store) UpsertSession(ctx context.Context, m SessionMeta) error {
-	if err := validateSessionMeta(m); err != nil {
-		return err
+func normalizeBlobs(blobs []RawBlob) ([]RawBlob, error) {
+	seen := make(map[string]struct{}, len(blobs))
+	out := make([]RawBlob, 0, len(blobs))
+	for _, b := range blobs {
+		if err := validateTypeCode(b.TypeCode); err != nil {
+			return nil, err
+		}
+		if _, dup := seen[b.TypeCode]; dup {
+			return nil, invalidRow("raw_blobs", "duplicate type_code %s", b.TypeCode)
+		}
+		seen[b.TypeCode] = struct{}{}
+		if len(b.Payload) == 0 {
+			return nil, invalidRow("raw_blobs", "payload required for %s", b.TypeCode)
+		}
+		sum := sha256.Sum256(b.Payload)
+		if b.SHA256 != ([32]byte{}) && b.SHA256 != sum {
+			return nil, invalidRow("raw_blobs", "sha256 mismatch for %s", b.TypeCode)
+		}
+		b.SHA256 = sum
+		out = append(out, b)
 	}
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO sync_sessions (session_id, device_mac, started_at, ended_at, battery_pct, catalog_json)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		ON CONFLICT (session_id) DO UPDATE SET
-		  device_mac=EXCLUDED.device_mac,
-		  ended_at=EXCLUDED.ended_at,
-		  battery_pct=EXCLUDED.battery_pct,
-		  catalog_json=COALESCE(EXCLUDED.catalog_json, sync_sessions.catalog_json),
-		  ingested_at=NOW()`,
-		m.ID, m.DeviceMAC, m.StartedAt, m.EndedAt, m.BatteryPct, m.CatalogJSON)
-	return err
+	sort.Slice(out, func(i, j int) bool { return out[i].TypeCode < out[j].TypeCode })
+	return out, nil
 }
 
-// UpsertSessionTx is UpsertSession run against an already-open transaction,
-// for use inside Store.WithTx. One sync_sessions row per sync, never a
-// slice, so this is a plain tx.Exec rather than a batched write.
-func (s *Store) UpsertSessionTx(ctx context.Context, tx pgx.Tx, m SessionMeta) error {
-	if err := validateSessionMeta(m); err != nil {
+func compareStoredSession(ctx context.Context, q *db.Queries, stored db.SyncSession,
+	meta SessionMeta, catalog []byte, blobs []RawBlob) error {
+	if stored.DeviceMac != meta.DeviceMAC {
+		return conflict("device_mac changed")
+	}
+	if !stored.StartedAt.Time.Equal(meta.StartedAt) || !stored.EndedAt.Time.Equal(meta.EndedAt) {
+		return conflict("session timestamps changed")
+	}
+	if !equalOptionalInt(stored.BatteryPct, meta.BatteryPct) {
+		return conflict("battery_pct changed")
+	}
+	storedCatalog, err := canonicalJSON(stored.Catalog)
+	if err != nil || !bytes.Equal(storedCatalog, catalog) {
+		return conflict("catalog changed")
+	}
+
+	raw, err := q.ListRawBlobsBySession(ctx, meta.ID)
+	if err != nil {
 		return err
 	}
-	_, err := tx.Exec(ctx, `
-		INSERT INTO sync_sessions (session_id, device_mac, started_at, ended_at, battery_pct, catalog_json)
-		VALUES ($1,$2,$3,$4,$5,$6)
-		ON CONFLICT (session_id) DO UPDATE SET
-		  device_mac=EXCLUDED.device_mac,
-		  ended_at=EXCLUDED.ended_at,
-		  battery_pct=EXCLUDED.battery_pct,
-		  catalog_json=COALESCE(EXCLUDED.catalog_json, sync_sessions.catalog_json),
-		  ingested_at=NOW()`,
-		m.ID, m.DeviceMAC, m.StartedAt, m.EndedAt, m.BatteryPct, m.CatalogJSON)
-	return err
+	if len(raw) != len(blobs) {
+		return conflict("type set changed")
+	}
+	byCode := make(map[string]db.ListRawBlobsBySessionRow, len(raw))
+	for _, r := range raw {
+		byCode[r.TypeCode] = r
+	}
+	for _, b := range blobs {
+		r, ok := byCode[b.TypeCode]
+		if !ok {
+			return conflict("type set changed")
+		}
+		if !bytes.Equal(r.Sha256, b.SHA256[:]) || !bytes.Equal(r.Payload, b.Payload) {
+			return conflict("payload bytes changed")
+		}
+	}
+	return nil
 }
 
-func (s *Store) UpsertRaw(ctx context.Context, sessionID, typeCode string, raw []byte) error {
-	if err := validateRawBlob(sessionID, typeCode, raw); err != nil {
-		return err
+func equalOptionalInt(stored pgtype.Int2, want *int) bool {
+	if !stored.Valid {
+		return want == nil
 	}
-	_, err := s.pool.Exec(ctx, `
-		INSERT INTO raw_type_blobs (session_id, type_code, byte_len, payload)
-		VALUES ($1,$2,$3,$4)
-		ON CONFLICT (session_id, type_code) DO UPDATE SET
-		  byte_len=EXCLUDED.byte_len, payload=EXCLUDED.payload`,
-		sessionID, typeCode, len(raw), raw)
-	return err
+	return want != nil && int(stored.Int16) == *want
 }
 
-// UpsertRawTx is UpsertRaw run against an already-open transaction, for use
-// inside Store.WithTx. UpsertRaw writes one raw_type_blobs row per call — the
-// caller loops per blob — so this is a plain tx.Exec rather than a batched
-// write; there is no per-call slice to chunk.
-func (s *Store) UpsertRawTx(ctx context.Context, tx pgx.Tx, sessionID, typeCode string, raw []byte) error {
-	if err := validateRawBlob(sessionID, typeCode, raw); err != nil {
-		return err
-	}
-	_, err := tx.Exec(ctx, `
-		INSERT INTO raw_type_blobs (session_id, type_code, byte_len, payload)
-		VALUES ($1,$2,$3,$4)
-		ON CONFLICT (session_id, type_code) DO UPDATE SET
-		  byte_len=EXCLUDED.byte_len, payload=EXCLUDED.payload`,
-		sessionID, typeCode, len(raw), raw)
-	return err
+func conflict(reason string) error {
+	return fmt.Errorf("%w: %s", ErrSessionConflict, reason)
 }

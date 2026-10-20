@@ -11,34 +11,42 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listTemperature = `-- name: ListTemperature :many
-SELECT day_key, sampled_at, celsius
+const listTemperatureSamples = `-- name: ListTemperatureSamples :many
+SELECT sampled_at, (celsius * 100)::int AS centi_c, on_wrist, session_id, observed_at
 FROM temperature_samples
-WHERE day_key >= $1 AND day_key <= $2
+WHERE sampled_at >= $1 AND sampled_at < $2
 ORDER BY sampled_at ASC
 `
 
-type ListTemperatureParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+type ListTemperatureSamplesParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
 }
 
-type ListTemperatureRow struct {
-	DayKey    pgtype.Date        `json:"day_key"`
-	SampledAt pgtype.Timestamptz `json:"sampled_at"`
-	Celsius   pgtype.Numeric     `json:"celsius"`
+type ListTemperatureSamplesRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	CentiC     int32              `json:"centi_c"`
+	OnWrist    bool               `json:"on_wrist"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-func (q *Queries) ListTemperature(ctx context.Context, arg ListTemperatureParams) ([]ListTemperatureRow, error) {
-	rows, err := q.db.Query(ctx, listTemperature, arg.DayKey, arg.DayKey_2)
+func (q *Queries) ListTemperatureSamples(ctx context.Context, arg ListTemperatureSamplesParams) ([]ListTemperatureSamplesRow, error) {
+	rows, err := q.db.Query(ctx, listTemperatureSamples, arg.FromAt, arg.ToAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTemperatureRow{}
+	items := []ListTemperatureSamplesRow{}
 	for rows.Next() {
-		var i ListTemperatureRow
-		if err := rows.Scan(&i.DayKey, &i.SampledAt, &i.Celsius); err != nil {
+		var i ListTemperatureSamplesRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.CentiC,
+			&i.OnWrist,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -49,47 +57,149 @@ func (q *Queries) ListTemperature(ctx context.Context, arg ListTemperatureParams
 	return items, nil
 }
 
-const listTemperatureCompact = `-- name: ListTemperatureCompact :many
-WITH computed AS (
-  SELECT
-    day_key,
-    sampled_at,
-    celsius,
-    (MIN(sampled_at) OVER(PARTITION BY day_key))::timestamptz as day_start
-  FROM temperature_samples
-  WHERE day_key >= $1 AND day_key <= $2
-)
-SELECT
-  day_key,
-  day_start as start_time,
-  array_agg(EXTRACT(EPOCH FROM (sampled_at - day_start))::int ORDER BY sampled_at)::int[] as offsets,
-  array_agg(celsius::float8 ORDER BY sampled_at)::float8[] as values
-FROM computed
-GROUP BY day_key, day_start
-ORDER BY day_key ASC
+const listTemperatureSamplesByKeys = `-- name: ListTemperatureSamplesByKeys :many
+SELECT sampled_at, (celsius * 100)::int AS centi_c, session_id, observed_at
+FROM temperature_samples
+WHERE sampled_at = ANY($1::timestamptz[])
+ORDER BY sampled_at ASC
 `
 
-type ListTemperatureCompactParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+type ListTemperatureSamplesByKeysRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	CentiC     int32              `json:"centi_c"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-type ListTemperatureCompactRow struct {
+func (q *Queries) ListTemperatureSamplesByKeys(ctx context.Context, keys []pgtype.Timestamptz) ([]ListTemperatureSamplesByKeysRow, error) {
+	rows, err := q.db.Query(ctx, listTemperatureSamplesByKeys, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTemperatureSamplesByKeysRow{}
+	for rows.Next() {
+		var i ListTemperatureSamplesByKeysRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.CentiC,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const maxTemperatureSampleAt = `-- name: MaxTemperatureSampleAt :one
+SELECT sampled_at FROM temperature_samples
+WHERE ($1::text IS NULL OR session_id = $1::text)
+ORDER BY sampled_at DESC
+LIMIT 1
+`
+
+func (q *Queries) MaxTemperatureSampleAt(ctx context.Context, sessionID pgtype.Text) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, maxTemperatureSampleAt, sessionID)
+	var sampled_at pgtype.Timestamptz
+	err := row.Scan(&sampled_at)
+	return sampled_at, err
+}
+
+const refreshTemperatureWearProxy = `-- name: RefreshTemperatureWearProxy :many
+UPDATE temperature_samples t
+SET on_wrist = candidate.valid
+FROM (
+  SELECT ts.sampled_at,
+         (ts.celsius >= 30 AND ts.celsius <= 40 AND EXISTS (
+            SELECT 1 FROM heart_rate_samples h
+            WHERE h.source = '0x01'
+              AND h.sampled_at >= date_trunc('minute', ts.sampled_at)
+              AND h.sampled_at < date_trunc('minute', ts.sampled_at) + INTERVAL '1 minute'
+         )) AS valid
+  FROM temperature_samples ts
+  WHERE ts.sampled_at >= $1 AND ts.sampled_at < $2
+) AS candidate
+WHERE t.sampled_at = candidate.sampled_at
+  AND t.on_wrist IS DISTINCT FROM candidate.valid
+RETURNING t.sampled_at AS sampled_at, t.on_wrist AS on_wrist
+`
+
+type RefreshTemperatureWearProxyParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+}
+
+type RefreshTemperatureWearProxyRow struct {
+	SampledAt pgtype.Timestamptz `json:"sampled_at"`
+	OnWrist   bool               `json:"on_wrist"`
+}
+
+// Wear proxy is same UTC minute canonical 0x01 HR plus an in-domain temperature.
+func (q *Queries) RefreshTemperatureWearProxy(ctx context.Context, arg RefreshTemperatureWearProxyParams) ([]RefreshTemperatureWearProxyRow, error) {
+	rows, err := q.db.Query(ctx, refreshTemperatureWearProxy, arg.FromAt, arg.ToAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RefreshTemperatureWearProxyRow{}
+	for rows.Next() {
+		var i RefreshTemperatureWearProxyRow
+		if err := rows.Scan(&i.SampledAt, &i.OnWrist); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const temperatureCompact = `-- name: TemperatureCompact :many
+WITH filtered AS (
+  SELECT day_key, sampled_at, celsius
+  FROM temperature_samples
+  WHERE on_wrist
+    AND sampled_at >= $1 AND sampled_at < $2
+), computed AS (
+  SELECT day_key, sampled_at, celsius::float8 AS value,
+         MIN(sampled_at) OVER (PARTITION BY day_key) AS day_start
+  FROM filtered
+)
+SELECT day_key, day_start::timestamptz AS start_time,
+       array_agg(floor(EXTRACT(EPOCH FROM (sampled_at - day_start)))::int ORDER BY sampled_at)::int[] AS offsets,
+       array_agg(value ORDER BY sampled_at)::float8[] AS values
+FROM computed
+GROUP BY day_key, day_start
+ORDER BY start_time ASC
+`
+
+type TemperatureCompactParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+}
+
+type TemperatureCompactRow struct {
 	DayKey    pgtype.Date        `json:"day_key"`
 	StartTime pgtype.Timestamptz `json:"start_time"`
 	Offsets   []int32            `json:"offsets"`
 	Values    []float64          `json:"values"`
 }
 
-func (q *Queries) ListTemperatureCompact(ctx context.Context, arg ListTemperatureCompactParams) ([]ListTemperatureCompactRow, error) {
-	rows, err := q.db.Query(ctx, listTemperatureCompact, arg.DayKey, arg.DayKey_2)
+func (q *Queries) TemperatureCompact(ctx context.Context, arg TemperatureCompactParams) ([]TemperatureCompactRow, error) {
+	rows, err := q.db.Query(ctx, temperatureCompact, arg.FromAt, arg.ToAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListTemperatureCompactRow{}
+	items := []TemperatureCompactRow{}
 	for rows.Next() {
-		var i ListTemperatureCompactRow
+		var i TemperatureCompactRow
 		if err := rows.Scan(
 			&i.DayKey,
 			&i.StartTime,
@@ -106,28 +216,64 @@ func (q *Queries) ListTemperatureCompact(ctx context.Context, arg ListTemperatur
 	return items, nil
 }
 
-const upsertTemperatureSample = `-- name: UpsertTemperatureSample :exec
-INSERT INTO temperature_samples (sampled_at, day_key, celsius, source_session_id)
-VALUES ($1, $2, $3, $4)
-ON CONFLICT (sampled_at) DO UPDATE SET
-  celsius = EXCLUDED.celsius,
-  day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id
+const temperatureDayBounds = `-- name: TemperatureDayBounds :many
+(SELECT day_key FROM temperature_samples ORDER BY sampled_at ASC LIMIT 1)
+UNION ALL
+(SELECT day_key FROM temperature_samples ORDER BY sampled_at DESC LIMIT 1)
 `
 
-type UpsertTemperatureSampleParams struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Celsius         pgtype.Numeric     `json:"celsius"`
-	SourceSessionID string             `json:"source_session_id"`
+func (q *Queries) TemperatureDayBounds(ctx context.Context) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, temperatureDayBounds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Date{}
+	for rows.Next() {
+		var day_key pgtype.Date
+		if err := rows.Scan(&day_key); err != nil {
+			return nil, err
+		}
+		items = append(items, day_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) UpsertTemperatureSample(ctx context.Context, arg UpsertTemperatureSampleParams) error {
-	_, err := q.db.Exec(ctx, upsertTemperatureSample,
+const upsertTemperatureSamples = `-- name: UpsertTemperatureSamples :exec
+INSERT INTO temperature_samples (sampled_at, celsius, on_wrist, session_id, observed_at)
+SELECT v.sampled_at, v.celsius, false, v.session_id, v.observed_at
+FROM ROWS FROM (
+  unnest($1::timestamptz[]),
+  unnest($2::numeric[]),
+  unnest($3::text[]),
+  unnest($4::timestamptz[])
+) AS v(sampled_at, celsius, session_id, observed_at)
+ON CONFLICT (sampled_at) DO UPDATE SET
+  celsius = EXCLUDED.celsius,
+  session_id = EXCLUDED.session_id,
+  observed_at = EXCLUDED.observed_at
+WHERE (EXCLUDED.observed_at, EXCLUDED.session_id COLLATE "C")
+      >= (temperature_samples.observed_at, temperature_samples.session_id COLLATE "C")
+`
+
+type UpsertTemperatureSamplesParams struct {
+	SampledAt  []pgtype.Timestamptz `json:"sampled_at"`
+	Celsius    []pgtype.Numeric     `json:"celsius"`
+	SessionID  []string             `json:"session_id"`
+	ObservedAt []pgtype.Timestamptz `json:"observed_at"`
+}
+
+// on_wrist is written false for new keys and never changed here; the wear proxy
+// has its own maintenance statement.
+func (q *Queries) UpsertTemperatureSamples(ctx context.Context, arg UpsertTemperatureSamplesParams) error {
+	_, err := q.db.Exec(ctx, upsertTemperatureSamples,
 		arg.SampledAt,
-		arg.DayKey,
 		arg.Celsius,
-		arg.SourceSessionID,
+		arg.SessionID,
+		arg.ObservedAt,
 	)
 	return err
 }

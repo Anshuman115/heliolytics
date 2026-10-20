@@ -1,50 +1,25 @@
 package parse
 
-import "time"
+import "sort"
 
-// StepSample is one per-minute step count from BLE 0x01, timestamped absolutely
-// so it can be stored idempotently (overlapping re-syncs overwrite, not add).
-type StepSample struct {
-	SampledAt time.Time
-	DayKey    string
-	Steps     int
-}
+const stepsMissing = 0xFF
 
-// ParseStepSeries emits a per-minute step sample for every 0x01 minute that has
-// a real step reading (non-zero, not the 0xFF "no reading" sentinel). It mirrors
-// SumStepsByDay's minute walk, so the SUM of these samples equals that day total.
-func ParseStepSeries(raw []byte, catalogJSON []byte, fetchEnd time.Time) []StepSample {
-	stride := activityStrideFor(len(raw))
-	if len(raw) < stride {
-		return nil
-	}
-	cat, err := ParseCatalog(catalogJSON)
-	if err != nil {
-		return nil
-	}
-	entry := FindEntry(cat, "0x01")
-	segs := buildByteSegments(raw, entry, fetchEnd, stride)
-	if len(segs) == 0 {
-		return nil
-	}
-	var out []StepSample
-	for si, seg := range segs {
-		end := len(raw)
-		if si+1 < len(segs) {
-			end = segs[si+1].byteStart
+// stepRows emits one row per 0x01 minute with a real step reading. The wire
+// value 0xff means the strap recorded nothing; a known zero is a real row.
+func stepRows(records []activityRecord, window Window) ([]StepRow, int) {
+	byMinute := make(map[int64]StepRow, len(records))
+	dropped := 0
+	for _, record := range records {
+		if !window.contains(record.at) || record.steps == stepsMissing {
+			dropped++
+			continue
 		}
-		ts := seg.rs
-		for off := seg.byteStart; off+stride <= end; off += stride {
-			st := int(raw[off+2])
-			if st != 0 && st != 0xFF {
-				out = append(out, StepSample{
-					SampledAt: time.Unix(ts, 0).UTC(),
-					DayKey:    IstDayKey(ts),
-					Steps:     st,
-				})
-			}
-			ts += 60
-		}
+		byMinute[record.at.Unix()] = StepRow{SampledAt: record.at, Steps: int(record.steps)}
 	}
-	return out
+	out := make([]StepRow, 0, len(byMinute))
+	for _, row := range byMinute {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	return out, dropped
 }

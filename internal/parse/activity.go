@@ -2,91 +2,58 @@ package parse
 
 import "time"
 
-func activityStrideFor(n int) int {
-	if n%8 == 0 {
-		return 8
-	}
-	return 4
+const activityStride = 8
+
+// activityRecord is one decoded 0x01 minute. Steps and BPM keep their raw wire
+// values so the emitters can tell a known zero from a missing reading.
+type activityRecord struct {
+	at    time.Time
+	off   int
+	steps byte
+	bpm   byte
 }
 
-func SumStepsByDay(raw []byte, catalogJSON []byte, fetchEnd time.Time) map[string]int {
-	stride := activityStrideFor(len(raw))
-	if len(raw) < stride {
-		return nil
-	}
-	cat, err := ParseCatalog(catalogJSON)
+func activityRecords(raw []byte, catalog Catalog) ([]activityRecord, int, error) {
+	minutes, trailing, err := minuteRecords(typeActivity, raw, FindEntry(catalog, typeActivity), activityStride)
 	if err != nil {
-		return nil
+		return nil, 0, err
 	}
-	entry := FindEntry(cat, "0x01")
-	segs := buildByteSegments(raw, entry, fetchEnd, stride)
-	if len(segs) == 0 {
-		return nil
-	}
-	daily := map[string]int{}
-	for si, seg := range segs {
-		end := len(raw)
-		if si+1 < len(segs) {
-			end = segs[si+1].byteStart
-		}
-		ts := seg.rs
-		for off := seg.byteStart; off+stride <= end; off += stride {
-			st := int(raw[off+2])
-			if st != 0 && st != 0xFF {
-				daily[IstDayKey(ts)] += st
-			}
-			ts += 60
+	out := make([]activityRecord, len(minutes))
+	for i, minute := range minutes {
+		out[i] = activityRecord{
+			at:    minute.at,
+			off:   minute.off,
+			steps: raw[minute.off+2],
+			bpm:   raw[minute.off+3],
 		}
 	}
-	return daily
+	return out, trailing, nil
 }
 
-type byteSeg struct {
-	byteStart int
-	rs        int64
-}
-
-func buildByteSegments(raw []byte, e *CatalogEntry, fetchEnd time.Time, stride int) []byteSeg {
-	if stride <= 0 || len(raw) < stride {
-		return nil
+// parseActivity emits one step row and one HR row per accepted 0x01 minute.
+func parseActivity(raw []byte, catalog Catalog, window Window) ([]HeartRateRow, []StepRow, TypeResult, error) {
+	records, trailing, err := activityRecords(raw, catalog)
+	if err != nil {
+		return nil, nil, TypeResult{}, err
 	}
-	if e != nil && len(e.RoundSegments) > 0 {
-		out := make([]byteSeg, 0, len(e.RoundSegments))
-		previous := -1
-		for _, s := range e.RoundSegments {
-			rs := ParseRoundStartIst(s.RoundStart)
-			if s.ByteOffset < 0 || s.ByteOffset >= len(raw) || s.ByteOffset%stride != 0 ||
-				s.ByteOffset <= previous || !IsPlausibleUnixSec(rs) {
-				return nil
-			}
-			out = append(out, byteSeg{s.ByteOffset, rs})
-			previous = s.ByteOffset
-		}
-		return out
+	heartRate, heartRateDropped := heartRateRows(records, window)
+	steps, stepsDropped := stepRows(records, window)
+	result := TypeResult{
+		Status:        statusFor(trailing),
+		Rows:          len(heartRate) + len(steps),
+		Dropped:       heartRateDropped + stepsDropped,
+		TrailingBytes: trailing,
 	}
-	if e != nil && e.RoundStart != "" {
-		rs := ParseRoundStartIst(e.RoundStart)
-		if !IsPlausibleUnixSec(rs) {
-			return nil
-		}
-		return []byteSeg{{0, rs}}
+	if trailing > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "trailing_fragment", ByteOffset: len(raw) - trailing, Count: trailing,
+		})
 	}
-	n := len(raw) / stride
-	endSec := fetchEnd.UTC().Unix()
-	base := endSec - int64(n-1)*60
-	if n == 0 || !IsPlausibleUnixSec(base) || !IsPlausibleUnixSec(endSec) {
-		return nil
+	for i := range heartRate {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, heartRate[i].SampledAt)
 	}
-	return []byteSeg{{0, base}}
-}
-
-func countStepsRaw(raw []byte, start, end, stride int) int {
-	total := 0
-	for off := start; off+stride <= end; off += stride {
-		st := int(raw[off+2])
-		if st != 0 && st != 0xFF {
-			total += st
-		}
+	for i := range steps {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, steps[i].SampledAt)
 	}
-	return total
+	return heartRate, steps, result, nil
 }

@@ -2,42 +2,35 @@ package api
 
 import (
 	"net/http"
-	"time"
 
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-func (h *metricsHandler) coverage(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-	cov, err := h.st.GetCoverage(r.Context())
-	if err != nil {
-		http.Error(w, "db error", http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, buildCoverageResponse(cov))
+// coverageResponse is the C3 Coverage shape. Types always carries exactly the
+// measured codes, each null when no watermark exists.
+type coverageResponse struct {
+	HasData      bool               `json:"hasData"`
+	LastIngestAt *string            `json:"lastIngestAt"`
+	DataThrough  *string            `json:"dataThrough"`
+	Types        map[string]*string `json:"types"`
 }
 
-func buildCoverageResponse(cov store.DataCoverage) map[string]any {
-	out := map[string]any{"hasData": cov.HasData}
-	if cov.DataThrough != nil {
-		out["dataThrough"] = cov.DataThrough.UTC().Format(time.RFC3339)
+// coverage serves the stored per-type watermarks. A receipt is not processing:
+// lastIngestAt is the latest committed session and dataThrough is canonical.
+func (h *metricsHandler) coverage(w http.ResponseWriter, r *http.Request) {
+	cov, err := h.st.GetCoverage(r.Context())
+	if err != nil {
+		writeStoreFailure(w, "coverage", err)
+		return
 	}
-	if cov.LastIngestAt != nil {
-		out["lastIngestAt"] = cov.LastIngestAt.UTC().Format(time.RFC3339)
+	out := coverageResponse{
+		HasData:      cov.HasData,
+		LastIngestAt: formatOptional(cov.LastIngestAt),
+		DataThrough:  formatOptional(cov.DataThrough),
+		Types:        make(map[string]*string, len(store.MeasuredTypeCodes)),
 	}
-	if len(cov.Types) > 0 {
-		types := map[string]any{}
-		for key, ts := range cov.Types {
-			if ts != nil {
-				types[key] = ts.UTC().Format(time.RFC3339)
-			} else {
-				types[key] = nil
-			}
-		}
-		out["types"] = types
+	for _, code := range store.MeasuredTypeCodes {
+		out.Types[code] = formatOptional(cov.Types[code])
 	}
-	return out
+	writeJSON(w, http.StatusOK, out)
 }

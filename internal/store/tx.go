@@ -2,45 +2,79 @@ package store
 
 import (
 	"context"
+	"time"
 
+	"github.com/Anshuman115/heliolytics/internal/store/db"
 	"github.com/jackc/pgx/v5"
 )
 
-// WithTx runs fn inside one transaction: begins, runs fn, commits if fn
-// returns nil, rolls back otherwise (including on panic — the deferred
-// Rollback is a no-op after a successful Commit). This is what makes an
-// ingest sync's writes all-or-nothing: any failure at any point in fn rolls
-// back every write made so far in that sync, no partial day survives.
-func (s *Store) WithTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+// TxView binds the generated queries to one caller transaction, so rollup
+// code can read and write through the same lock and atomicity as ingest.
+type TxView struct {
+	tx pgx.Tx
+	q  *db.Queries
+}
+
+func NewTxView(tx pgx.Tx) *TxView { return &TxView{tx: tx, q: db.New(tx)} }
+
+// WithTx is the only canonical transaction opener. Any callback error, commit
+// failure, cancellation or panic leaves no partial canonical state.
+func (s *Store) WithTx(ctx context.Context, fn func(pgx.Tx) error) error {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return err
 	}
-	defer func() { _ = tx.Rollback(ctx) }()
+	committed := false
+	defer func() {
+		if committed {
+			return
+		}
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = tx.Rollback(rollbackCtx)
+	}()
 
 	if err := fn(tx); err != nil {
 		return err
 	}
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	committed = true
+	return nil
 }
 
-// execBatchTx is execBatch's logic but against an already-open tx instead of
-// opening its own — used by write methods when called from inside WithTx.
-// Chunking still applies (see execBatch's comment on why), but no Begin/
-// Commit here since the caller owns the transaction boundary.
-func execBatchTx(ctx context.Context, tx pgx.Tx, sql string, rows []queuedRow) error {
-	if len(rows) == 0 {
-		return nil
+// WithReadOnlyTx gives replay a stable snapshot: every source page and the
+// profile are read from one repeatable-read, read-only transaction.
+func (s *Store) WithReadOnlyTx(ctx context.Context, fn func(pgx.Tx) error) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{
+		IsoLevel:   pgx.RepeatableRead,
+		AccessMode: pgx.ReadOnly,
+	})
+	if err != nil {
+		return err
 	}
-	for start := 0; start < len(rows); start += batchChunkSize {
-		end := min(start+batchChunkSize, len(rows))
-		batch := &pgx.Batch{}
-		for _, args := range rows[start:end] {
-			batch.Queue(sql, args...)
+	committed := false
+	defer func() {
+		if committed {
+			return
 		}
-		if err := tx.SendBatch(ctx, batch).Close(); err != nil {
-			return err
-		}
+		rollbackCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+		defer cancel()
+		_ = tx.Rollback(rollbackCtx)
+	}()
+
+	if err := fn(tx); err != nil {
+		return err
 	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	committed = true
 	return nil
+}
+
+// LockCanonical takes the singleton advisory lock first in the caller's tx.
+func (s *Store) LockCanonical(ctx context.Context, tx pgx.Tx) error {
+	return db.New(tx).LockCanonical(ctx)
 }

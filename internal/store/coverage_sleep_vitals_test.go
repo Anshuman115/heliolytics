@@ -4,122 +4,130 @@ import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/jackc/pgx/v5"
 )
 
-func TestGetCoverageSleepTypesNonNullWhenParsedSleepExists(t *testing.T) {
-	st, cleanup := testStore(t)
-	t.Cleanup(cleanup)
-
+func TestSameInstantTwoHeartRateSourcesCoexist(t *testing.T) {
+	st := newTestStore(t)
 	ctx := context.Background()
-	cleanupCoverageFixture(ctx, st)
-	t.Cleanup(func() { cleanupCoverageFixture(ctx, st) })
+	at := time.Date(2026, 9, 24, 20, 0, 0, 0, time.UTC)
+	observedAt := at.Add(time.Hour)
+	seedSession(t, st, "hr-sources", at.Add(-time.Hour), observedAt)
 
-	napStart := time.Date(2026, 6, 7, 8, 39, 0, 0, time.UTC)
-	napMins := 135
-	mainStart := time.Date(2026, 6, 7, 22, 0, 0, 0, time.UTC)
-	mainMins := 420
-	mainStageStart := time.Date(2026, 6, 6, 20, 0, 0, 0, time.UTC)
-	mainEnd := time.Date(2026, 6, 7, 4, 0, 0, 0, time.UTC)
+	write := func(source string, bpm int) {
+		mustTx(t, st, func(tx pgx.Tx) error {
+			_, err := st.WriteHeartRate(ctx, tx,
+				[]HeartRateSample{{At: at, Source: source, BPM: bpm}}, "hr-sources", observedAt)
+			return err
+		})
+	}
+	write("0x01", 60)
+	write("0x46", 120)
 
-	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO sync_sessions (session_id, device_mac, started_at, ingested_at)
-		VALUES ($1, 'aa:bb:cc:dd:ee:ff', $2, $2)`,
-		coverageTestSessionID, napStart,
-	); err != nil {
-		t.Fatalf("insert sync_session: %v", err)
-	}
-	for _, row := range []struct {
-		start time.Time
-		mins  int
-		day   string
-		nap   bool
-	}{
-		{napStart, napMins, "2026-06-07", true},
-		{mainStart, mainMins, "2026-06-07", false},
-	} {
-		if _, err := st.pool.Exec(ctx, `
-			INSERT INTO sleep_sessions (source_session_id, day_key, started_at, total_mins, is_nap)
-			VALUES ($1, $2, $3, $4, $5)`,
-			coverageTestSessionID, row.day, row.start, row.mins, row.nap,
-		); err != nil {
-			t.Fatalf("insert sleep_session: %v", err)
-		}
-	}
-	if _, err := st.pool.Exec(ctx, `
-		UPDATE sleep_sessions SET stages_json = jsonb_build_array(
-		  jsonb_build_object('start', $1::timestamptz, 'end', $2::timestamptz, 'type', 4)
-		) WHERE source_session_id=$3 AND is_nap=false`,
-		mainStageStart, mainEnd, coverageTestSessionID,
-	); err != nil {
-		t.Fatalf("add sleep stages: %v", err)
+	if n := countRows(t, st, "heart_rate_samples"); n != 2 {
+		t.Fatalf("rows = %d, want both sources at one instant", n)
 	}
 
-	cov, err := st.GetCoverage(ctx)
+	days, err := st.ListHeartRateSamplesCompact(ctx, "2026-09-24", "2026-09-25")
 	if err != nil {
-		t.Fatalf("GetCoverage: %v", err)
+		t.Fatalf("compact: %v", err)
 	}
-	if ts := cov.Types["0x48"]; ts == nil || !ts.UTC().Equal(mainEnd) {
-		t.Fatalf("Types[0x48] = %v want %v", ts, mainEnd)
+	if len(days) != 1 || len(days[0].Values) != 1 || days[0].Values[0] != 60 {
+		t.Fatalf("compact hr = %+v, want source 0x01 only", days)
+	}
+
+	write("0x46", 120)
+	if n := countRows(t, st, "heart_rate_samples"); n != 2 {
+		t.Fatalf("rows after retry = %d, want 2", n)
 	}
 }
 
-func TestGetCoverageVitalsAndDailyNonNullWhenSeeded(t *testing.T) {
-	st, cleanup := testStore(t)
-	t.Cleanup(cleanup)
-
+func TestTemperatureWearProxyUsesCanonicalHeartRate(t *testing.T) {
+	st := newTestStore(t)
 	ctx := context.Background()
-	cleanupCoverageFixture(ctx, st)
-	t.Cleanup(func() { cleanupCoverageFixture(ctx, st) })
+	at := time.Date(2026, 10, 1, 2, 30, 0, 0, time.UTC)
+	observedAt := at.Add(time.Hour)
+	seedSession(t, st, "wear-proxy", at.Add(-time.Hour), observedAt)
 
-	seedAt := time.Date(2026, 6, 8, 12, 0, 0, 0, time.UTC)
-	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO sync_sessions (session_id, device_mac, started_at, ingested_at)
-		VALUES ($1, 'aa:bb:cc:dd:ee:ff', $2, $2)`,
-		coverageTestSessionID, seedAt,
-	); err != nil {
-		t.Fatalf("insert sync_session: %v", err)
-	}
-	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO daily_metrics (day_key, steps, pai_score, updated_at, source_session_id)
-		VALUES ('2026-06-08', 5000, 42, $1, $2)`,
-		seedAt.Add(12*time.Hour), coverageTestSessionID,
-	); err != nil {
-		t.Fatalf("insert daily_metrics: %v", err)
-	}
-	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO step_samples (sampled_at, day_key, steps, source_session_id)
-		VALUES ($1, '2026-06-08', 10, $2)`,
-		seedAt, coverageTestSessionID,
-	); err != nil {
-		t.Fatalf("insert step_sample: %v", err)
-	}
-	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO raw_pai_scores (day_key, score, source_session_id)
-		VALUES ('2026-06-08', 42, $1)
-		ON CONFLICT (day_key) DO UPDATE SET score=EXCLUDED.score, source_session_id=EXCLUDED.source_session_id`,
-		coverageTestSessionID,
-	); err != nil {
-		t.Fatalf("insert pai score: %v", err)
-	}
-	if _, err := st.pool.Exec(ctx, `
-		INSERT INTO stress_samples (sampled_at, day_key, value, source_session_id)
-		VALUES ($1, '2026-06-08', 35, $2)`,
-		seedAt, coverageTestSessionID,
-	); err != nil {
-		t.Fatalf("insert stress_sample: %v", err)
+	mustTx(t, st, func(tx pgx.Tx) error {
+		_, err := st.WriteTemperature(ctx, tx,
+			[]TemperatureSample{{At: at, CentiC: 3627}}, "wear-proxy", observedAt)
+		return err
+	})
+	if got := temperatureWear(t, st, at); got != false {
+		t.Fatal("proxy set without any heart rate")
 	}
 
-	cov, err := st.GetCoverage(ctx)
-	if err != nil {
-		t.Fatalf("GetCoverage: %v", err)
+	mustTx(t, st, func(tx pgx.Tx) error {
+		_, err := st.WriteHeartRate(ctx, tx,
+			[]HeartRateSample{{At: at, Source: "0x46", BPM: 90}}, "wear-proxy", observedAt)
+		return err
+	})
+	refreshWearProxy(t, st, at)
+	if got := temperatureWear(t, st, at); got {
+		t.Fatal("0x46 alone must not qualify as the wear proxy heart rate")
 	}
-	if cov.Types["0x01"] == nil || !cov.Types["0x01"].UTC().Equal(seedAt) {
-		t.Fatalf("Types[0x01] = %v want sample time %v", cov.Types["0x01"], seedAt)
+
+	mustTx(t, st, func(tx pgx.Tx) error {
+		_, err := st.WriteHeartRate(ctx, tx,
+			[]HeartRateSample{{At: at, Source: "0x01", BPM: 61}}, "wear-proxy", observedAt)
+		return err
+	})
+	mut := refreshWearProxy(t, st, at)
+	if !mut.Changed {
+		t.Fatal("proxy flip did not report a change")
 	}
-	if cov.Types["0x0D"] == nil {
-		t.Fatal("Types[0x0D] want non-null")
+	if got := temperatureWear(t, st, at); !got {
+		t.Fatal("proxy not set with same-minute canonical 0x01 heart rate")
 	}
-	if cov.Types["0x13"] == nil || !cov.Types["0x13"].UTC().Equal(seedAt) {
-		t.Fatalf("Types[0x13] = %v want %v", cov.Types["0x13"], seedAt)
+	if got := storedCenti(t, st, at); got != 3627 {
+		t.Fatalf("stored centi-degrees = %d, want 3627", got)
 	}
+
+	outOfDomain := at.Add(3 * time.Minute)
+	mustTx(t, st, func(tx pgx.Tx) error {
+		if _, err := st.WriteHeartRate(ctx, tx,
+			[]HeartRateSample{{At: outOfDomain, Source: "0x01", BPM: 61}}, "wear-proxy", observedAt); err != nil {
+			return err
+		}
+		_, err := st.WriteTemperature(ctx, tx,
+			[]TemperatureSample{{At: outOfDomain, CentiC: 2410}}, "wear-proxy", observedAt)
+		return err
+	})
+	refreshWearProxy(t, st, outOfDomain)
+	if got := temperatureWear(t, st, outOfDomain); got {
+		t.Fatal("out-of-domain temperature must not be counted as on-wrist")
+	}
+}
+
+func refreshWearProxy(t *testing.T, st *Store, at time.Time) Mutation {
+	t.Helper()
+	var out Mutation
+	mustTx(t, st, func(tx pgx.Tx) error {
+		var err error
+		out, err = NewTxView(tx).RecomputeTemperatureWearProxy(context.Background(), at, at.Add(time.Minute))
+		return err
+	})
+	return out
+}
+
+func temperatureWear(t *testing.T, st *Store, at time.Time) bool {
+	t.Helper()
+	var onWrist bool
+	if err := st.pool.QueryRow(context.Background(),
+		`SELECT on_wrist FROM temperature_samples WHERE sampled_at = $1`, at).Scan(&onWrist); err != nil {
+		t.Fatalf("read on_wrist: %v", err)
+	}
+	return onWrist
+}
+
+func storedCenti(t *testing.T, st *Store, at time.Time) int {
+	t.Helper()
+	var centi int
+	if err := st.pool.QueryRow(context.Background(),
+		`SELECT (celsius * 100)::int FROM temperature_samples WHERE sampled_at = $1`, at).Scan(&centi); err != nil {
+		t.Fatalf("read celsius: %v", err)
+	}
+	return centi
 }

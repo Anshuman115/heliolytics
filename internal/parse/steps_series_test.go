@@ -1,59 +1,92 @@
 package parse
 
 import (
-	"os"
-	"path/filepath"
+	"errors"
+	"reflect"
 	"testing"
-	"time"
 )
 
-// Proves the Fix-A invariant on real 0x01 bytes WITHOUT a DB: per-minute step
-// samples are keyed by timestamp, so re-syncing the same minutes (the 60-min
-// overlap) overwrites in an idempotent store and the daily SUM does not change —
-// whereas the old additive path would have doubled it.
-func TestStepSeriesIdempotentUnderOverlap(t *testing.T) {
-	root := filepath.Join("..", "..", "..", "Heliolytics_App", "rawData", "DUMPP")
-	raw, err := os.ReadFile(filepath.Join(root, "0x01_raw.bin"))
+func TestStepSeriesMatchesZeppMinutes(t *testing.T) {
+	batch, err := ParseBlobs(loadFixtureCatalog(t),
+		map[string][]byte{typeActivity: fixtureBytes(t, typeActivity)}, loadFixtureWindow(t))
 	if err != nil {
-		t.Skip("DUMPP/0x01_raw.bin missing")
+		t.Fatalf("parse 0x01: %v", err)
 	}
-	fetchEnd := time.Date(2026, 6, 22, 22, 38, 0, 0, time.UTC)
-
-	series := ParseStepSeries(raw, nil, fetchEnd)
-	if len(series) == 0 {
-		t.Fatal("expected step samples from 0x01")
-	}
-
-	// Idempotent store: map keyed by minute timestamp (mirrors ON CONFLICT upsert).
-	store := map[int64]int{}
-	apply := func(ss []StepSample) {
-		for _, s := range ss {
-			store[s.SampledAt.Unix()] = s.Steps
+	zepp := zeppSeries(t, "activity-minute.csv")
+	nonzero := 0
+	for _, row := range batch.Steps {
+		if row.Steps == 0 {
+			continue
+		}
+		nonzero++
+		want, ok := zepp[row.SampledAt.Unix()]
+		if !ok || want != row.Steps {
+			t.Errorf("step minute %s = %d, Zepp %d (present=%t)",
+				formatFixtureTime(row.SampledAt), row.Steps, want, ok)
 		}
 	}
-	sum := func() int {
-		t := 0
-		for _, v := range store {
-			t += v
-		}
-		return t
+	if nonzero != len(zepp) {
+		t.Fatalf("nonzero step minutes = %d, Zepp rows = %d", nonzero, len(zepp))
 	}
+}
 
-	apply(series)
-	once := sum()
-	apply(ParseStepSeries(raw, nil, fetchEnd)) // full re-sync (worst-case overlap)
-	twice := sum()
+func TestStepSeriesIsDeterministic(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
+	window := loadFixtureWindow(t)
+	raw := fixtureBytes(t, typeActivity)
+	first, err := ParseBlobs(catalog, map[string][]byte{typeActivity: raw}, window)
+	if err != nil {
+		t.Fatalf("parse 0x01: %v", err)
+	}
+	second, err := ParseBlobs(catalog, map[string][]byte{typeActivity: raw}, window)
+	if err != nil {
+		t.Fatalf("parse 0x01 again: %v", err)
+	}
+	if !reflect.DeepEqual(first.Steps, second.Steps) || !reflect.DeepEqual(first.HeartRate, second.HeartRate) {
+		t.Fatal("the same bytes and catalog produced different rows")
+	}
+}
 
-	if once != twice {
-		t.Fatalf("overlap re-sync changed daily steps: once=%d twice=%d", once, twice)
+func TestStepSeriesRetainsCompletePrefixOnTrailingFragment(t *testing.T) {
+	catalog := loadFixtureCatalog(t)
+	window := loadFixtureWindow(t)
+	raw := fixtureBytes(t, typeActivity)[:16892]
+	batch, err := ParseBlobs(catalog, map[string][]byte{typeActivity: raw}, window)
+	if err != nil {
+		t.Fatalf("parse truncated 0x01: %v", err)
 	}
-	// Confirm the naive additive model WOULD have doubled, so the test is meaningful.
-	naive := 0
-	for _, s := range series {
-		naive += s.Steps
+	result := batch.Types[typeActivity]
+	if result.TrailingBytes != 4 || result.Status != "partial" {
+		t.Fatalf("result = %+v, want a four byte trailing fragment", result)
 	}
-	if once != naive {
-		t.Fatalf("distinct-minute sum %d != single-parse sum %d", once, naive)
+	if len(batch.Steps) != 2108 || len(batch.HeartRate) != 2108 {
+		t.Fatalf("rows = %d steps %d hr, want 2108 each", len(batch.Steps), len(batch.HeartRate))
 	}
-	t.Logf("steps once=%d twice=%d (additive would be %d)", once, twice, naive*2)
+	last := batch.Steps[len(batch.Steps)-1].SampledAt
+	if got := formatFixtureTime(last); got != "2026-06-22T16:57:00Z" {
+		t.Fatalf("last step minute = %s, want 2026-06-22T16:57:00Z", got)
+	}
+	sum := 0
+	for _, row := range batch.Steps {
+		sum += row.Steps
+	}
+	if sum != 4564 {
+		t.Fatalf("step sum = %d, want 4564", sum)
+	}
+}
+
+func TestStepSeriesRejectsInteriorBoundary(t *testing.T) {
+	catalog := Catalog{Chunked: []CatalogEntry{{
+		Code: typeActivity,
+		RoundSegments: []RoundSegment{
+			{ByteOffset: 0, RoundStart: "2026-06-21T11:16:00"},
+			{ByteOffset: 633, RoundStart: "2026-06-21T12:35:00"},
+		},
+	}}}
+	_, err := ParseBlobs(catalog,
+		map[string][]byte{typeActivity: fixtureBytes(t, typeActivity)}, loadFixtureWindow(t))
+	var parseErr *ParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("error = %v, want a structural *ParseError", err)
+	}
 }

@@ -1,0 +1,283 @@
+{
+  "purpose": "Public regression fixture for the pure internal/parse decoders. Real sensor bytes from one local strap dump, trimmed by approved sensor type, plus independently read Zepp export rows for the same window.",
+  "real_sensor_bytes": true,
+  "offsets": "zero-based and half-open; every retained file keeps its original bytes from offset 0",
+  "sources": {
+    "dump": "heliolytics-app/RawData/DUMPP",
+    "zepp": "heliolytics-app/RawData/ZEPP_EXPORT_6M",
+    "dump_log_line_references": "heliolytics-app/RawData/DUMPP/dump_log.txt, line ranges only; the file itself is never copied because it holds device identity and endpoint payloads"
+  },
+  "files": [
+    {
+      "name": "0x01_raw.bin",
+      "source": "0x01_raw.bin",
+      "range": [
+        0,
+        16896
+      ],
+      "bytes": 16896,
+      "sha256": "16eb7d385870f1066eb31a54f9e6030fd7d9da0e8f675d6cbcd91225ff9c9234",
+      "note": "2112 eight-byte HR and step minutes in three rounds"
+    },
+    {
+      "name": "0x05_raw.bin",
+      "source": "0x05_raw.bin",
+      "range": [
+        0,
+        108
+      ],
+      "bytes": 108,
+      "sha256": "ef409704b94f9622f2ae439b18c89ec9db7e46609fab90b6d952848f367276da",
+      "note": "one confirmed version 2.1 protobuf workout summary"
+    },
+    {
+      "name": "0x06_raw.bin",
+      "source": "0x06_raw.bin",
+      "range": [
+        0,
+        83069
+      ],
+      "bytes": 83069,
+      "sha256": "8b160aa0f811a82a62da43a5bb54c8dfa79ae1ec5c7f2c9988bee106772dbc5d",
+      "note": "164 psmh detail blocks for one workout window"
+    },
+    {
+      "name": "0x0D_raw.bin",
+      "source": "0x0D_raw.bin",
+      "range": [
+        0,
+        204
+      ],
+      "bytes": 204,
+      "sha256": "4e100e6f56e273f05118c96c3f4d429de1da60a5ba4dd037bd35489a36501875",
+      "note": "two 102-byte PAI records"
+    },
+    {
+      "name": "0x13_raw.bin",
+      "source": "0x13_raw.bin",
+      "range": [
+        0,
+        2121
+      ],
+      "bytes": 2121,
+      "sha256": "45c35662e6fde8419d7bd62a8baddc0d6354c8a261a0312d8a77fe2a8abc0dba",
+      "note": "one byte per stress minute"
+    },
+    {
+      "name": "0x26_raw.bin",
+      "source": "0x26_raw.bin",
+      "range": [
+        0,
+        391
+      ],
+      "bytes": 391,
+      "sha256": "c0a88557665ce01361cb6c42135fead1e0a563611345bc5d42181a35a3d62a0a",
+      "note": "version 2 plus thirteen 30-byte sleep breathing records, all firmware placeholders"
+    },
+    {
+      "name": "0x2E_raw.bin",
+      "source": "0x2E_raw.bin",
+      "range": [
+        0,
+        16960
+      ],
+      "bytes": 16960,
+      "sha256": "4e10b89a20c5205dd2f74c5502edc8015bb1996707d2cbeb352c34bac357d36d",
+      "note": "2120 eight-byte skin temperature minutes"
+    },
+    {
+      "name": "0x38_raw.bin",
+      "source": "0x38_raw.bin",
+      "range": [
+        0,
+        3304
+      ],
+      "bytes": 3304,
+      "sha256": "7aba637938bfab60e716ca2e1cd1e107ff69aaae6075612a1fa1b5c2758b5bb8",
+      "note": "413 eight-byte respiration records"
+    },
+    {
+      "name": "0x46_raw.bin",
+      "source": "0x46_raw.bin",
+      "range": [
+        0,
+        188
+      ],
+      "bytes": 188,
+      "sha256": "7434bb6825facc5ac372093fd63d0590350ec2b9d5c8a09f53720ffcd42661a9",
+      "note": "counted 8-byte header plus 180 one-second BPM samples"
+    },
+    {
+      "name": "0x48_raw.bin",
+      "source": "0x48_raw.bin",
+      "range": [
+        0,
+        1188
+      ],
+      "bytes": 1188,
+      "sha256": "3f2c36e14f4cc3cb703c89c9d38a4a35451ab2372dba7e873544eebc0d256456",
+      "note": "two 594-byte sleep records; the first has flags 1/0 and no stages"
+    },
+    {
+      "name": "0x49_raw.bin",
+      "source": "0x49_raw.bin",
+      "range": [
+        0,
+        1836
+      ],
+      "bytes": 1836,
+      "sha256": "ed58871fffd283044fa8043cd30bf655f1650cd183ab14ef10c59ac2199c3b1d",
+      "note": "306 six-byte HRV records"
+    }
+  ],
+  "round_anchors": [
+    {
+      "code": "0x01",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T05:46:00Z",
+      "catalog_round_start_ist": "2026-06-21T11:16:00.000",
+      "log_lines": "17-46"
+    },
+    {
+      "code": "0x01",
+      "byte_offset": 632,
+      "log_cursor_utc": "2026-06-21T07:05:00Z",
+      "catalog_round_start_ist": "2026-06-21T12:35:00.000",
+      "log_lines": "17-46"
+    },
+    {
+      "code": "0x01",
+      "byte_offset": 2336,
+      "log_cursor_utc": "2026-06-21T10:39:00Z",
+      "catalog_round_start_ist": "2026-06-21T16:09:00.000",
+      "log_lines": "17-46"
+    },
+    {
+      "code": "0x05",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T20:50:16Z",
+      "catalog_round_start_ist": "2026-06-22T02:20:16.000",
+      "log_lines": "61-69"
+    },
+    {
+      "code": "0x06",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T20:50:16Z",
+      "catalog_round_start_ist": "2026-06-22T02:20:16.000",
+      "log_lines": "71-75"
+    },
+    {
+      "code": "0x0D",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T18:29:01Z",
+      "catalog_round_start_ist": null,
+      "log_lines": "98-100"
+    },
+    {
+      "code": "0x13",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T05:46:00Z",
+      "catalog_round_start_ist": "2026-06-21T11:16:00.000",
+      "log_lines": "117-121"
+    },
+    {
+      "code": "0x26",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T20:11:00Z",
+      "catalog_round_start_ist": null,
+      "log_lines": "176-180"
+    },
+    {
+      "code": "0x2E",
+      "byte_offset": 0,
+      "log_cursor_utc": "2026-06-21T05:47:00Z",
+      "catalog_round_start_ist": "2026-06-21T11:17:00.000",
+      "log_lines": "204-206"
+    },
+    {
+      "code": "0x38",
+      "byte_offset": 0,
+      "log_cursor_utc": null,
+      "catalog_round_start_ist": null,
+      "log_lines": "236"
+    },
+    {
+      "code": "0x46",
+      "byte_offset": 0,
+      "log_cursor_utc": null,
+      "catalog_round_start_ist": null,
+      "log_lines": "285"
+    },
+    {
+      "code": "0x48",
+      "byte_offset": 0,
+      "log_cursor_utc": null,
+      "catalog_round_start_ist": null,
+      "log_lines": "292"
+    },
+    {
+      "code": "0x49",
+      "byte_offset": 0,
+      "log_cursor_utc": null,
+      "catalog_round_start_ist": null,
+      "log_lines": "297"
+    }
+  ],
+  "clock_basis": {
+    "catalog_round_start": "device wall clock in IST without a Z suffix; the parser subtracts 5h30m",
+    "dump_log_cursor": "UTC with a Z suffix",
+    "record_epochs_0x0D_0x25_0x26_0x38_0x46_0x48_0x49_and_workouts": "absolute UTC epoch seconds inside the record; a five-byte timezone field of 22 (IST) exists only in 0x0D, 0x38 and 0x49 records",
+    "sleep_stage_offsets": "minutes after the record's IST midnight field minus 24 hours"
+  },
+  "zepp": [
+    {
+      "name": "activity-minute.csv",
+      "source": "ACTIVITY_MINUTE/ACTIVITY_MINUTE_1782204789536.csv",
+      "rows": 176,
+      "clock": "IST date and time",
+      "columns_kept": "date,time,steps",
+      "window": "2026-06-21 11:16 through 2026-06-22 22:28 IST"
+    },
+    {
+      "name": "heartrate-auto.csv",
+      "source": "HEARTRATE_AUTO/HEARTRATE_AUTO_1782204792282.csv",
+      "rows": 2109,
+      "clock": "IST date and time",
+      "columns_kept": "date,time,heartRate",
+      "window": "2026-06-21 11:16 through 2026-06-22 22:28 IST"
+    },
+    {
+      "name": "sleep.csv",
+      "source": "SLEEP/SLEEP_1782204790531.csv",
+      "rows": 1,
+      "clock": "UTC start and stop with explicit offset",
+      "columns_kept": "date,deepSleepTime,shallowSleepTime,wakeTime,start,stop,REMTime",
+      "note": "the export's naps column was dropped because it carries unrelated 2024 timestamps"
+    },
+    {
+      "name": "sleep-minute.csv",
+      "source": "SLEEP_MINUTE/SLEEP_MINUTE_1782204791706.csv",
+      "rows": 384,
+      "clock": "IST time; the export stamps this night 2026-06-23, one day after the 2026-06-22 sleep day used by SLEEP and SPORT, so the date column is normalized to 2026-06-22",
+      "columns_kept": "date,time,stage",
+      "window": "2026-06-22 01:20 through 06:29 and 20:06 through 21:19 IST"
+    },
+    {
+      "name": "sport.csv",
+      "source": "SPORT/SPORT_1782204792986.csv",
+      "rows": 1,
+      "clock": "UTC start with explicit offset",
+      "columns_kept": "type,startTime,sportTime(s),calories(kcal)"
+    }
+  ],
+  "privacy_exclusions": [
+    "0x07_raw.bin firmware debug log (20,969,472 bytes)",
+    "dump_log.txt (device MAC, endpoint payloads)",
+    "original manifest.json (device MAC and session identity)",
+    "0x2C metadata and opaque types 0x27, 0x3B, 0x55, 0x57",
+    "Zepp USER and BODY exports and all other days of the export",
+    "app source, secrets, auth material and free text"
+  ],
+  "fixture_envelope": "session.json, catalog.json and expected.json are fixture choices for replay, not the original server session metadata",
+  "pending": "Real 0x25 bytes do not exist in this dump; 0x25 coverage is synthetic only until the owner capture O1."
+}

@@ -28,19 +28,19 @@ if err != nil {
 
 ## 3. Structs describe data
 
-A simplified example based on `internal/store/metrics_types.go`:
+A simplified example based on `internal/store/metrics_list.go`:
 
 ```go
 type DayMetric struct {
-    DayKey string `json:"dayKey"`
-    Steps  int    `json:"steps"`
-    Hrv    *int   `json:"hrv,omitempty"`
+    DayKey string   `json:"dayKey"`
+    Steps  *int     `json:"steps"`
+    AvgHr  *float64 `json:"avgHr"`
 }
 ```
 
 This teaching example is not the complete API model. A `struct` groups named fields. The text in backticks tells the JSON encoder which field name to use. An uppercase identifier is exported outside its package. A lowercase identifier is private to the package. Exported struct fields can be handled by the standard JSON encoder.
 
-`*int` is a pointer to an integer. Here it represents an optional metric: `nil` means missing, while a pointer to zero means a present zero. `omitempty` omits a nil pointer from JSON. Without it, a nil pointer is normally encoded as `null`.
+`*int` is a pointer to an integer. Here it represents an optional metric: `nil` means missing, while a pointer to zero means a present zero. The real model has no `omitempty`, so a nil pointer is encoded as `null` and every key always appears.
 
 ## 4. Methods attach behavior to a type
 
@@ -64,7 +64,7 @@ A map is useful for lookup. Its iteration order is not guaranteed. A slice prese
 
 ## 6. Interfaces describe required behavior
 
-`internal/rollup/target.go` defines the methods rollups need. A type satisfies an interface by providing those methods. It does not write an `implements` declaration. The transaction view lets rollups read and write through the current transaction. This keeps formula code separate from a particular database connection.
+`internal/store/rollup_target.go` defines the methods the rollups call through `store.TxView`. A type satisfies an interface by providing those methods. It does not write an `implements` declaration. The transaction view lets rollups read and write through the current transaction. This keeps formula code separate from a particular database connection.
 
 ## 7. Cleanup, cancellation and concurrency
 
@@ -72,7 +72,7 @@ A map is useful for lookup. Its iteration order is not guaranteed. A slice prese
 
 `r.Context()` carries request cancellation to database operations. Passing a context does not start background work. See the [context reference](https://pkg.go.dev/context).
 
-`go func() { ... }()` starts a goroutine. In `cmd/server/main.go`, the HTTP server runs while main waits for a stop signal on a channel. `<-stop` waits to receive. A buffered channel can hold values. On shutdown, main creates a ten-second context and asks HTTP to stop gracefully. Ordinary SQL syntax does not require a goroutine.
+`go func() { ... }()` starts a goroutine. In `cmd/server/main.go`, `signal.NotifyContext` turns SIGINT and SIGTERM into a cancelled context. `serve` opens the listener, runs `srv.Serve` in one goroutine and the nonce purge loop in another, then waits. When the context is cancelled it asks HTTP to shut down with a bounded context, waits for the purge loop to stop, and only then returns so the deferred pool close runs. Every failure comes back as a return value, so no goroutine needs `log.Fatal`. Ordinary SQL syntax does not require a goroutine.
 
 ## 8. Errors and tools
 

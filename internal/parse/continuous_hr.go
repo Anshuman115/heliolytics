@@ -2,53 +2,51 @@ package parse
 
 import (
 	"encoding/binary"
+	"sort"
 	"time"
 )
 
-const hrSessionHeaderSize = 6
+const continuousHRHeaderSize = 8
 
-type HrSamplePoint struct {
-	Ts         time.Time
-	DayKey     string
-	Bpm        int
-	SourceType string
-}
-
-// ParseContinuousHr parses 0x46 PPG session blobs: 6-byte header + 1 BPM/sec.
-func ParseContinuousHr(raw []byte) []HrSamplePoint {
-	var out []HrSamplePoint
-	i := 0
-	for i+hrSessionHeaderSize <= len(raw) {
-		startSec := int64(binary.LittleEndian.Uint32(raw[i:]))
-		if !IsPlausibleUnixSec(startSec) {
-			i++
-			continue
+// parseContinuousHR decodes 0x46 counted frames: a u32 UTC epoch, a u32 sample
+// count and that many one-second BPM bytes. A BPM byte run that happens to look
+// like an epoch is still a sample, never a new header.
+func parseContinuousHR(raw []byte, window Window) ([]HeartRateRow, TypeResult, error) {
+	byTime := make(map[int64]HeartRateRow)
+	dropped := 0
+	pos := 0
+	for pos < len(raw) {
+		if len(raw)-pos < continuousHRHeaderSize {
+			return nil, TypeResult{}, newError(ErrCodeInvalidFraming, typeContinuousHR, pos,
+				"incomplete %d-byte frame header", continuousHRHeaderSize)
 		}
-		i += hrSessionHeaderSize
-		sec := startSec
-		for i < len(raw) {
-			if isHrSessionHeader(raw, i) {
-				break
-			}
-			b := raw[i]
-			i++
-			if b == 0 || b == 0xFF || b < 30 || b > 220 {
-				sec++
+		epoch := int64(binary.LittleEndian.Uint32(raw[pos:]))
+		count := int(binary.LittleEndian.Uint32(raw[pos+4:]))
+		available := len(raw) - pos - continuousHRHeaderSize
+		if count > available {
+			return nil, TypeResult{}, newError(ErrCodeCountOverflow, typeContinuousHR, pos,
+				"declared %d samples exceed %d payload bytes", count, available)
+		}
+		start := EpochUTC(epoch)
+		for i := range count {
+			at := start.Add(time.Duration(i) * time.Second)
+			bpm := raw[pos+continuousHRHeaderSize+i]
+			if !window.contains(at) || bpm < hrMinBPM || bpm > hrMaxBPM {
+				dropped++
 				continue
 			}
-			out = append(out, HrSamplePoint{
-				Ts: EpochUTC(sec), DayKey: IstDayKey(sec), Bpm: int(b), SourceType: "0x46",
-			})
-			sec++
+			byTime[at.Unix()] = HeartRateRow{SampledAt: at, Source: typeContinuousHR, BPM: int(bpm)}
 		}
+		pos += continuousHRHeaderSize + count
 	}
-	return out
-}
-
-func isHrSessionHeader(raw []byte, off int) bool {
-	if off+hrSessionHeaderSize > len(raw) {
-		return false
+	out := make([]HeartRateRow, 0, len(byTime))
+	for _, row := range byTime {
+		out = append(out, row)
 	}
-	sec := int64(binary.LittleEndian.Uint32(raw[off:]))
-	return IsPlausibleUnixSec(sec)
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	result := TypeResult{Status: "accepted", Rows: len(out), Dropped: dropped}
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].SampledAt)
+	}
+	return out, result, nil
 }

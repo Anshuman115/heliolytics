@@ -11,85 +11,46 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listHeartRateSamples = `-- name: ListHeartRateSamples :many
-SELECT day_key, sampled_at, bpm
-FROM heart_rate_samples
-WHERE day_key >= $1 AND day_key <= $2
-ORDER BY sampled_at ASC
-`
-
-type ListHeartRateSamplesParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
-}
-
-type ListHeartRateSamplesRow struct {
-	DayKey    pgtype.Date        `json:"day_key"`
-	SampledAt pgtype.Timestamptz `json:"sampled_at"`
-	Bpm       int16              `json:"bpm"`
-}
-
-func (q *Queries) ListHeartRateSamples(ctx context.Context, arg ListHeartRateSamplesParams) ([]ListHeartRateSamplesRow, error) {
-	rows, err := q.db.Query(ctx, listHeartRateSamples, arg.DayKey, arg.DayKey_2)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	items := []ListHeartRateSamplesRow{}
-	for rows.Next() {
-		var i ListHeartRateSamplesRow
-		if err := rows.Scan(&i.DayKey, &i.SampledAt, &i.Bpm); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
-}
-
-const listHeartRateSamplesCompact = `-- name: ListHeartRateSamplesCompact :many
-WITH computed AS (
-  SELECT
-    day_key,
-    sampled_at,
-    bpm,
-    (MIN(sampled_at) OVER(PARTITION BY day_key))::timestamptz as day_start
+const heartRateCompact = `-- name: HeartRateCompact :many
+WITH filtered AS (
+  SELECT day_key, sampled_at, bpm
   FROM heart_rate_samples
-  WHERE day_key >= $1 AND day_key <= $2
+  WHERE source = '0x01'
+    AND sampled_at >= $1 AND sampled_at < $2
+), computed AS (
+  SELECT day_key, sampled_at, bpm::float8 AS value,
+         MIN(sampled_at) OVER (PARTITION BY day_key) AS day_start
+  FROM filtered
 )
-SELECT
-  day_key,
-  day_start as start_time,
-  array_agg(EXTRACT(EPOCH FROM (sampled_at - day_start))::int ORDER BY sampled_at)::int[] as offsets,
-  array_agg(bpm::int ORDER BY sampled_at)::int[] as values
+SELECT day_key, day_start::timestamptz AS start_time,
+       array_agg(floor(EXTRACT(EPOCH FROM (sampled_at - day_start)))::int ORDER BY sampled_at)::int[] AS offsets,
+       array_agg(value ORDER BY sampled_at)::float8[] AS values
 FROM computed
 GROUP BY day_key, day_start
-ORDER BY day_key ASC
+ORDER BY start_time ASC
 `
 
-type ListHeartRateSamplesCompactParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+type HeartRateCompactParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
 }
 
-type ListHeartRateSamplesCompactRow struct {
+type HeartRateCompactRow struct {
 	DayKey    pgtype.Date        `json:"day_key"`
 	StartTime pgtype.Timestamptz `json:"start_time"`
 	Offsets   []int32            `json:"offsets"`
-	Values    []int32            `json:"values"`
+	Values    []float64          `json:"values"`
 }
 
-func (q *Queries) ListHeartRateSamplesCompact(ctx context.Context, arg ListHeartRateSamplesCompactParams) ([]ListHeartRateSamplesCompactRow, error) {
-	rows, err := q.db.Query(ctx, listHeartRateSamplesCompact, arg.DayKey, arg.DayKey_2)
+func (q *Queries) HeartRateCompact(ctx context.Context, arg HeartRateCompactParams) ([]HeartRateCompactRow, error) {
+	rows, err := q.db.Query(ctx, heartRateCompact, arg.FromAt, arg.ToAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListHeartRateSamplesCompactRow{}
+	items := []HeartRateCompactRow{}
 	for rows.Next() {
-		var i ListHeartRateSamplesCompactRow
+		var i HeartRateCompactRow
 		if err := rows.Scan(
 			&i.DayKey,
 			&i.StartTime,
@@ -106,31 +67,179 @@ func (q *Queries) ListHeartRateSamplesCompact(ctx context.Context, arg ListHeart
 	return items, nil
 }
 
-const upsertHeartRateSample = `-- name: UpsertHeartRateSample :exec
-INSERT INTO heart_rate_samples (sampled_at, day_key, bpm, source_session_id, source_type)
-VALUES ($1, $2, $3, $4, $5)
-ON CONFLICT (sampled_at) DO UPDATE SET
-  bpm = EXCLUDED.bpm,
-  day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id,
-  source_type = EXCLUDED.source_type
+const heartRateDayBounds = `-- name: HeartRateDayBounds :many
+(SELECT day_key FROM heart_rate_samples ORDER BY sampled_at ASC LIMIT 1)
+UNION ALL
+(SELECT day_key FROM heart_rate_samples ORDER BY sampled_at DESC LIMIT 1)
 `
 
-type UpsertHeartRateSampleParams struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Bpm             int16              `json:"bpm"`
-	SourceSessionID string             `json:"source_session_id"`
-	SourceType      string             `json:"source_type"`
+func (q *Queries) HeartRateDayBounds(ctx context.Context) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, heartRateDayBounds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Date{}
+	for rows.Next() {
+		var day_key pgtype.Date
+		if err := rows.Scan(&day_key); err != nil {
+			return nil, err
+		}
+		items = append(items, day_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) UpsertHeartRateSample(ctx context.Context, arg UpsertHeartRateSampleParams) error {
-	_, err := q.db.Exec(ctx, upsertHeartRateSample,
+const listHeartRateSamples = `-- name: ListHeartRateSamples :many
+SELECT sampled_at, source, bpm, session_id, observed_at
+FROM heart_rate_samples
+WHERE sampled_at >= $1 AND sampled_at < $2
+ORDER BY sampled_at ASC
+`
+
+type ListHeartRateSamplesParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
+}
+
+type ListHeartRateSamplesRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Source     string             `json:"source"`
+	Bpm        int16              `json:"bpm"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+}
+
+func (q *Queries) ListHeartRateSamples(ctx context.Context, arg ListHeartRateSamplesParams) ([]ListHeartRateSamplesRow, error) {
+	rows, err := q.db.Query(ctx, listHeartRateSamples, arg.FromAt, arg.ToAt)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHeartRateSamplesRow{}
+	for rows.Next() {
+		var i ListHeartRateSamplesRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.Source,
+			&i.Bpm,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listHeartRateSamplesByKeys = `-- name: ListHeartRateSamplesByKeys :many
+SELECT sampled_at, source, bpm, session_id, observed_at
+FROM heart_rate_samples
+WHERE sampled_at = ANY($1::timestamptz[])
+  AND source = ANY($2::text[])
+ORDER BY sampled_at ASC, source COLLATE "C" ASC
+`
+
+type ListHeartRateSamplesByKeysParams struct {
+	Keys    []pgtype.Timestamptz `json:"keys"`
+	Sources []string             `json:"sources"`
+}
+
+type ListHeartRateSamplesByKeysRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Source     string             `json:"source"`
+	Bpm        int16              `json:"bpm"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+}
+
+func (q *Queries) ListHeartRateSamplesByKeys(ctx context.Context, arg ListHeartRateSamplesByKeysParams) ([]ListHeartRateSamplesByKeysRow, error) {
+	rows, err := q.db.Query(ctx, listHeartRateSamplesByKeys, arg.Keys, arg.Sources)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListHeartRateSamplesByKeysRow{}
+	for rows.Next() {
+		var i ListHeartRateSamplesByKeysRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.Source,
+			&i.Bpm,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const maxHeartRateSampleAt = `-- name: MaxHeartRateSampleAt :one
+SELECT sampled_at FROM heart_rate_samples
+WHERE source = $1
+  AND ($2::text IS NULL OR session_id = $2::text)
+ORDER BY sampled_at DESC
+LIMIT 1
+`
+
+type MaxHeartRateSampleAtParams struct {
+	Source    string      `json:"source"`
+	SessionID pgtype.Text `json:"session_id"`
+}
+
+func (q *Queries) MaxHeartRateSampleAt(ctx context.Context, arg MaxHeartRateSampleAtParams) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, maxHeartRateSampleAt, arg.Source, arg.SessionID)
+	var sampled_at pgtype.Timestamptz
+	err := row.Scan(&sampled_at)
+	return sampled_at, err
+}
+
+const upsertHeartRateSamples = `-- name: UpsertHeartRateSamples :exec
+INSERT INTO heart_rate_samples (sampled_at, source, bpm, session_id, observed_at)
+SELECT v.sampled_at, v.source, v.bpm, v.session_id, v.observed_at
+FROM ROWS FROM (
+  unnest($1::timestamptz[]),
+  unnest($2::text[]),
+  unnest($3::smallint[]),
+  unnest($4::text[]),
+  unnest($5::timestamptz[])
+) AS v(sampled_at, source, bpm, session_id, observed_at)
+ON CONFLICT (sampled_at, source) DO UPDATE SET
+  bpm = EXCLUDED.bpm,
+  session_id = EXCLUDED.session_id,
+  observed_at = EXCLUDED.observed_at
+WHERE (EXCLUDED.observed_at, EXCLUDED.session_id COLLATE "C")
+      >= (heart_rate_samples.observed_at, heart_rate_samples.session_id COLLATE "C")
+`
+
+type UpsertHeartRateSamplesParams struct {
+	SampledAt  []pgtype.Timestamptz `json:"sampled_at"`
+	Source     []string             `json:"source"`
+	Bpm        []int16              `json:"bpm"`
+	SessionID  []string             `json:"session_id"`
+	ObservedAt []pgtype.Timestamptz `json:"observed_at"`
+}
+
+// Newer observation tuples win; an older sync never regresses a canonical value.
+func (q *Queries) UpsertHeartRateSamples(ctx context.Context, arg UpsertHeartRateSamplesParams) error {
+	_, err := q.db.Exec(ctx, upsertHeartRateSamples,
 		arg.SampledAt,
-		arg.DayKey,
+		arg.Source,
 		arg.Bpm,
-		arg.SourceSessionID,
-		arg.SourceType,
+		arg.SessionID,
+		arg.ObservedAt,
 	)
 	return err
 }

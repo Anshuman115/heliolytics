@@ -1,119 +1,100 @@
 package parse
 
-import "time"
+import (
+	"bytes"
+	"sort"
+)
 
-var workoutMarker = []byte{0x0a, 0x03, 0x32, 0x2e}
+var workoutVersionMarker = []byte{0x0a, 0x03, 0x32, 0x2e}
 
-type WorkoutRecord struct {
-	DayKey      string
-	StartedAt   time.Time
-	SportType   int
-	SportName   string
-	DurationSec int
-	Calories    *int
-	AvgHr       *int
-	MaxHr       *int
-	MinHr       *int
-	HasSummary  bool
-	HasDetail   bool
-}
-
-// ParseWorkouts splits on protobuf version marker 0a 03 32 2e ("2.").
-func ParseWorkouts(raw []byte) []WorkoutRecord {
-	raw = trimWorkoutHeader(raw)
-	var starts []int
-	for i := 0; i+len(workoutMarker) <= len(raw); i++ {
-		if matchBytes(raw, i, workoutMarker) {
-			starts = append(starts, i)
-		}
-	}
+// parseWorkoutSummaries splits 0x05 payloads on the version marker. Only a
+// confirmed summary creates a workout; detail blocks never do.
+func parseWorkoutSummaries(raw []byte, window Window) ([]WorkoutRow, TypeResult, error) {
+	starts := markerOffsets(raw, workoutVersionMarker)
 	if len(starts) == 0 {
-		return parseWorkoutLegacyStream(raw)
+		return nil, TypeResult{}, newError(ErrCodeUnsupportedVersion, typeWorkout, 0,
+			"payload carries no supported workout version marker")
 	}
-	var out []WorkoutRecord
-	for s := 0; s < len(starts); s++ {
+	byStart := make(map[int64]WorkoutRow, len(starts))
+	droppedRecords, droppedStats := 0, 0
+	firstStatsOffset := -1
+	for i, start := range starts {
 		end := len(raw)
-		if s+1 < len(starts) {
-			end = starts[s+1] - 2
+		if i+1 < len(starts) {
+			end = starts[i+1]
 		}
-		if starts[s] >= end {
+		summary, statsDropped, err := decodeWorkoutSummary(raw[start:end], start)
+		if err != nil {
+			return nil, TypeResult{}, err
+		}
+		if statsDropped > 0 {
+			droppedStats += statsDropped
+			if firstStatsOffset < 0 {
+				firstStatsOffset = start
+			}
+		}
+		if summary == nil {
+			droppedRecords++
 			continue
 		}
-		if w := decodeWorkoutBlob(raw[starts[s]:end]); w != nil {
-			w.SportName = SportName(w.SportType)
-			out = append(out, *w)
+		row, ok := summary.row(window)
+		if !ok {
+			droppedRecords++
+			continue
 		}
+		byStart[row.StartedAt.Unix()] = row
 	}
-	return out
+	out := make([]WorkoutRow, 0, len(byStart))
+	for _, row := range byStart {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartedAt.Before(out[j].StartedAt) })
+	result := TypeResult{
+		Status:  "accepted",
+		Rows:    len(out),
+		Dropped: droppedRecords + droppedStats,
+	}
+	if droppedStats > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "workout_stat_out_of_range", ByteOffset: firstStatsOffset, Count: droppedStats,
+		})
+	}
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].EndedAt)
+	}
+	return out, result, nil
 }
 
-func parseWorkoutLegacyStream(raw []byte) []WorkoutRecord {
-	var out []WorkoutRecord
-	for o := 0; o < len(raw); {
-		w, n := decodeWorkoutMsg(raw, o)
-		if n <= 0 {
+func markerOffsets(raw, marker []byte) []int {
+	var out []int
+	for offset := 0; offset+len(marker) <= len(raw); {
+		found := bytes.Index(raw[offset:], marker)
+		if found < 0 {
 			break
 		}
-		if w != nil {
-			w.SportName = SportName(w.SportType)
-			out = append(out, *w)
-		}
-		o += n
+		out = append(out, offset+found)
+		offset += found + 1
 	}
 	return out
 }
 
-func decodeWorkoutBlob(blob []byte) *WorkoutRecord {
-	top := readProtoMsg(blob)
-	meta := protoSub(top, 2)
-	dur := protoSub(top, 7)
-	cal := protoSub(top, 16)
-	hr := protoSub(top, 19)
-	startSec := protoInt(meta, 1)
-	if startSec == nil || *startSec < 1000000000 {
-		return nil
+// row converts a decoded summary into a row when its interval fits the window.
+func (s *workoutSummary) row(window Window) (WorkoutRow, bool) {
+	if !anchorPlausible(s.startedAt) || s.durationSec <= 0 || s.durationSec > maxAnchorSec {
+		return WorkoutRow{}, false
 	}
-	duration := protoInt(dur, 1)
-	if duration == nil || *duration == 0 {
-		return nil
+	end := s.startedAt + s.durationSec
+	if end > maxAnchorSec {
+		return WorkoutRow{}, false
 	}
-	sportVal := pickSportType(blob, meta)
-	var calories, avg, max, min *int
-	if c := protoInt(cal, 1); c != nil {
-		calories = c
+	start := EpochUTC(s.startedAt)
+	stopped := EpochUTC(end)
+	if !window.containsInterval(start, stopped) {
+		return WorkoutRow{}, false
 	}
-	if a := protoInt(hr, 1); a != nil {
-		avg = a
-	}
-	if m := protoInt(hr, 2); m != nil {
-		max = m
-	}
-	if mn := protoInt(hr, 3); mn != nil {
-		min = mn
-	}
-	sec := int64(*startSec)
-	return &WorkoutRecord{
-		DayKey: IstDayKey(sec), StartedAt: EpochUTC(sec),
-		SportType: sportVal, DurationSec: *duration,
-		Calories: calories, AvgHr: avg, MaxHr: max, MinHr: min,
-	}
-}
-
-func matchBytes(b []byte, i int, p []byte) bool {
-	for j, v := range p {
-		if b[i+j] != v {
-			return false
-		}
-	}
-	return true
-}
-
-func trimWorkoutHeader(b []byte) []byte {
-	for len(b) > 0 && b[0] == 0 {
-		b = b[1:]
-	}
-	if len(b) > 1 && b[0] == 0x80 {
-		b = b[1:]
-	}
-	return b
+	return WorkoutRow{
+		StartedAt: start, EndedAt: stopped,
+		SportType: s.sportType, SportName: SportName(s.sportType),
+		Calories: s.calories, AvgHR: s.avgHR, MaxHR: s.maxHR, MinHR: s.minHR,
+	}, true
 }

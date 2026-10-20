@@ -1,52 +1,37 @@
 package parse
 
-import (
-	"sort"
-	"time"
+import "sort"
+
+const (
+	hrMinBPM     = 25
+	hrMaxBPM     = 250
+	hrAbsentZero = 0
+	hrAbsentMax  = 0xFF
 )
 
-func ParseActivityHrSeries(raw, catalogJSON []byte, fetchEnd time.Time) []HrSamplePoint {
-	const stride = 8
-	if len(raw) < stride {
-		return nil
-	}
-	cat, err := ParseCatalog(catalogJSON)
-	if err != nil {
-		return nil
-	}
-	entry := FindEntry(cat, "0x01")
-	segments := buildByteSegments(raw, entry, fetchEnd, stride)
-	var out []HrSamplePoint
-	for i, segment := range segments {
-		end := len(raw)
-		if i+1 < len(segments) {
-			end = segments[i+1].byteStart
+// heartRateRows emits one row per 0x01 minute that carries a valid BPM. Zero
+// and 0xff are missing readings; a real value outside 25..250 is dropped.
+func heartRateRows(records []activityRecord, window Window) ([]HeartRateRow, int) {
+	byMinute := make(map[int64]HeartRateRow, len(records))
+	dropped := 0
+	for _, record := range records {
+		if !window.contains(record.at) {
+			dropped++
+			continue
 		}
-		sec := segment.rs
-		for off := segment.byteStart; off+stride <= end; off += stride {
-			bpm := int(raw[off+3])
-			if bpm >= 30 && bpm <= 220 {
-				out = append(out, HrSamplePoint{
-					Ts: EpochUTC(sec), DayKey: IstDayKey(sec), Bpm: bpm, SourceType: "0x01",
-				})
-			}
-			sec += 60
+		if record.bpm == hrAbsentZero || record.bpm == hrAbsentMax ||
+			record.bpm < hrMinBPM || record.bpm > hrMaxBPM {
+			dropped++
+			continue
+		}
+		byMinute[record.at.Unix()] = HeartRateRow{
+			SampledAt: record.at, Source: typeActivity, BPM: int(record.bpm),
 		}
 	}
-	return out
-}
-
-func MergeHeartRateSeries(parts ...[]HrSamplePoint) []HrSamplePoint {
-	byTimestamp := make(map[int64]HrSamplePoint)
-	for _, part := range parts {
-		for _, point := range part {
-			byTimestamp[point.Ts.Unix()] = point
-		}
+	out := make([]HeartRateRow, 0, len(byMinute))
+	for _, row := range byMinute {
+		out = append(out, row)
 	}
-	out := make([]HrSamplePoint, 0, len(byTimestamp))
-	for _, point := range byTimestamp {
-		out = append(out, point)
-	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Ts.Before(out[j].Ts) })
-	return out
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	return out, dropped
 }

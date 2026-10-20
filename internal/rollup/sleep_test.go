@@ -1,100 +1,115 @@
 package rollup
 
 import (
-	"context"
-	"database/sql"
 	"testing"
 	"time"
+
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-func TestRecomputeDailySleepPicksBestNonNapSession(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	const day = "2026-06-29"
+// Shared fixtures for the pure rollup tests.
+var testDay = time.Date(2026, 10, 20, 0, 0, 0, 0, store.IST)
 
-	clean := func() {
-		st.Pool().Exec(ctx, `DELETE FROM sleep_sessions WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM daily_metrics WHERE day_key=$1::date`, day)
-	}
-	clean()
-	t.Cleanup(clean)
-	st.Pool().Exec(ctx, `INSERT INTO daily_metrics (day_key) VALUES ($1::date)`, day)
+func at(hour, minute int) time.Time {
+	return testDay.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute)
+}
 
-	base := time.Date(2026, 6, 28, 22, 0, 0, 0, time.UTC)
-	// A nap (must be excluded from sleep_score) and two non-nap sessions
-	// (best score must win), plus nap_count must reflect the nap row.
-	_, err := st.Pool().Exec(ctx, `
-		INSERT INTO sleep_sessions (started_at, day_key, score, total_mins, deep_mins, rem_mins, light_mins, wake_mins, is_nap, source_session_id) VALUES
-		($1, $2::date, 60, 480, 90, 90, 300, 0, false, 'sess-1'),
-		($3, $2::date, 85, 470, 110, 110, 250, 0, false, 'sess-2'),
-		($4, $2::date, 90, 30, 0, 0, 30, 0, true, 'sess-3')`,
-		base, day, base.Add(30*time.Minute), base.Add(10*time.Hour))
-	if err != nil {
-		t.Fatalf("seed: %v", err)
-	}
-
-	if err := RecomputeDailySleep(ctx, st, []string{day}); err != nil {
-		t.Fatalf("recompute: %v", err)
-	}
-
-	var score, mins, naps int
-	if err := st.Pool().QueryRow(ctx,
-		`SELECT sleep_score, sleep_mins, nap_count FROM daily_metrics WHERE day_key=$1::date`, day).
-		Scan(&score, &mins, &naps); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if score != 85 {
-		t.Fatalf("sleep_score=%d, want 85 (best non-nap session)", score)
-	}
-	if mins != 470 {
-		t.Fatalf("sleep_mins=%d, want 470", mins)
-	}
-	if naps != 1 {
-		t.Fatalf("nap_count=%d, want 1", naps)
+func testSleep(start, end time.Time, total, deep, rem, light, wake int, score int, nap bool) store.SleepRow {
+	return store.SleepRow{
+		StartedAt: start,
+		EndedAt:   end,
+		DayKey:    dayStart(testDay),
+		IsNap:     nap,
+		Score:     new(score),
+		TotalMins: total,
+		DeepMins:  deep,
+		RemMins:   rem,
+		LightMins: light,
+		WakeMins:  wake,
 	}
 }
 
-func TestRecomputeDailySleepNapOnlyDayUpdatesNapCountWithoutClobberingSleepScore(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	const day = "2026-06-29"
+func TestSleepUnionExcludesInterSessionGap(t *testing.T) {
+	rows := []store.SleepRow{
+		testSleep(at(22, 0), at(25, 0), 120, 40, 30, 50, 10, 70, false),
+		testSleep(at(27, 0), at(30, 0), 100, 30, 30, 40, 5, 90, false),
+	}
+	got := summarizeSleep(rows, testDay)
+	if got.minutes != 360 {
+		t.Fatalf("union minutes = %d, want 360", got.minutes)
+	}
+	if len(got.union) != 2 {
+		t.Fatalf("union spans = %d, want 2", len(got.union))
+	}
+	if !got.quality {
+		t.Fatal("a 360 minute union must clear the night floor")
+	}
+}
 
-	clean := func() {
-		st.Pool().Exec(ctx, `DELETE FROM sleep_sessions WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM daily_metrics WHERE day_key=$1::date`, day)
+func TestSleepScoreComesFromLongestSession(t *testing.T) {
+	rows := []store.SleepRow{
+		testSleep(at(22, 0), at(25, 0), 120, 40, 30, 50, 10, 70, false),
+		testSleep(at(27, 0), at(30, 0), 100, 30, 30, 40, 5, 90, false),
 	}
-	clean()
-	t.Cleanup(clean)
-	// Pre-seed a sleep_score from a prior recompute; this must survive a
-	// nap-only-day recompute (no non-nap session present to overwrite it).
-	st.Pool().Exec(ctx, `INSERT INTO daily_metrics (day_key, sleep_score) VALUES ($1::date, 77)`, day)
+	got := summarizeSleep(rows, testDay)
+	if got.score == nil || *got.score != 70 {
+		t.Fatalf("score = %v, want the longer session's 70", got.score)
+	}
+	if got.asleep == nil || *got.asleep != 220 {
+		t.Fatalf("sleep mins = %v, want 220", got.asleep)
+	}
+	if got.wake == nil || *got.wake != 15 {
+		t.Fatalf("wake mins = %v, want 15", got.wake)
+	}
+	if got.inBed == nil || *got.inBed != 235 {
+		t.Fatalf("time in bed = %v, want 235", got.inBed)
+	}
+	if got.efficiency == nil || *got.efficiency != 94 {
+		t.Fatalf("efficiency = %v, want 94", got.efficiency)
+	}
+	if got.deep == nil || *got.deep != 70 || got.rem == nil || *got.rem != 60 || got.light == nil || *got.light != 90 {
+		t.Fatalf("stage sums = %v/%v/%v, want 70/60/90", got.deep, got.rem, got.light)
+	}
+}
 
-	base := time.Date(2026, 6, 28, 13, 0, 0, 0, time.UTC)
-	// Only nap rows for this day — no main (non-nap) sleep session.
-	_, err := st.Pool().Exec(ctx, `
-		INSERT INTO sleep_sessions (started_at, day_key, score, total_mins, deep_mins, rem_mins, light_mins, wake_mins, is_nap, source_session_id) VALUES
-		($1, $2::date, 60, 30, 0, 0, 30, 0, true, 'nap-1'),
-		($3, $2::date, 65, 20, 0, 0, 20, 0, true, 'nap-2')`,
-		base, day, base.Add(3*time.Hour))
-	if err != nil {
-		t.Fatalf("seed: %v", err)
+func TestNapOnlyDayKeepsMainValuesNull(t *testing.T) {
+	rows := []store.SleepRow{
+		testSleep(at(14, 0), at(15, 0), 60, 20, 20, 20, 0, 60, true),
 	}
+	got := summarizeSleep(rows, testDay)
+	if got.naps != 1 {
+		t.Fatalf("nap count = %d, want 1", got.naps)
+	}
+	if got.score != nil || got.asleep != nil || got.inBed != nil || got.efficiency != nil {
+		t.Fatal("a nap-only day has no main-sleep values")
+	}
+	if got.quality {
+		t.Fatal("a nap must not open the night window")
+	}
+}
 
-	if err := RecomputeDailySleep(ctx, st, []string{day}); err != nil {
-		t.Fatalf("recompute: %v", err)
+func TestNightFloorBoundary(t *testing.T) {
+	short := []store.SleepRow{testSleep(at(1, 0), at(3, 59), 179, 60, 60, 59, 0, 60, false)}
+	if summarizeSleep(short, testDay).quality {
+		t.Fatal("179 minute union must stay below the night floor")
 	}
+	full := []store.SleepRow{testSleep(at(1, 0), at(4, 0), 180, 60, 60, 60, 0, 60, false)}
+	if !summarizeSleep(full, testDay).quality {
+		t.Fatal("180 minute union must clear the night floor")
+	}
+}
 
-	var score sql.NullInt64
-	var naps int
-	if err := st.Pool().QueryRow(ctx,
-		`SELECT sleep_score, nap_count FROM daily_metrics WHERE day_key=$1::date`, day).
-		Scan(&score, &naps); err != nil {
-		t.Fatalf("read: %v", err)
+func TestSleepSummaryIgnoresOtherDays(t *testing.T) {
+	rows := []store.SleepRow{
+		testSleep(at(1, 0), at(4, 0), 180, 60, 60, 60, 0, 60, false),
+		{
+			StartedAt: at(1, 0), EndedAt: at(4, 0),
+			DayKey: dayStart(testDay.AddDate(0, 0, -1)),
+			Score:  new(10), TotalMins: 180, DeepMins: 60, RemMins: 60, LightMins: 60,
+		},
 	}
-	if naps != 2 {
-		t.Fatalf("nap_count=%d, want 2 (nap-only day must still update nap_count)", naps)
-	}
-	if !score.Valid || score.Int64 != 77 {
-		t.Fatalf("sleep_score=%v, want 77 (prior value must not be clobbered on nap-only day)", score)
+	got := summarizeSleep(rows, testDay)
+	if got.asleep == nil || *got.asleep != 180 {
+		t.Fatalf("sleep mins = %v, want 180", got.asleep)
 	}
 }
