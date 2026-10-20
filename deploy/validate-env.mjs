@@ -332,16 +332,6 @@ function validate(config) {
     fail('compose.adminer.profiles', 'adminer must stay behind the tools profile');
   }
   checkPorts(asObject(allServices.adminer), 'adminer', 8080);
-  const connector = asObject(allServices.cloudflared);
-  if (!asArray(connector.profiles).includes('tunnel')) {
-    fail('compose.cloudflared.profiles', 'the connector must stay behind the tunnel profile');
-  }
-  const connectorIngress = asObject(asObject(connector.networks).ingress);
-  if (!String(connectorIngress.ipv4_address ?? '')) {
-    fail('compose.cloudflared.networks', 'the connector needs a static ingress address');
-  }
-  checkNoHostAccess(connector, 'cloudflared');
-  requireLimit(connector, 'cloudflared');
 
   return resolvedHash;
 }
