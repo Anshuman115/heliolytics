@@ -1,10 +1,8 @@
--- Heliolytics schema. Fresh database only; there are no migrations.
--- Initialization creates schema, roles, extensions and grants only: no seed rows.
+-- Fresh database only; initialization must not seed health or profile rows.
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;
 CREATE EXTENSION IF NOT EXISTS btree_gist;
 
--- ---------- ingest ----------
 
 CREATE TABLE sync_sessions (
   session_id   TEXT PRIMARY KEY,
@@ -26,7 +24,6 @@ CREATE TABLE raw_blobs (
 );
 CREATE INDEX raw_blobs_type_sha ON raw_blobs (type_code, sha256);
 
--- ---------- samples (hypertables) ----------
 
 CREATE TABLE heart_rate_samples (
   sampled_at   TIMESTAMPTZ NOT NULL,
@@ -91,7 +88,6 @@ CREATE TABLE spo2_samples (
   PRIMARY KEY (sampled_at, source)
 );
 
--- ---------- sessions ----------
 
 CREATE TABLE sleep_sessions (
   started_at        TIMESTAMPTZ PRIMARY KEY,
@@ -134,7 +130,6 @@ CREATE TABLE activities (
 );
 CREATE INDEX activities_day ON activities (day_key);
 
--- Typed immutable source candidates: LIKE copies columns and CHECK constraints.
 CREATE TABLE sleep_observations
   (LIKE sleep_sessions INCLUDING DEFAULTS INCLUDING CONSTRAINTS);
 ALTER TABLE sleep_observations ADD PRIMARY KEY (session_id, started_at);
@@ -152,7 +147,6 @@ ALTER TABLE workout_observations ADD CHECK (kind = 'workout');
 CREATE INDEX workout_observations_overlap ON workout_observations
   USING gist (tstzrange(started_at, ended_at, '[)'));
 
--- ---------- device daily scores ----------
 
 CREATE TABLE pai_scores (
   day_key      DATE PRIMARY KEY,
@@ -162,7 +156,6 @@ CREATE TABLE pai_scores (
   session_id   TEXT NOT NULL REFERENCES sync_sessions(session_id)
 );
 
--- ---------- daily rollup ----------
 
 CREATE TABLE daily_metrics (
   day_key               DATE PRIMARY KEY,
@@ -203,7 +196,6 @@ CREATE TABLE daily_metrics (
          OR time_in_bed_mins = sleep_mins + sleep_wake_mins)
 );
 
--- ---------- support ----------
 
 CREATE TABLE coverage (
   type_code     TEXT PRIMARY KEY CHECK (type_code ~ '^0x[0-9A-F]{2}$'),
@@ -229,7 +221,6 @@ CREATE TABLE auth_nonces (
 );
 CREATE INDEX auth_nonces_expiry ON auth_nonces (expires_at);
 
--- ---------- canonical ownership (tests and full-keyset assertions) ----------
 
 CREATE VIEW canonical_day_keys AS
 SELECT day_key FROM heart_rate_samples
@@ -243,7 +234,6 @@ UNION SELECT day_key FROM sleep_sessions
 UNION SELECT day_key FROM activities
 UNION SELECT day_key FROM pai_scores;
 
--- ---------- Timescale ----------
 
 SELECT create_hypertable('heart_rate_samples', by_range('sampled_at', INTERVAL '90 days'));
 ALTER TABLE heart_rate_samples SET (
@@ -296,7 +286,6 @@ ALTER TABLE spo2_samples SET (
 );
 SELECT add_compression_policy('spo2_samples', INTERVAL '30 days');
 
--- ---------- owner-only stable database identity ----------
 
 CREATE FUNCTION public.rebuild_database_identity()
 RETURNS TABLE(system_identifier text, database_oid oid, database_name text)
@@ -309,7 +298,6 @@ AS $identity$
 $identity$;
 REVOKE ALL ON FUNCTION public.rebuild_database_identity() FROM PUBLIC;
 
--- ---------- application grants (skipped when the role is absent) ----------
 
 DO $grants$
 BEGIN

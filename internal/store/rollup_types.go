@@ -5,8 +5,6 @@ import (
 	"time"
 )
 
-// RollupInputs is every exact canonical input the rollup needs for a date
-// range. Nothing here is pre-averaged or preselected; B05 owns the math.
 type RollupInputs struct {
 	HR           []HeartRateSample
 	Steps        []StepSample
@@ -20,7 +18,6 @@ type RollupInputs struct {
 	PAI          []PAIScore
 }
 
-// DailyAggregate owns the aggregate columns of one daily_metrics row.
 type DailyAggregate struct {
 	DayKey             time.Time
 	Steps              *int
@@ -51,13 +48,11 @@ type DailyAggregate struct {
 	TRIMP              *float64
 }
 
-// LoadUpdate owns the training-load column of one day.
 type LoadUpdate struct {
 	DayKey time.Time
 	TRIMP  *float64
 }
 
-// ReadinessUpdate owns the readiness columns of one day.
 type ReadinessUpdate struct {
 	DayKey         time.Time
 	Score          *int
@@ -65,14 +60,12 @@ type ReadinessUpdate struct {
 	TempDeviationC *float64
 }
 
-// ActivityMinute is one observed step minute with optional 0x01 heart rate.
 type ActivityMinute struct {
 	At    time.Time
 	Steps int
 	HR    *int
 }
 
-// WorkoutInterval is one authoritative workout barrier.
 type WorkoutInterval struct {
 	Start time.Time
 	End   time.Time

@@ -9,8 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// WriteSteps stores one bounded batch of per-minute step counts, including
-// observed zero minutes.
 func (s *Store) WriteSteps(ctx context.Context, tx pgx.Tx, rows []StepSample,
 	sessionID string, observedAt time.Time) (Mutation, error) {
 	const table = "step_samples"

@@ -6,7 +6,6 @@ import (
 	"strconv"
 )
 
-// C3.1 error codes.
 const (
 	CodeInvalidDate        = "invalid_date"
 	CodeInvalidRange       = "invalid_range"
@@ -57,7 +56,6 @@ var errorMessages = map[string]string{
 	CodeInternal:           "internal error",
 }
 
-// Error is a C3 error a handler can return with an explicit status and code.
 type Error struct {
 	Status  int
 	Code    string
@@ -71,10 +69,8 @@ func (e *Error) Error() string {
 	return errorMessages[e.Code]
 }
 
-// Fail builds an Error with the code's default safe message.
 func Fail(status int, code string) *Error { return &Error{Status: status, Code: code} }
 
-// errorEnvelope is the C3.1 error shape.
 type errorEnvelope struct {
 	Error errorBody `json:"error"`
 }
@@ -84,13 +80,10 @@ type errorBody struct {
 	Message string `json:"message"`
 }
 
-// WriteCode writes the JSON error envelope for a known code.
 func WriteCode(w http.ResponseWriter, status int, code string) {
 	WriteError(w, &Error{Status: status, Code: code})
 }
 
-// WriteError writes the JSON error envelope for an Error, defaulting an
-// unknown status or code rather than emitting an empty body.
 func WriteError(w http.ResponseWriter, e *Error) {
 	status := e.Status
 	if status == 0 {
@@ -113,7 +106,6 @@ func WriteError(w http.ResponseWriter, e *Error) {
 	_, _ = w.Write(append(body, '\n'))
 }
 
-// WriteRetryAfter writes a 429 with the C3 body and a nonzero Retry-After.
 func WriteRetryAfter(w http.ResponseWriter, seconds int) {
 	if seconds < 1 {
 		seconds = 1
@@ -122,9 +114,6 @@ func WriteRetryAfter(w http.ResponseWriter, seconds int) {
 	WriteCode(w, http.StatusTooManyRequests, CodeRateLimited)
 }
 
-// HeaderWritten reports whether a known response wrapper has committed a
-// response. A writer that cannot answer reports false; the production chain
-// always ends in the access logger's status writer, which answers exactly.
 func HeaderWritten(w http.ResponseWriter) bool {
 	for {
 		if state, ok := w.(interface{ HeaderWritten() bool }); ok {

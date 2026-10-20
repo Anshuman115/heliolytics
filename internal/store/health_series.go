@@ -6,13 +6,11 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store/db"
 )
 
-// SeriesDay adds the metric name to a compact day.
 type SeriesDay struct {
 	Metric string `json:"metric"`
 	CompactDay
 }
 
-// ListHealthSamplesCompact reads the four series metrics for the C3 shape.
 func (s *Store) ListHealthSamplesCompact(ctx context.Context, from, to string) ([]SeriesDay, error) {
 	fromAt, toAt, err := dayRange(from, to)
 	if err != nil {

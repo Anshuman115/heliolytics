@@ -10,7 +10,6 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG GIT_SHA
 ARG BUILD_TIME
-# GOOS/GOARCH are set by BuildKit; an empty value falls back to the builder platform.
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build \
     -trimpath -buildvcs=false \
     -ldflags="-s -w -X main.commit=${GIT_SHA} -X main.builtAt=${BUILD_TIME}" \

@@ -45,7 +45,6 @@ func refreshCanonicalCoverage(ctx context.Context, q *db.Queries, code string) e
 	return writeCoverage(ctx, q, code, at)
 }
 
-// UpsertCoverage assigns one exact watermark, or deletes it when nil.
 func (s *Store) UpsertCoverage(ctx context.Context, tx pgx.Tx, typeCode string, dataThrough *time.Time) error {
 	if !isMeasuredType(typeCode) {
 		return invalidRow("coverage", "type_code %q is not a measured type", typeCode)
@@ -63,8 +62,6 @@ func writeCoverage(ctx context.Context, q *db.Queries, typeCode string, dataThro
 	})
 }
 
-// maxCanonicalAt maps one type code to its canonical watermark. A non-empty
-// session restricts the read to that session's surviving canonical rows.
 func maxCanonicalAt(ctx context.Context, q *db.Queries, typeCode string, sessionID pgtype.Text) (*time.Time, error) {
 	var (
 		at  pgtype.Timestamptz
@@ -149,7 +146,6 @@ func latestOf(a, b *time.Time) *time.Time {
 	}
 }
 
-// GetCoverage reads only the small coverage and session tables.
 func (s *Store) GetCoverage(ctx context.Context) (DataCoverage, error) {
 	rows, err := s.q.ListCoverage(ctx)
 	if err != nil {

@@ -7,8 +7,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// batchRows is one upload converted to the exact store row shapes. Every
-// source, mode, precision and nullable field survives the conversion.
 type batchRows struct {
 	heartRate   []store.HeartRateSample
 	steps       []store.StepSample
@@ -108,7 +106,6 @@ func convertStages(stages []parse.SleepStage) []store.SleepStagePoint {
 	return out
 }
 
-// parseDayKey reads the parser's IST calendar date into a normalized day key.
 func parseDayKey(value string) time.Time {
 	parsed, err := time.ParseInLocation("2006-01-02", value, store.IST)
 	if err != nil {

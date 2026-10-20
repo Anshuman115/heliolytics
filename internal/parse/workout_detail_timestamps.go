@@ -11,16 +11,11 @@ const workoutDetailTimestampSize = 6
 
 var workoutDetailHeaderSize = len(workoutDetailHeader) + workoutDetailTimestampSize
 
-// detailBlock is one psmh stream block: the offset of its header and the
-// millisecond instant stored right after it.
 type detailBlock struct {
 	off int
 	at  time.Time
 }
 
-// parseWorkoutDetailBlocks walks the detail stream. The payload is not a fixed
-// record type: each block starts with a header and carries sensor payload until
-// the next header.
 func parseWorkoutDetailBlocks(raw []byte) ([]detailBlock, error) {
 	if !bytes.HasPrefix(raw, workoutDetailHeader) {
 		return nil, newError(ErrCodeInvalidFraming, typeWorkoutDetail, 0,

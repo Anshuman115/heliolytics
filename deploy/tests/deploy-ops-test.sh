@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# Behavioral sandbox tests for the deploy helpers.
-#
-# Linux with Docker only. Every resource this script creates is named
-# heliolytics-d01-*, heliolytics-restore-* or a private temp directory. It
-# refuses to run against the production project or volume and never reads the
-# production env file.
+# Linux and Docker required. Uses heliolytics-d01-* and heliolytics-restore-* resources.
+# Never use production resources or the production env file.
 set -uo pipefail
 
 script_dir=
@@ -33,9 +29,7 @@ fi
 work_dir=
 work_dir="$(mktemp -d)"
 
-# Server-side bind mounts resolve on the Docker host. When the gate runs inside a
-# helper container with the docker socket, set HELIOLYTICS_D01_MOUNT_ROOT to the
-# host path of this checkout. The staged tree lives inside the checkout for that reason.
+# In a helper container, set HELIOLYTICS_D01_MOUNT_ROOT to this checkout's Docker-host path.
 mount_root="${HELIOLYTICS_D01_MOUNT_ROOT:-$backend_dir}"
 sandbox="$backend_dir/.d01-sandbox"
 
@@ -53,7 +47,6 @@ not_ok() {
   fail_count=$((fail_count + 1))
 }
 
-# Show the tail of captured helper output so a failing row explains itself.
 diagnose() {
   local file="$1"
   if [[ -s "$file" ]]; then
@@ -120,7 +113,6 @@ wait_ready() {
   return 1
 }
 
-# ---------------------------------------------------------------- sandbox tree
 stage_deploy_tree() {
   local target="$1"
   mkdir -p "$target/initdb"
@@ -191,7 +183,6 @@ write_env "$valid_env"
 cp -- "$valid_env" "$sandbox_deploy/.env"
 chmod 600 -- "$sandbox_deploy/.env"
 
-# ------------------------------------------------------------- A. installer
 install_dir="$work_dir/install"
 mkdir -p "$install_dir"
 cp -- "$deploy_dir/install.sh" "$install_dir/install.sh"
@@ -241,7 +232,6 @@ else
   not_ok 'installer failed when the env file already existed'
 fi
 
-# ------------------------------------------------- B. environment validator
 validate() {
   "$sandbox_deploy/validate-env.sh" \
     --project "$project" \
@@ -341,7 +331,6 @@ else
   ok 'validator printed no secret value'
 fi
 
-# ------------------------------------------------------- C. web deploy guard
 fake_backend="$sandbox/fake-backend"
 fake_deploy="$fake_backend/deploy"
 fake_web="$sandbox/fake-web"
@@ -598,7 +587,6 @@ printf '#!/bin/sh\nexit 1\n' >"$work_dir/stub-copy/scp"
 printf '#!/bin/sh\nexit 1\n' >"$work_dir/stub-copy/ssh"
 chmod +x "$work_dir/stub-copy/scp" "$work_dir/stub-copy/ssh"
 
-# The sandbox database is not project deploy, so it is named explicitly.
 if PATH="$work_dir/stub-copy:$PATH" HELIOLYTICS_DEPLOY_DIR="$sandbox_deploy" \
   BACKUP_DIR="$backup_dir" BACKUP_DESTINATION=heliolytics-d01-missing:/backups \
   "$sandbox_deploy/backup-db.sh" --source-container "$db_container" >"$work_dir/case.out" 2>&1; then
@@ -675,7 +663,6 @@ else
   diagnose "$work_dir/case.out"
 fi
 
-# ------------------------------------------------ H. guarded sandbox wipe
 if printf 'DELETE %s FOR %s\n' "$volume" "$project" | \
   "$sandbox_deploy/reset-db.sh" --project "$project" --volume "$volume" \
     --backup-file "$dump_file" --backup-sha256 "$dump_sha" >"$work_dir/case.out" 2>&1; then

@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// realWindow reads the committed session window.
 func realWindow(t *testing.T) (time.Time, time.Time) {
 	t.Helper()
 	var envelope struct {
@@ -34,8 +33,6 @@ func realWindow(t *testing.T) (time.Time, time.Time) {
 	return started, ended
 }
 
-// catalogWithoutSessionID drops the optional sessionId the API cross-checks so
-// the same bytes can be replayed under another session.
 func catalogWithoutSessionID(t *testing.T, catalog []byte) []byte {
 	t.Helper()
 	var payload map[string]any
@@ -50,7 +47,6 @@ func catalogWithoutSessionID(t *testing.T, catalog []byte) []byte {
 	return encoded
 }
 
-// queryStrings reads one text column from every returned row.
 func (s *stack) queryStrings(t *testing.T, statement string, args ...any) []string {
 	t.Helper()
 	var out []string
@@ -75,7 +71,6 @@ func (s *stack) queryStrings(t *testing.T, statement string, args ...any) []stri
 	return out
 }
 
-// rawHex returns this session's stored payloads keyed by type code.
 func (s *stack) rawHex(t *testing.T, sessionID string) map[string]string {
 	t.Helper()
 	out := make(map[string]string)
@@ -102,9 +97,6 @@ func (s *stack) rawHex(t *testing.T, sessionID string) map[string]string {
 	return out
 }
 
-// TestRealFixtureUploadPersistsApprovedBytesAndMetrics sends the committed June
-// corpus through signed multipart HTTP and compares stored state with the
-// approved goldens.
 func TestRealFixtureUploadPersistsApprovedBytesAndMetrics(t *testing.T) {
 	s := newStack(t)
 	blobs := realBlobs(t)
@@ -166,7 +158,6 @@ func TestRealFixtureUploadPersistsApprovedBytesAndMetrics(t *testing.T) {
 	if steps := s.count(t, "step_samples"); steps != 2109 {
 		t.Fatalf("step_samples = %d, want 2109", steps)
 	}
-	// 0x01 minutes and 0x46 seconds share the table under distinct sources.
 	if hr := s.countWhere(t, "heart_rate_samples", "source = '0x01'"); hr != 2109 {
 		t.Fatalf("heart_rate_samples source 0x01 = %d, want 2109", hr)
 	}
@@ -199,8 +190,6 @@ func TestRealFixtureUploadPersistsApprovedBytesAndMetrics(t *testing.T) {
 	}
 }
 
-// TestIdenticalRetryAndNewerSessionKeepsLineage proves a retry cannot inflate
-// counts and that the same bytes in a newer session keep their own envelope.
 func TestIdenticalRetryAndNewerSessionKeepsLineage(t *testing.T) {
 	s := newStack(t)
 	blobs := realBlobs(t)
@@ -248,8 +237,6 @@ func TestIdenticalRetryAndNewerSessionKeepsLineage(t *testing.T) {
 	}
 }
 
-// TestNewerEqualValueAdvancesObservationWithoutRegressing checks the
-// (observed_at, session_id) ordering rule for canonical samples.
 func TestNewerEqualValueAdvancesObservationWithoutRegressing(t *testing.T) {
 	s := newStack(t)
 	minute := time.Date(2026, time.September, 22, 1, 0, 0, 0, time.UTC)
@@ -292,8 +279,6 @@ func TestNewerEqualValueAdvancesObservationWithoutRegressing(t *testing.T) {
 	}
 }
 
-// TestSessionConflictKeepsOriginalState proves a changed payload under an
-// existing session id is refused without touching stored state.
 func TestSessionConflictKeepsOriginalState(t *testing.T) {
 	s := newStack(t)
 	blobs := realBlobs(t)
@@ -326,7 +311,6 @@ func TestSessionConflictKeepsOriginalState(t *testing.T) {
 	}
 }
 
-// chainUpload is one prepared synthetic upload with its exact request bytes.
 type chainUpload struct {
 	session []byte
 	catalog []byte
@@ -335,8 +319,6 @@ type chainUpload struct {
 	content string
 }
 
-// TestOverlapChainAllUploadOrders replays A, B and C in every order and checks
-// that the canonical set is A plus C.
 func TestOverlapChainAllUploadOrders(t *testing.T) {
 	day := time.Date(2026, time.September, 25, 0, 0, 0, 0, time.UTC)
 	type candidate struct {
@@ -404,7 +386,6 @@ func TestOverlapChainAllUploadOrders(t *testing.T) {
 			}
 			assertChainResult(t, s, candidates[0].start, candidates[2].start)
 
-			// Exact retries keep every candidate and the same canonical set.
 			for _, index := range order {
 				send(index)
 			}
@@ -413,7 +394,6 @@ func TestOverlapChainAllUploadOrders(t *testing.T) {
 	}
 }
 
-// assertChainResult checks the retained candidates and the canonical set.
 func assertChainResult(t *testing.T, s *stack, firstStart, lastStart time.Time) {
 	t.Helper()
 	if retained := s.count(t, "sleep_observations"); retained != 3 {
@@ -462,7 +442,6 @@ func assertChainResult(t *testing.T, s *stack, firstStart, lastStart time.Time) 
 	}
 }
 
-// equalStrings reports whether two slices hold the same ordered values.
 func equalStrings(got, want []string) bool {
 	if len(got) != len(want) {
 		return false
@@ -475,8 +454,6 @@ func equalStrings(got, want []string) bool {
 	return true
 }
 
-// TestMalformedFramingRejectsWholeUpload proves a structural type failure
-// writes nothing and leaves no poisoned state.
 func TestMalformedFramingRejectsWholeUpload(t *testing.T) {
 	s := newStack(t)
 	started, ended := realWindow(t)
@@ -502,7 +479,6 @@ func TestMalformedFramingRejectsWholeUpload(t *testing.T) {
 		}
 	}
 
-	// The next valid request accepts its own rows; nothing was poisoned.
 	s.uploadOK(t, realSession(t), realCatalog(t), realBlobs(t))
 	if sessions := s.count(t, "sync_sessions"); sessions != 1 {
 		t.Fatalf("sync_sessions = %d after the retry", sessions)
@@ -512,8 +488,6 @@ func TestMalformedFramingRejectsWholeUpload(t *testing.T) {
 	}
 }
 
-// TestNonceReplayRejectedOnceUnderConcurrency sends one signed nonce to many
-// concurrent requests and requires exactly one authentication.
 func TestNonceReplayRejectedOnceUnderConcurrency(t *testing.T) {
 	s := newStack(t)
 
@@ -565,8 +539,6 @@ func TestNonceReplayRejectedOnceUnderConcurrency(t *testing.T) {
 		t.Fatalf("auth_nonces = %d, want 1", nonces)
 	}
 
-	// A second mux over the same database is the multi-instance case: replay
-	// stays rejected because the nonce lives in the database.
 	second := newHandler(s.db, s.keys)
 	replay, err := http.NewRequest(http.MethodGet, "http://api.test/api/metrics/coverage", nil)
 	if err != nil {
@@ -581,8 +553,6 @@ func TestNonceReplayRejectedOnceUnderConcurrency(t *testing.T) {
 	}
 }
 
-// TestWebWriteForbiddenBeforeBodyRead proves the credential split rejects a web
-// write before the body or nonce is touched.
 func TestWebWriteForbiddenBeforeBodyRead(t *testing.T) {
 	s := newStack(t)
 
@@ -628,7 +598,6 @@ func TestWebWriteForbiddenBeforeBodyRead(t *testing.T) {
 	}
 }
 
-// TestUnknownPathAndWrongMethod checks the exact-path router contract.
 func TestUnknownPathAndWrongMethod(t *testing.T) {
 	s := newStack(t)
 
@@ -668,11 +637,7 @@ func TestUnknownPathAndWrongMethod(t *testing.T) {
 	}
 }
 
-// TestDisplacedEarliestDayIsPruned crosses midnight with an older and a newer
-// workout and requires the same final keys in both upload orders.
 func TestDisplacedEarliestDayIsPruned(t *testing.T) {
-	// IST 2026-10-01 23:50 on the older candidate and 2026-10-02 00:00 on the
-	// newer one, so the older row starts on the earlier IST day.
 	olderStart := time.Date(2026, time.October, 1, 18, 20, 0, 0, time.UTC)
 	newerStart := time.Date(2026, time.October, 1, 18, 30, 0, 0, time.UTC)
 
@@ -708,7 +673,6 @@ func TestDisplacedEarliestDayIsPruned(t *testing.T) {
 		s.uploadOK(t, newer.session, newer.catalog, newer.blobs)
 		s.uploadOK(t, older.session, older.catalog, older.blobs)
 
-		// The older candidate never becomes canonical, so its day never exists.
 		if keys := s.dailyKeys(t); !equalStrings(keys, []string{"2026-10-02"}) {
 			t.Fatalf("daily keys = %v", keys)
 		}
@@ -716,7 +680,6 @@ func TestDisplacedEarliestDayIsPruned(t *testing.T) {
 	})
 }
 
-// assertDisplacedResult checks the pruned domain and the surviving candidate.
 func assertDisplacedResult(t *testing.T, s *stack) {
 	t.Helper()
 	if keys := s.dailyKeys(t); !equalStrings(keys, []string{"2026-10-02"}) {
@@ -740,9 +703,6 @@ func assertDisplacedResult(t *testing.T, s *stack) {
 	}
 }
 
-// TestLateWriteFailureRollsBackIngest injects a failure on the final daily write
-// and requires no partial ingest state, with the consumed nonce as the one
-// documented exception.
 func TestLateWriteFailureRollsBackIngest(t *testing.T) {
 	s := newStack(t)
 
@@ -785,15 +745,12 @@ FOR EACH ROW EXECUTE FUNCTION reject_ingest_daily()`)
 	}
 }
 
-// concurrentCall is one signed request built per stack.
 type concurrentCall struct {
 	name   string
 	status int
 	build  func(t *testing.T, s *stack) *http.Request
 }
 
-// serveConcurrently starts every request behind one barrier and returns the
-// status codes. The mux request timeout bounds each request.
 func serveConcurrently(t *testing.T, s *stack, calls []concurrentCall) []int {
 	t.Helper()
 	requests := make([]*http.Request, len(calls))
@@ -816,8 +773,6 @@ func serveConcurrently(t *testing.T, s *stack, calls []concurrentCall) []int {
 	return codes
 }
 
-// stateSnapshot is the comparable final state, without timestamps or replay
-// bookkeeping.
 type stateSnapshot struct {
 	counts        map[string]int
 	sessions      []string
@@ -828,7 +783,6 @@ type stateSnapshot struct {
 	profile       []string
 }
 
-// captureState reads the semantic state of one database.
 func captureState(t *testing.T, s *stack) stateSnapshot {
 	t.Helper()
 	snapshot := stateSnapshot{
@@ -863,9 +817,6 @@ func captureState(t *testing.T, s *stack) stateSnapshot {
 	return snapshot
 }
 
-// TestConcurrentWritesMatchSerialExecution runs two overlapping uploads and one
-// profile write together and compares the result with the same requests applied
-// one at a time.
 func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 	day := time.Date(2026, time.October, 3, 0, 0, 0, 0, time.UTC)
 	candidates := []struct {
@@ -905,7 +856,6 @@ func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 		}
 	}
 
-	// Serial reference: the same requests, one at a time.
 	serial := newStack(t)
 	for _, upload := range uploads {
 		serial.uploadOK(t, upload.session, upload.catalog, upload.blobs)
@@ -920,7 +870,6 @@ func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 		t.Fatal("the serial reference stored no daily row")
 	}
 
-	// Concurrent run on a different database with the same requests.
 	concurrent := newStack(t)
 	calls := make([]concurrentCall, 0, len(uploads)+1)
 	for _, upload := range uploads {
@@ -948,7 +897,6 @@ func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 		switch codes[index] {
 		case call.status:
 		case http.StatusServiceUnavailable:
-			// The documented retryable response: retry once and require success.
 			if retry := concurrent.serve(call.build(t, concurrent)); retry.Code != call.status {
 				t.Fatalf("%s retry status %d: %s", call.name, retry.Code, retry.Body.String())
 			}

@@ -9,8 +9,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// dayMetric is the C3.3 DayMetric. Every key is present; a null value means
-// the measurement is absent from storage.
 type dayMetric struct {
 	DayKey              string          `json:"dayKey"`
 	Steps               *int            `json:"steps"`
@@ -51,8 +49,6 @@ type daysResponse struct {
 	Days []dayMetric `json:"days"`
 }
 
-// days serves the stored daily rows. Readiness status, band and components come
-// from the row; nothing is scored or relabelled here.
 func (h *metricsHandler) days(w http.ResponseWriter, r *http.Request) {
 	from, to, failure := h.rangeBounds(r, maxDailyRangeDays)
 	if failure != nil {
@@ -72,8 +68,6 @@ func (h *metricsHandler) days(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, daysResponse{Days: out})
 }
 
-// dayMetricOf maps one stored row to the contract shape, rounding only
-// presentation floats.
 func dayMetricOf(row store.DayMetric) dayMetric {
 	components := row.ReadinessComponents
 	if len(components) == 0 {

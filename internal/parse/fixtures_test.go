@@ -18,7 +18,6 @@ const (
 	fixtureTimeForm = "2006-01-02T15:04:05Z"
 )
 
-// istLocation is the fixed IST zone used to read Zepp minute clocks.
 func istLocation() *time.Location {
 	return time.FixedZone("IST", int(istOffsetSec))
 }
@@ -204,7 +203,6 @@ func loadExpected(t testing.TB) expectedFixture {
 	return expected
 }
 
-// readZeppCSV loads a trimmed export file with its header row.
 func readZeppCSV(t testing.TB, name string) [][]string {
 	t.Helper()
 	path := filepath.Join(realFixtureDir, "zepp", name)
@@ -223,7 +221,6 @@ func readZeppCSV(t testing.TB, name string) [][]string {
 	return rows
 }
 
-// zeppSeries reads a date,time,value CSV into one value per IST minute.
 func zeppSeries(t testing.TB, name string) map[int64]int {
 	t.Helper()
 	path := filepath.Join(realFixtureDir, "zepp", name)
@@ -339,7 +336,6 @@ func sha256Hex(data []byte) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// segmentCatalog builds a catalog whose single entry carries the offsets.
 func segmentCatalog(code string, offsets []int) Catalog {
 	if len(offsets) == 0 {
 		return Catalog{}

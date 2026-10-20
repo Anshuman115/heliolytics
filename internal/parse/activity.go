@@ -30,7 +30,6 @@ func activityRecords(raw []byte, catalog Catalog) ([]activityRecord, int, error)
 	return out, trailing, nil
 }
 
-// parseActivity emits one step row and one HR row per accepted 0x01 minute.
 func parseActivity(raw []byte, catalog Catalog, window Window) ([]HeartRateRow, []StepRow, TypeResult, error) {
 	records, trailing, err := activityRecords(raw, catalog)
 	if err != nil {

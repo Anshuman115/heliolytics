@@ -35,8 +35,6 @@ type workoutSpec struct {
 	minHR    *int
 }
 
-// encodeWorkout builds one 0x05 summary with the confirmed field numbers and
-// the two-byte record prefix and zero suffix the device writes.
 func encodeWorkout(spec workoutSpec) []byte {
 	message := protoBytesField(nil, 1, []byte("2.1"))
 	message = append(message, protoBytesField(nil, 2, protoVarintField(nil, 1, uint64(spec.start)))...)
@@ -64,7 +62,6 @@ func encodeWorkout(spec workoutSpec) []byte {
 	return append(out, 0x00)
 }
 
-// detailStream builds consecutive psmh blocks at the given instants.
 func detailStream(times ...time.Time) []byte {
 	var out []byte
 	for _, at := range times {

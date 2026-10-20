@@ -182,16 +182,12 @@ func TestRangeValidationRejectsBadInput(t *testing.T) {
 			t.Fatalf("%s code = %q, want %q", tc.target, code, tc.code)
 		}
 	}
-	// C5 consumes the nonce before the handler, so each authenticated request
-	// uses exactly one even when its range is rejected.
 	if calls := nonces.consumeCount(); calls != len(cases) {
 		t.Fatalf("nonce consumed %d times on invalid ranges, want %d", calls, len(cases))
 	}
 }
 
 func TestDefaultRangeIsThirtyISTDays(t *testing.T) {
-	// 18:45Z on 2026-10-19 is 00:15 IST on 2026-10-20, so the IST day is the
-	// 20th even though the UTC day is still the 19th.
 	now := time.Date(2026, 10, 19, 18, 45, 0, 0, time.UTC)
 	handler := &metricsHandler{now: func() time.Time { return now }}
 	from, to, failure := handler.rangeBounds(

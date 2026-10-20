@@ -115,7 +115,6 @@ func TestTimeoutAnswersWhileWorkerRuns(t *testing.T) {
 	<-served
 }
 
-// signallingRecorder reports the first status from the coordinator goroutine.
 type signallingRecorder struct {
 	*httptest.ResponseRecorder
 	status chan int

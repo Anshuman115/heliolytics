@@ -1,6 +1,4 @@
-// Command rebuild replays one disposable same-schema test database into a
-// different empty one. It refuses production resources and is never installed
-// in the production image.
+// Command rebuild replays one disposable test database into a different empty target.
 package main
 
 import (
@@ -20,19 +18,14 @@ import (
 )
 
 const (
-	// rebuildTimeout bounds one replay. It is not a production recovery path.
 	rebuildTimeout = 30 * time.Minute
-	// imageEnv names the approved test database image the inspected container
-	// must run.
-	imageEnv = "HELIOLYTICS_TEST_DB_IMAGE"
+	imageEnv       = "HELIOLYTICS_TEST_DB_IMAGE"
 )
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
 }
 
-// options are the explicit rebuild inputs. There is no DATABASE_URL fallback,
-// no truncate mode and no in-place reset.
 type options struct {
 	testOnly        bool
 	sourceURL       string
@@ -41,7 +34,6 @@ type options struct {
 	targetContainer string
 }
 
-// parseOptions reads exactly the documented flags.
 func parseOptions(args []string, stderr io.Writer) (options, error) {
 	flags := flag.NewFlagSet("rebuild", flag.ContinueOnError)
 	flags.SetOutput(stderr)
@@ -61,7 +53,6 @@ func parseOptions(args []string, stderr io.Writer) (options, error) {
 	return opts, nil
 }
 
-// validate refuses a missing acknowledgement or input before any resource work.
 func (o options) validate() error {
 	if !o.testOnly {
 		return errors.New("-test-only is required; only disposable test databases may be rebuilt")
@@ -81,7 +72,6 @@ func (o options) validate() error {
 	return nil
 }
 
-// run owns the CLI lifecycle and returns the exit code.
 func run(args []string, stderr io.Writer) int {
 	logger := log.New(stderr, "", 0)
 
@@ -109,8 +99,6 @@ func run(args []string, stderr io.Writer) int {
 	return 0
 }
 
-// rebuild inspects both live resources, refuses one effective database, then
-// replays the source into the empty target through the normal ingest path.
 func rebuild(ctx context.Context, opts options, wantImage string, logger *log.Logger) error {
 	source, err := disposable.Inspect(ctx, opts.sourceContainer, opts.sourceURL, wantImage)
 	if err != nil {
@@ -153,8 +141,6 @@ func rebuild(ctx context.Context, opts options, wantImage string, logger *log.Lo
 	})
 }
 
-// disposableDatabase maps the inspected container facts plus the owner-only
-// identity into the scope the rebuild guards compare.
 func disposableDatabase(db disposable.Database, identity store.DatabaseIdentity) ingest.DisposableDatabase {
 	return ingest.DisposableDatabase{
 		ContainerID: db.ContainerID,

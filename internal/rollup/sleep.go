@@ -8,11 +8,8 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// nightFloorMinutes is the shortest sleep union that still reports night
-// physiological metrics.
 const nightFloorMinutes = 180
 
-// span is one half-open real-time interval.
 type span struct {
 	Start time.Time
 	End   time.Time
@@ -44,7 +41,6 @@ func unionSpans(in []span) []span {
 	return out
 }
 
-// totalMinutes is the union duration in whole minutes.
 func totalMinutes(spans []span) int {
 	var total float64
 	for _, s := range spans {
@@ -53,7 +49,6 @@ func totalMinutes(spans []span) int {
 	return int(math.Round(total))
 }
 
-// sleepDay is one IST day's sleep summary and physiological window.
 type sleepDay struct {
 	union      []span
 	minutes    int
@@ -69,8 +64,6 @@ type sleepDay struct {
 	efficiency *int
 }
 
-// summarizeSleep aggregates one day's canonical sleep sessions. Main-sleep
-// summaries sum every non-nap session; the score comes from the longest one.
 func summarizeSleep(rows []store.SleepRow, day time.Time) sleepDay {
 	var out sleepDay
 	spans := make([]span, 0, len(rows))

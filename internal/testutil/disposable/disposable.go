@@ -1,6 +1,4 @@
-// Package disposable verifies that a local Docker container is a disposable
-// test database before a test connects to it. It is the only Docker
-// inspection code in the repository.
+// Package disposable verifies local Docker test-database scope and identity.
 package disposable
 
 import (
@@ -17,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// Database describes a container and cluster verified as disposable.
 type Database struct {
 	ContainerID      string
 	Project          string
@@ -42,9 +39,6 @@ var (
 	systemIDPattern    = regexp.MustCompile(`^[0-9]{1,20}$`)
 )
 
-// Inspect verifies the container and the cluster reachable through dsn, and
-// reports their identity. Any failed check returns an error, never a partial
-// value.
 func Inspect(ctx context.Context, containerID, dsn, wantImage string) (Database, error) {
 	if !containerIDPattern.MatchString(containerID) {
 		return Database{}, fmt.Errorf("container ID %q is not a full 64-character lowercase hex ID", containerID)
@@ -84,7 +78,6 @@ func Inspect(ctx context.Context, containerID, dsn, wantImage string) (Database,
 	return found, nil
 }
 
-// dsnInfo is the connection subset the resource checks compare against.
 type dsnInfo struct {
 	Host     string
 	Port     int
@@ -92,8 +85,6 @@ type dsnInfo struct {
 	Database string
 }
 
-// parseDSN accepts only a single loopback host with the disposable database
-// name rules applied.
 func parseDSN(dsn string) (dsnInfo, error) {
 	if strings.TrimSpace(dsn) == "" {
 		return dsnInfo{}, errors.New("database URL is empty")
@@ -151,7 +142,6 @@ type containerInfo struct {
 	} `json:"NetworkSettings"`
 }
 
-// parseInspectJSON reads the single container object docker inspect prints.
 func parseInspectJSON(data []byte) (containerInfo, error) {
 	var containers []containerInfo
 	if err := json.Unmarshal(data, &containers); err != nil {
@@ -166,7 +156,6 @@ func parseInspectJSON(data []byte) (containerInfo, error) {
 	return containers[0], nil
 }
 
-// validateContainer applies every label, image, volume and port check.
 func validateContainer(containerID, wantImage string, target dsnInfo, info containerInfo) (Database, error) {
 	if info.ID != containerID {
 		return Database{}, fmt.Errorf("docker inspect reported container %s, want %s", info.ID, containerID)
@@ -210,7 +199,6 @@ func validateContainer(containerID, wantImage string, target dsnInfo, info conta
 	}, nil
 }
 
-// dataVolume returns the volume name mounted at the cluster data directory.
 func dataVolume(mounts []mountInfo) (string, error) {
 	var found *mountInfo
 	for i := range mounts {
@@ -238,7 +226,6 @@ func dataVolume(mounts []mountInfo) (string, error) {
 	return found.Name, nil
 }
 
-// validatePortBindings accepts published mappings only on the loopback hosts.
 func validatePortBindings(bindings []portBinding, host string, port int) error {
 	switch {
 	case len(bindings) == 0:
@@ -287,7 +274,6 @@ func validatePortBindings(bindings []portBinding, host string, port int) error {
 	return nil
 }
 
-// normalizeSystemIdentifier converts the database column to decimal text.
 func normalizeSystemIdentifier(raw any) (string, error) {
 	var text string
 	switch value := raw.(type) {
@@ -308,7 +294,6 @@ func normalizeSystemIdentifier(raw any) (string, error) {
 	return text, nil
 }
 
-// matchSystemIdentifier compares the container and connection identities.
 func matchSystemIdentifier(local, remote string) (string, error) {
 	local = strings.TrimSpace(local)
 	remote = strings.TrimSpace(remote)
@@ -342,7 +327,6 @@ func inspectContainer(ctx context.Context, containerID string) (containerInfo, e
 	return parseInspectJSON(out)
 }
 
-// localSystemIdentifier reads the identity through the container socket.
 func localSystemIdentifier(ctx context.Context, containerID, user, database string) (string, error) {
 	out, err := runDocker(ctx, "exec", containerID, "psql", "-U", user, "-d", database, "-Atc", systemIDQuery)
 	if err != nil {
@@ -351,7 +335,6 @@ func localSystemIdentifier(ctx context.Context, containerID, user, database stri
 	return strings.TrimSpace(string(out)), nil
 }
 
-// remoteSystemIdentifier reads the identity over the supplied connection.
 func remoteSystemIdentifier(ctx context.Context, dsn string) (string, error) {
 	conn, err := pgx.Connect(ctx, dsn)
 	if err != nil {

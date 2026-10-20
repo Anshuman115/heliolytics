@@ -44,7 +44,6 @@ func writeExport(t *testing.T, files exportFile) Sources {
 	return sources
 }
 
-// minuteRows returns contiguous observed minutes starting at start.
 func minuteRows(t *testing.T, date, start string, count, steps int) []string {
 	t.Helper()
 	begin, err := time.ParseInLocation("2006-01-02 15:04", date+" "+start, ist)
@@ -336,7 +335,6 @@ func TestSelectIgnoresHoldoutLabels(t *testing.T) {
 		t.Fatalf("load first selection: %v", err)
 	}
 
-	// Radically different holdout labels: one very long stage and no dev change.
 	files.stages = []string{
 		"2026-02-10,10:00,10:20,0,0,2400",
 		"2026-06-01,00:00,23:59,9999,9999,99999",

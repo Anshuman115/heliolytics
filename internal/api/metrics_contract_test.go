@@ -8,7 +8,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// seedSession inserts one immutable sync session used by sample FKs.
 func seedSession(t *testing.T, st *store.Store, id string) {
 	t.Helper()
 	seed(t, st, `INSERT INTO sync_sessions (session_id, device_mac, started_at, ended_at, catalog)

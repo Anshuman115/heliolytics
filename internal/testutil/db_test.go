@@ -209,7 +209,6 @@ func TestNewDBMissingEnv(t *testing.T) {
 	}
 }
 
-// childEnv builds the environment for a missing-variable child run.
 func childEnv(unset, set []string) []string {
 	blocked := make(map[string]bool, len(unset)+len(set))
 	for _, entry := range append(append([]string{}, unset...), set...) {

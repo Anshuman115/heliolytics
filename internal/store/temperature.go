@@ -122,7 +122,6 @@ func listTemperature(ctx context.Context, q *db.Queries, from, to time.Time) ([]
 	return out, nil
 }
 
-// ListTemperatureCompact reads proxy-on-wrist samples only.
 func (s *Store) ListTemperatureCompact(ctx context.Context, from, to string) ([]CompactDay, error) {
 	fromAt, toAt, err := dayRange(from, to)
 	if err != nil {
@@ -144,8 +143,6 @@ func (s *Store) ListTemperatureCompact(ctx context.Context, from, to string) ([]
 	return out, nil
 }
 
-// RecomputeTemperatureWearProxy refreshes the documented wear proxy from
-// current canonical 0x01 HR and returns the samples whose flag changed.
 func (v *TxView) RecomputeTemperatureWearProxy(ctx context.Context, from, to time.Time) (Mutation, error) {
 	b := newMutation()
 	rows, err := v.q.RefreshTemperatureWearProxy(ctx, db.RefreshTemperatureWearProxyParams{

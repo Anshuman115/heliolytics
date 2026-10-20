@@ -1,5 +1,4 @@
 -- name: ReadReplaySessionIDs :many
--- Keyset pagination over (ended_at, session_id bytewise); blobs are fetched after.
 SELECT session_id, ended_at
 FROM sync_sessions
 WHERE sqlc.narg(after_ended_at)::timestamptz IS NULL

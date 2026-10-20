@@ -1,8 +1,4 @@
--- Synthetic restore-rehearsal fixture for deploy/tests/deploy-ops-test.sh.
---
--- All values are invented. There are no serials, real MACs, free text or
--- personal identifiers. Dates are fixed so dump and restored values compare
--- exactly. Run as the owner role on a freshly initialized schema.
+-- Synthetic data with fixed dates. Run as owner on a fresh disposable schema only.
 
 INSERT INTO sync_sessions (session_id, device_mac, started_at, ended_at, battery_pct, catalog)
 VALUES (
@@ -114,6 +110,5 @@ INSERT INTO profile (name, birth_date, sex, height_cm, weight_kg)
 VALUES ('Fixture', DATE '1990-01-01', 'male', 178.0, 74.5)
 ON CONFLICT (singleton) DO NOTHING;
 
--- Compress the older chunk so the restore rehearsal proves compressed data survives.
 SELECT compress_chunk(older_chunk)
 FROM show_chunks('heart_rate_samples', older_than => INTERVAL '30 days') AS older_chunk;

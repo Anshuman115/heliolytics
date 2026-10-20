@@ -102,8 +102,6 @@ func TestScalarSeriesRetainsCompletePrefix(t *testing.T) {
 
 func TestScalarSeriesDropsValuesOutsideTheirDomain(t *testing.T) {
 	base := time.Date(2026, 7, 25, 23, 0, 0, 0, time.UTC)
-	// The HRV value field is one byte, so 255 is the widest wire value and the
-	// 300 ms upper bound is a guard the format cannot exceed.
 	hrvRaw := append(scalarRecord(base.Unix(), istTimezoneQuarter, 0, 6),
 		scalarRecord(base.Add(time.Minute).Unix(), istTimezoneQuarter, 255, 6)...)
 	hrv, hrvResult, err := parseHRV(hrvRaw, catalogWindow())

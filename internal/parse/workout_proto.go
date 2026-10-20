@@ -12,8 +12,6 @@ type workoutSummary struct {
 	minHR       *int
 }
 
-// decodeWorkoutSummary reads the confirmed 0x05 summary fields. A nil summary
-// means the message carries no start or duration, so it is not a workout.
 func decodeWorkoutSummary(blob []byte, offset int) (*workoutSummary, int, error) {
 	budget := &protoBudget{}
 	top, err := readMessage(blob, 0, budget)
@@ -81,7 +79,6 @@ func decodeWorkoutSummary(blob []byte, offset int) (*workoutSummary, int, error)
 	}, dropped, nil
 }
 
-// statValue keeps an optional statistic only when it is inside its domain.
 func statValue(value uint64, present bool, minimum, maximum int) (*int, bool) {
 	if !present {
 		return nil, false

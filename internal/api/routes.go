@@ -12,27 +12,22 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// IngestFunc runs one validated upload. B07 closes over ingest.Run.
 type IngestFunc func(ctx context.Context, meta store.SessionMeta, catalog []byte, blobs map[string][]byte) (store.IngestResult, error)
 
-// ProfileFunc replaces the profile and its dependent derived state. B07 closes
-// over ingest.UpdateProfile.
 type ProfileFunc func(ctx context.Context, profile *store.Profile) error
 
-// Route body caps from C5.
 const (
 	maxIngestBody  int64 = 16 << 20
 	maxProfileBody int64 = 64 << 10
 )
 
-// Inclusive day caps from C3.1.
+// Day limits are inclusive.
 const (
 	maxDailyRangeDays  = 366
 	maxSampleRangeDays = 31
 	defaultRangeDays   = 30
 )
 
-// routeEntry is one exact path and method.
 type routeEntry struct {
 	protected bool
 	maxBody   int64
@@ -67,8 +62,6 @@ func (rt *router) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	entry.handler.ServeHTTP(w, r)
 }
 
-// NewMux builds the API handler. It panics when a required dependency is nil:
-// an unwired service is a startup failure, never a fake success.
 func NewMux(st *store.Store, cfg config.Config, ingestFn IngestFunc, profileFn ProfileFunc) http.Handler {
 	if st == nil || ingestFn == nil || profileFn == nil {
 		panic("api.NewMux: nil dependency")
@@ -76,8 +69,6 @@ func NewMux(st *store.Store, cfg config.Config, ingestFn IngestFunc, profileFn P
 	return newMux(st, cfg, ingestFn, profileFn, st)
 }
 
-// newMux wires the mux with an explicit replay store so tests can substitute
-// one without a database.
 func newMux(st *store.Store, cfg config.Config, ingestFn IngestFunc, profileFn ProfileFunc, nonces middleware.NonceStore) http.Handler {
 	cfg = withDefaults(cfg)
 	now := time.Now
@@ -138,8 +129,6 @@ func newMux(st *store.Store, cfg config.Config, ingestFn IngestFunc, profileFn P
 	return middleware.RequestLog(nil)(handler)
 }
 
-// withDefaults fills option values a partially constructed Config leaves zero.
-// Production configuration always sets them explicitly.
 func withDefaults(cfg config.Config) config.Config {
 	if cfg.RateLimitPerMin <= 0 {
 		cfg.RateLimitPerMin = config.DefaultRateLimitPerMin

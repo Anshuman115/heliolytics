@@ -15,10 +15,8 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/activity"
 )
 
-// ist is IST (UTC+05:30, no DST), used for every local CSV timestamp.
 var ist = time.FixedZone("IST", 5*60*60+30*60)
 
-// Source names used in reports and in the selection hash comparison.
 const (
 	sourceSteps    = "steps"
 	sourceStages   = "stages"
@@ -26,13 +24,11 @@ const (
 	sourceHR       = "hr"
 )
 
-// heartbeat range accepted by the schema; other values are not observations.
 const (
 	minHeartRate = 25
 	maxHeartRate = 250
 )
 
-// Sources holds the CSV paths supplied on the command line.
 type Sources struct {
 	Steps     string
 	Stages    string
@@ -40,7 +36,6 @@ type Sources struct {
 	HeartRate string
 }
 
-// StepRow is one observed ACTIVITY_MINUTE row in UTC.
 type StepRow struct {
 	At    time.Time
 	Steps int
@@ -53,20 +48,17 @@ type StageRow struct {
 	Steps int
 }
 
-// WorkoutRow is one SPORT interval in UTC.
 type WorkoutRow struct {
 	Start     time.Time
 	End       time.Time
 	SportType int
 }
 
-// HeartRateRow is one HEARTRATE_AUTO observation in UTC.
 type HeartRateRow struct {
 	At  time.Time
 	BPM int
 }
 
-// Export is one loaded, UTC-normalized Zepp export.
 type Export struct {
 	Steps            []StepRow
 	Stages           []StageRow
@@ -76,7 +68,6 @@ type Export struct {
 	Hashes           map[string]string
 }
 
-// LoadExport reads every supplied CSV and records its SHA-256.
 func LoadExport(sources Sources) (Export, error) {
 	required := []struct {
 		flag string
@@ -122,7 +113,6 @@ func LoadExport(sources Sources) (Export, error) {
 	return export, nil
 }
 
-// Minutes returns detector input: observed step buckets with joined HR.
 func (e Export) Minutes() []activity.Minute {
 	heartRate := make(map[int64]int, len(e.HeartRate))
 	for _, row := range e.HeartRate {
@@ -140,7 +130,6 @@ func (e Export) Minutes() []activity.Minute {
 	return minutes
 }
 
-// WorkoutIntervals returns the SPORT rows as detector barriers.
 func (e Export) WorkoutIntervals() []activity.Interval {
 	out := make([]activity.Interval, 0, len(e.Workouts))
 	for _, row := range e.Workouts {
@@ -149,7 +138,6 @@ func (e Export) WorkoutIntervals() []activity.Interval {
 	return out
 }
 
-// LoadSteps reads ACTIVITY_MINUTE rows and returns them in time order.
 func LoadSteps(path string) ([]StepRow, string, error) {
 	records, hash, err := readCSV(path)
 	if err != nil {
@@ -181,7 +169,6 @@ func LoadSteps(path string) ([]StepRow, string, error) {
 	return rows, hash, nil
 }
 
-// LoadStages reads ACTIVITY_STAGE rows; stop earlier than start rolls over.
 func LoadStages(path string) ([]StageRow, string, error) {
 	records, hash, err := readCSV(path)
 	if err != nil {
@@ -216,7 +203,6 @@ func LoadStages(path string) ([]StageRow, string, error) {
 	return rows, hash, nil
 }
 
-// LoadWorkouts reads SPORT rows; startTime carries an explicit offset.
 func LoadWorkouts(path string) ([]WorkoutRow, string, error) {
 	records, hash, err := readCSV(path)
 	if err != nil {
@@ -251,7 +237,6 @@ func LoadWorkouts(path string) ([]WorkoutRow, string, error) {
 	return rows, hash, nil
 }
 
-// LoadHeartRate reads HEARTRATE_AUTO rows; out-of-range BPM is not an observation.
 func LoadHeartRate(path string) ([]HeartRateRow, int, string, error) {
 	records, hash, err := readCSV(path)
 	if err != nil {
@@ -287,7 +272,6 @@ func LoadHeartRate(path string) ([]HeartRateRow, int, string, error) {
 	return rows, ignored, hash, nil
 }
 
-// RefStats reports how workout subtraction changed the stage references.
 type RefStats struct {
 	RawCount               int
 	ExcludedCount          int
@@ -359,7 +343,6 @@ func subtractIntervals(base activity.Interval, cuts []activity.Interval) []activ
 	return out
 }
 
-// Coverage counts observed and absent minute buckets in [from, to).
 type Coverage struct {
 	From             time.Time
 	To               time.Time
@@ -369,7 +352,6 @@ type Coverage struct {
 	LastObservation  *time.Time
 }
 
-// CoverageOf counts observed step minutes inside one partition.
 func (e Export) CoverageOf(from, to time.Time) Coverage {
 	coverage := Coverage{From: from, To: to, ExpectedMinutes: int(to.Sub(from) / time.Minute)}
 	for _, row := range e.Steps {
@@ -388,7 +370,6 @@ func (e Export) CoverageOf(from, to time.Time) Coverage {
 	return coverage
 }
 
-// ParseDay reads a date-only flag value as IST midnight.
 func ParseDay(value string) (time.Time, error) {
 	day, err := time.ParseInLocation("2006-01-02", strings.TrimSpace(value), ist)
 	if err != nil {
@@ -431,7 +412,6 @@ func headerIndex(path string, header []string, required ...string) (map[string]i
 	return columns, nil
 }
 
-// cell returns a field value; records are fixed-width after readCSV.
 func cell(record []string, column int) string {
 	if column >= len(record) {
 		return ""
@@ -463,7 +443,6 @@ func stageClock(value string) (time.Duration, error) {
 	return time.Duration(parsed.Hour())*time.Hour + time.Duration(parsed.Minute())*time.Minute, nil
 }
 
-// stageBounds resolves a stage; a stop earlier than start is next-day rollover.
 func stageBounds(date, startClock, stopClock string) (time.Time, time.Time, error) {
 	day, err := ParseDay(date)
 	if err != nil {

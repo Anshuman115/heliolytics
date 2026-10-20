@@ -38,7 +38,6 @@ func TestParseBlobsClassifiesRoundMetadataErrors(t *testing.T) {
 			segments: `[{"byteOffset":0,"roundStart":"1970-01-01T00:00:00"}]`, wantText: "whole minute"},
 		{name: "negative offset", code: typeActivity, rawLen: 16,
 			segments: `[{"byteOffset":-8,"roundStart":"` + validTime + `"}]`, wantText: "round offset is negative"},
-		// Round positions the payload cannot satisfy are framing conflicts.
 		{name: "offset at payload end", code: typeActivity, rawLen: 16,
 			segments: `[{"byteOffset":16,"roundStart":"` + validTime + `"}]`, wantText: "outside the 16-byte payload",
 			wantCode: ErrCodeInvalidFraming},

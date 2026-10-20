@@ -12,18 +12,15 @@ import (
 // +05:30 zone with no daylight saving, so no tzdata is needed at runtime.
 var IST = time.FixedZone("Asia/Kolkata", 19800)
 
-// Day returns IST midnight for a civil date.
 func Day(y int, m time.Month, d int) time.Time {
 	return time.Date(y, m, d, 0, 0, 0, 0, IST)
 }
 
-// dayOf normalizes an instant to its IST calendar date.
 func dayOf(t time.Time) time.Time {
 	local := t.In(IST)
 	return Day(local.Year(), local.Month(), local.Day())
 }
 
-// Store is the single SQL boundary for the API, ingest and rebuild paths.
 type Store struct {
 	pool *pgxpool.Pool
 	q    *db.Queries

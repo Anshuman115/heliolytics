@@ -5,8 +5,7 @@ import (
 	"time"
 )
 
-// Minute is one observed UTC minute bucket of canonical step and HR data.
-// A zero Steps value is an observed zero; an absent bucket is missing data.
+// Zero steps is an observation; an absent minute is missing data.
 type Minute struct {
 	At    time.Time
 	Steps int
@@ -19,7 +18,6 @@ type Interval struct {
 	End   time.Time
 }
 
-// Session is one detected sustained-movement interval.
 type Session struct {
 	Start time.Time
 	End   time.Time
@@ -30,7 +28,6 @@ type Session struct {
 	Label string
 }
 
-// Params holds detector thresholds. See doc.go for the unit of each field.
 type Params struct {
 	CadenceMin  int
 	GapMax      int
@@ -44,7 +41,6 @@ const (
 	LabelRun  = "Run"
 )
 
-// Frozen by activity-eval select on development range 2026-01-01..2026-05-01 (activity-selection.json).
 const (
 	defaultCadenceMin  = 60
 	defaultGapMax      = 3
@@ -52,7 +48,6 @@ const (
 	defaultRunCadence  = 130
 )
 
-// DefaultParams returns the production thresholds.
 func DefaultParams() Params {
 	return Params{
 		CadenceMin:  defaultCadenceMin,
@@ -62,13 +57,11 @@ func DefaultParams() Params {
 	}
 }
 
-// Detect runs the detector with the production thresholds.
 func Detect(minutes []Minute, workouts []Interval) []Session {
 	return DetectWithParams(minutes, workouts, DefaultParams())
 }
 
-// DetectWithParams runs the detector with explicit thresholds. Neither input
-// slice is mutated.
+// DetectWithParams does not mutate either input slice.
 func DetectWithParams(minutes []Minute, workouts []Interval, p Params) []Session {
 	if len(minutes) == 0 {
 		return nil
@@ -103,13 +96,11 @@ func DetectWithParams(minutes []Minute, workouts []Interval, p Params) []Session
 	return run.close(p, out)
 }
 
-// pendingGap is one observed below-threshold bucket held until the run resumes.
 type pendingGap struct {
 	steps int
 	hr    *int
 }
 
-// runState accumulates one open candidate without storing its buckets.
 type runState struct {
 	active     bool
 	start      time.Time
@@ -202,7 +193,6 @@ func (r *runState) close(p Params, out []Session) []Session {
 	return out
 }
 
-// coalesce sorts and merges overlapping, nested or touching intervals.
 func coalesce(intervals []Interval) []Interval {
 	if len(intervals) == 0 {
 		return nil

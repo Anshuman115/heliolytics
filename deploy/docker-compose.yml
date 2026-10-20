@@ -1,11 +1,5 @@
-# Heliolytics production stack.
-#
-# Every command names the project, env file and compose file explicitly:
-#   docker compose --project-name deploy --env-file deploy/.env \
-#     --file deploy/docker-compose.yml up -d --build
-#
-# The volume key `pgdata` keeps the existing production volume name deploy_pgdata.
-# Sandbox runs use a heliolytics-d01-* project name and their own volume.
+# docker compose --project-name deploy --env-file deploy/.env \
+#   --file deploy/docker-compose.yml up -d --build
 
 services:
   db:
@@ -48,7 +42,6 @@ services:
         bind:
           create_host_path: false
     healthcheck:
-      # Authenticated login, not only socket readiness. The password stays in the environment.
       test:
         - CMD-SHELL
         - PGPASSWORD="$$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Atqc 'SELECT 1' >/dev/null
@@ -145,7 +138,6 @@ services:
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     healthcheck:
-      # Built-in Node fetch, so the nonroot image needs no wget or curl.
       test:
         - CMD
         - node
@@ -233,10 +225,8 @@ networks:
     ipam:
       config:
         - subnet: ${DATA_SUBNET:-172.30.0.0/24}
-  # Web to API traffic, no egress.
   application:
     internal: true
-  # Tunnel connector to API and web, plus connector egress.
   ingress:
     driver: bridge
     ipam:
@@ -247,4 +237,5 @@ networks:
     driver: bridge
 
 volumes:
+  # Keep this key: production data lives in deploy_pgdata.
   pgdata:

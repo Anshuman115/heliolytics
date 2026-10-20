@@ -12,7 +12,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/auth"
 )
 
-// tamperUpload is one prepared signed multipart upload.
 type tamperUpload struct {
 	session []byte
 	catalog []byte
@@ -21,7 +20,6 @@ type tamperUpload struct {
 	content string
 }
 
-// newTamperUpload prepares one synthetic upload and its envelope bytes.
 func newTamperUpload(t *testing.T) tamperUpload {
 	t.Helper()
 	started := time.Date(2026, time.September, 23, 1, 0, 0, 0, time.UTC)
@@ -34,7 +32,6 @@ func newTamperUpload(t *testing.T) tamperUpload {
 	}
 }
 
-// request builds one signed request for this upload with explicit fields.
 func (u tamperUpload) request(t *testing.T, s *stack, method, path, query string,
 	body []byte, content string) *http.Request {
 	t.Helper()
@@ -53,9 +50,6 @@ func (u tamperUpload) request(t *testing.T, s *stack, method, path, query string
 	return request
 }
 
-// TestSignedRequestTamperIsRejected proves the signed body, query, path and
-// content type are enforced before any write, except for method and path pairs
-// the router refuses first.
 func TestSignedRequestTamperIsRejected(t *testing.T) {
 	s := newStack(t)
 	upload := newTamperUpload(t)
@@ -157,7 +151,6 @@ func TestSignedRequestTamperIsRejected(t *testing.T) {
 		})
 	}
 
-	// A validly re-signed request with the same bytes passes.
 	recorder := s.serve(upload.request(t, s, http.MethodPost, path, "", upload.body, upload.content))
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("signed request status %d: %s", recorder.Code, recorder.Body.String())
@@ -167,8 +160,6 @@ func TestSignedRequestTamperIsRejected(t *testing.T) {
 	}
 }
 
-// TestNonIdentityTransferEncodingRejected proves a part-level encoding is a
-// structural body error and writes nothing.
 func TestNonIdentityTransferEncodingRejected(t *testing.T) {
 	s := newStack(t)
 	upload := newTamperUpload(t)

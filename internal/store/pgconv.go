@@ -12,7 +12,6 @@ import (
 
 const dateLayout = "2006-01-02"
 
-// parseDay reads an exact YYYY-MM-DD string as an IST calendar date.
 func parseDay(s string) (time.Time, error) {
 	t, err := time.ParseInLocation(dateLayout, s, IST)
 	if err != nil || t.Format(dateLayout) != s {
@@ -21,7 +20,6 @@ func parseDay(s string) (time.Time, error) {
 	return t, nil
 }
 
-// dayRange turns inclusive calendar bounds into a half-open instant range.
 func dayRange(from, to string) (time.Time, time.Time, error) {
 	fromDay, err := parseDay(from)
 	if err != nil {
@@ -129,8 +127,6 @@ func textVal(v pgtype.Text) *string {
 	return new(v.String)
 }
 
-// numericFromFloat keeps the exact decimal the caller supplied; non-finite
-// floats are rejected rather than stored as NaN/Infinity.
 func numericFromFloat(v float64) (pgtype.Numeric, error) {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return pgtype.Numeric{}, fmt.Errorf("non-finite number %v", v)
@@ -178,7 +174,6 @@ func numericIntPtr(v *int) (pgtype.Numeric, error) {
 	return numericFromInt(*v)
 }
 
-// uniqueDays normalizes calendar days and drops repeats, sorted ascending.
 func uniqueDays(days []time.Time) []time.Time {
 	seen := make(map[int64]struct{}, len(days))
 	out := make([]time.Time, 0, len(days))
@@ -195,7 +190,6 @@ func uniqueDays(days []time.Time) []time.Time {
 	return out
 }
 
-// dayBounds reads inclusive calendar bounds for date-keyed reads.
 func dayBounds(from, to string) (time.Time, time.Time, error) {
 	fromDay, err := parseDay(from)
 	if err != nil {

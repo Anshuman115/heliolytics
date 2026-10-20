@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Backend CI gate: disposable database, sqlc, gofmt, build, vet, tests, vulns, fuzz.
 set -euo pipefail
 
 DB_IMAGE='timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f'
@@ -20,7 +19,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# Prints the output lines of failed tests and packages from a go test jsonl file.
 show_failures() {
   python3 - "$1" <<'PY'
 import json

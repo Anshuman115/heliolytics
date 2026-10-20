@@ -47,7 +47,6 @@ GROUP BY day_key, day_start
 ORDER BY start_time ASC;
 
 -- name: RefreshTemperatureWearProxy :many
--- Wear proxy is same UTC minute canonical 0x01 HR plus an in-domain temperature.
 UPDATE temperature_samples t
 SET on_wrist = candidate.valid
 FROM (

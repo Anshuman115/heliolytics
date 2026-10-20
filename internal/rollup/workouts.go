@@ -2,8 +2,6 @@ package rollup
 
 import "github.com/Anshuman115/heliolytics/internal/store"
 
-// activityCounts separates recorded workouts from derived auto activities and
-// sums only reported workout calories. A reported zero stays zero.
 func activityCounts(rows []store.ActivityRow) (workouts, autos int, calories *int) {
 	total := 0
 	reported := false

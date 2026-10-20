@@ -2,15 +2,12 @@ package rollup
 
 import "github.com/Anshuman115/heliolytics/internal/store"
 
-// Night sensor sample floors. They are product quality rules.
 const (
 	hrvSamplesPerNight  = 60
 	respSamplesPerNight = 60
 	spo2SamplesMinimum  = 3
 )
 
-// meanNightHRV averages accepted 0x49 values inside the sleep union. It needs
-// 60 samples covering at least half the union duration.
 func meanNightHRV(rows []store.HRVSample, w []span) *float64 {
 	total := totalMinutes(w)
 	if total == 0 || len(rows) < hrvSamplesPerNight {
@@ -26,7 +23,6 @@ func meanNightHRV(rows []store.HRVSample, w []span) *float64 {
 	return new(sum / float64(len(rows)))
 }
 
-// meanNightResp averages accepted 0x38 values inside the sleep union.
 func meanNightResp(rows []store.RespSample) *float64 {
 	if len(rows) < respSamplesPerNight {
 		return nil
@@ -38,8 +34,6 @@ func meanNightResp(rows []store.RespSample) *float64 {
 	return new(sum / float64(len(rows)))
 }
 
-// spo2Summary returns the count plus average and minimum. Both statistics stay
-// NULL below three samples while the count is always reported.
 func spo2Summary(rows []store.SpO2Sample) (*float64, *int, int) {
 	n := len(rows)
 	if n == 0 {

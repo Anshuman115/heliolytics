@@ -17,8 +17,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/auth"
 )
 
-// NonceStore is the persistent replay check. *store.Store implements it and no
-// in-memory fallback exists.
 type NonceStore interface {
 	ConsumeNonce(ctx context.Context, kid, nonce string, expiresAt time.Time) (bool, error)
 }
@@ -28,7 +26,6 @@ type NonceStore interface {
 // handler.
 type PrepareFunc func(r *http.Request, body []byte) (any, error)
 
-// GuardConfig holds the protected pipeline dependencies.
 type GuardConfig struct {
 	Keys     auth.KeySet
 	Policy   IPPolicy
@@ -40,9 +37,6 @@ type GuardConfig struct {
 	Logger   *log.Logger
 }
 
-// Guard enforces the C5 order for every protected route: cheap header checks,
-// pre-auth limit, MAC, fixed authorization, key limit, bounded body read and
-// hash, a freshness recheck, then the persistent nonce.
 type Guard struct {
 	keys     auth.KeySet
 	policy   IPPolicy
@@ -54,8 +48,6 @@ type Guard struct {
 	logger   *log.Logger
 }
 
-// NewGuard builds the protected pipeline. The nonce store is required; without
-// it replay protection cannot be honest.
 func NewGuard(cfg GuardConfig) *Guard {
 	if cfg.Nonces == nil {
 		panic("middleware.NewGuard: nil nonce store")
@@ -80,8 +72,6 @@ func NewGuard(cfg GuardConfig) *Guard {
 	}
 }
 
-// Protect wraps one protected route handler. maxBody is the route's body cap;
-// zero means the route takes no body.
 func (g *Guard) Protect(maxBody int64, prepare PrepareFunc, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		outcome := OutcomeFrom(r)
@@ -208,8 +198,6 @@ func (g *Guard) Protect(maxBody int64, prepare PrepareFunc, next http.Handler) h
 	})
 }
 
-// cheapHeaders validates the exact header cardinality and shape, plus the
-// method-specific body shape, before any limiter or MAC work.
 func cheapHeaders(r *http.Request) (auth.Header, string, string, string, *Error) {
 	values := r.Header.Values(auth.HeaderAuth)
 	if len(values) != 1 {
@@ -230,8 +218,6 @@ func cheapHeaders(r *http.Request) (auth.Header, string, string, string, *Error)
 	return header, hashes[0], contentType, "", nil
 }
 
-// requestContentType enforces the C3.1 body shape for the route method and
-// returns the exact header value that is part of the signed text.
 func requestContentType(r *http.Request) (string, *Error) {
 	values := r.Header.Values("Content-Type")
 	if len(values) > 1 {
@@ -274,8 +260,6 @@ func requestContentType(r *http.Request) (string, *Error) {
 	}
 }
 
-// readBody enforces the route cap and returns the exact captured bytes. It
-// never preallocates the declared length and reads at most cap plus one byte.
 func readBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]byte, *Error) {
 	if maxBody <= 0 {
 		if r.ContentLength != 0 || len(r.TransferEncoding) != 0 {
@@ -305,7 +289,6 @@ func readBody(w http.ResponseWriter, r *http.Request, maxBody int64) ([]byte, *E
 	return data, nil
 }
 
-// bodyDigestMatches compares the captured bytes with the declared digest.
 func bodyDigestMatches(body []byte, declaredHash string) bool {
 	sum := sha256.Sum256(body)
 	return subtle.ConstantTimeCompare([]byte(hex.EncodeToString(sum[:])), []byte(declaredHash)) == 1
@@ -315,22 +298,18 @@ type kidKey struct{}
 type bodyKey struct{}
 type payloadKey struct{}
 
-// WithKid returns a request whose context carries the authenticated kid.
 func WithKid(r *http.Request, kid string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), kidKey{}, kid))
 }
 
-// Kid returns the authenticated kid, or the empty string.
 func Kid(r *http.Request) string {
 	kid, _ := r.Context().Value(kidKey{}).(string)
 	return kid
 }
 
-// RequestBody returns the exact admitted body bytes, or nil.
 func RequestBody(r *http.Request) []byte {
 	body, _ := r.Context().Value(bodyKey{}).([]byte)
 	return body
 }
 
-// Payload returns the value produced by the route's prepare step.
 func Payload(r *http.Request) any { return r.Context().Value(payloadKey{}) }

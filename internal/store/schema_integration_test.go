@@ -11,10 +11,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// ---- shared test helpers ----
-
-// newTestStore opens the store on a fresh disposable database. Close is
-// registered after the helper's DROP so connections close first.
 func newTestStore(t *testing.T) *Store {
 	t.Helper()
 	dsn := testutil.NewDB(t)
@@ -33,7 +29,6 @@ func mustTx(t *testing.T, st *Store, fn func(pgx.Tx) error) {
 	}
 }
 
-// seedSession stores one immutable envelope carrying a single raw type.
 func seedSession(t *testing.T, st *Store, id string, startedAt, endedAt time.Time) {
 	t.Helper()
 	ctx := context.Background()
@@ -73,8 +68,6 @@ func scalarString(t *testing.T, st *Store, sql string, args ...any) string {
 	}
 	return out
 }
-
-// ---- fresh schema ----
 
 var applicationTables = []string{
 	"sync_sessions", "raw_blobs",
@@ -170,7 +163,6 @@ func TestFreshSchemaTimescaleShape(t *testing.T) {
 func TestFreshSchemaWithoutAppRoleStillInitializes(t *testing.T) {
 	st := newTestStore(t)
 	if got := scalarString(t, st, `SELECT count(*)::text FROM pg_roles WHERE rolname = 'heliolytics_app'`); got == "0" {
-		// The schema grants nothing when the role is absent and still applies.
 		for _, table := range applicationTables {
 			if countRows(t, st, table) != 0 {
 				t.Fatalf("%s not empty", table)
@@ -224,8 +216,6 @@ func TestFreshSchemaAppRolePrivileges(t *testing.T) {
 	}
 }
 
-// appRoleExecErr runs one statement as the app role and returns its error. The
-// transaction is rolled back so a rejected statement cannot poison the next.
 func appRoleExecErr(t *testing.T, st *Store, sql string) error {
 	t.Helper()
 	ctx := context.Background()
@@ -319,7 +309,6 @@ func TestWriteSessionEnvelopeIsImmutable(t *testing.T) {
 		t.Fatalf("identical retry: existing=%v err=%v", existing, err)
 	}
 
-	// Property order alone is not a conflict.
 	reordered := `{"chunked":[],"sessionId":"envelope-session"}`
 	if _, err := writeSessionEnvelope(t, st, meta, reordered, blobs); err != nil {
 		t.Fatalf("reordered catalog was treated as a conflict: %v", err)
@@ -350,7 +339,6 @@ func TestWriteSessionEnvelopeIsImmutable(t *testing.T) {
 		t.Fatal("duplicate RawBlob type accepted")
 	}
 
-	// A new session ID accepts the same bytes.
 	next := meta
 	next.ID = "envelope-session-2"
 	if _, err := writeSessionEnvelope(t, st, next, catalog, blobs); err != nil {

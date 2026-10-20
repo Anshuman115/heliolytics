@@ -11,14 +11,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// sleepObservation is one immutable typed sleep candidate.
 type sleepObservation struct {
 	Row        SleepRow
 	SessionID  string
 	ObservedAt time.Time
 }
 
-// workoutObservation is one immutable typed workout candidate.
 type workoutObservation struct {
 	Row        ActivityRow
 	SessionID  string
@@ -85,9 +83,6 @@ func (s *Store) WriteSleep(ctx context.Context, tx pgx.Tx, rows []SleepRow,
 	return b.result(), nil
 }
 
-// WriteWorkouts records workout candidates and reconciles affected components.
-// existing marks a retried envelope, so its candidate set must match the
-// stored one.
 func (s *Store) WriteWorkouts(ctx context.Context, tx pgx.Tx, rows []ActivityRow,
 	sessionID string, observedAt time.Time, existing bool) (Mutation, error) {
 	const table = "workout_observations"
@@ -145,8 +140,6 @@ func (s *Store) WriteWorkouts(ctx context.Context, tx pgx.Tx, rows []ActivityRow
 	return b.result(), nil
 }
 
-// WritePAI stores device PAI records. sampled_at is the record epoch and
-// observed_at only orders retries.
 func (s *Store) WritePAI(ctx context.Context, tx pgx.Tx, rows []PAIScore,
 	sessionID string, observedAt time.Time) (Mutation, error) {
 	const table = "pai_scores"
@@ -236,8 +229,6 @@ func (s *Store) WritePAI(ctx context.Context, tx pgx.Tx, rows []PAIScore,
 	return b.result(), nil
 }
 
-// ---- candidate validation ----
-
 func validateSleepRow(r SleepRow) error {
 	const table = "sleep_observations"
 	if err := validateInstant(r.StartedAt, table); err != nil {
@@ -323,10 +314,6 @@ func validateWorkoutBatch(rows []ActivityRow, table string) error {
 	return nil
 }
 
-// ---- candidate insertion ----
-
-// insertSleepObservations stores the candidate rows of a session that has no
-// stored candidates yet.
 func insertSleepObservations(ctx context.Context, q *db.Queries, rows []SleepRow,
 	sessionID string, observedAt time.Time) error {
 	params := db.InsertSleepObservationsParams{
@@ -372,8 +359,6 @@ func insertSleepObservations(ctx context.Context, q *db.Queries, rows []SleepRow
 	return q.InsertSleepObservations(ctx, params)
 }
 
-// verifySleepRetry compares a retry's re-parsed candidates with the complete
-// stored set for the session. Both sides are ordered by start time.
 func verifySleepRetry(stored []db.ListSleepObservationsBySessionRow, rows []SleepRow) error {
 	if len(stored) != len(rows) {
 		return conflict("stored sleep candidates differ from the retried candidates")
@@ -391,8 +376,6 @@ func verifySleepRetry(stored []db.ListSleepObservationsBySessionRow, rows []Slee
 	return nil
 }
 
-// insertWorkoutObservations stores the candidate rows of a session that has no
-// stored candidates yet.
 func insertWorkoutObservations(ctx context.Context, q *db.Queries, rows []ActivityRow,
 	sessionID string, observedAt time.Time) error {
 	params := db.InsertWorkoutObservationsParams{
@@ -446,8 +429,6 @@ func insertWorkoutObservations(ctx context.Context, q *db.Queries, rows []Activi
 	return q.InsertWorkoutObservations(ctx, params)
 }
 
-// verifyWorkoutRetry compares a retry's re-parsed candidates with the complete
-// stored set for the session. Both sides are ordered by start time.
 func verifyWorkoutRetry(stored []db.ListWorkoutObservationsBySessionRow, rows []ActivityRow) error {
 	if len(stored) != len(rows) {
 		return conflict("stored workout candidates differ from the retried candidates")
@@ -472,8 +453,6 @@ func verifyWorkoutRetry(stored []db.ListWorkoutObservationsBySessionRow, rows []
 	}
 	return nil
 }
-
-// ---- component reconciliation ----
 
 func reconcileSleepComponents(ctx context.Context, q *db.Queries, seeds []InstantInterval,
 	b *mutationBuilder) error {
@@ -630,7 +609,6 @@ func applySleepWinners(ctx context.Context, q *db.Queries, from, to time.Time,
 	return nil
 }
 
-// selectSleepWinners keeps the newest candidate of each disjoint interval.
 func selectSleepWinners(candidates []sleepObservation) []sleepObservation {
 	ordered := make([]sleepObservation, len(candidates))
 	copy(ordered, candidates)
@@ -860,8 +838,6 @@ func selectWorkoutWinners(candidates []workoutObservation) []workoutObservation 
 	}
 	return winners
 }
-
-// ---- row conversion and equality ----
 
 func sleepRowOf(startedAt, endedAt time.Time, dayKey pgtype.Date, isNap bool, score pgtype.Int2,
 	totalMins, deepMins, remMins, lightMins, wakeMins int16, stages []byte,

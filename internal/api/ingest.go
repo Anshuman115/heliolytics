@@ -21,11 +21,8 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// maxIngestParts is the C2 part cap, metadata included.
 const maxIngestParts = 40
 
-// ingestTypeCodes is the C2 accepted set. 0x26 is raw-only and never appears
-// in coverage; 0x39, 0x3A and 0x3B are not accepted.
 var ingestTypeCodes = map[string]struct{}{
 	"0x01": {}, "0x05": {}, "0x06": {}, "0x0D": {}, "0x13": {}, "0x25": {},
 	"0x26": {}, "0x2E": {}, "0x38": {}, "0x46": {}, "0x48": {}, "0x49": {},
@@ -33,20 +30,16 @@ var ingestTypeCodes = map[string]struct{}{
 
 var macPattern = regexp.MustCompile(`^[0-9A-F]{2}(:[0-9A-F]{2}){5}$`)
 
-// ingestHandler validates the upload and calls the injected service once.
 type ingestHandler struct {
 	run IngestFunc
 }
 
-// ingestPayload is a structurally valid upload. Session semantics are checked
-// by the handler, after the nonce is consumed.
 type ingestPayload struct {
 	session sessionFields
 	catalog []byte
 	blobs   map[string][]byte
 }
 
-// sessionFields is the session part after JSON structure and type checks.
 type sessionFields struct {
 	sessionID string
 	startedAt string
@@ -55,8 +48,7 @@ type sessionFields struct {
 	battery   *json.Number
 }
 
-// prepare walks the multipart envelope once without decoding part bodies and
-// rejects the C3.1 structural failures before the nonce is consumed.
+// Reject structural envelope errors before consuming the nonce.
 func (h *ingestHandler) prepare(r *http.Request, body []byte) (any, error) {
 	_, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil {
@@ -142,8 +134,6 @@ func (h *ingestHandler) prepare(r *http.Request, body []byte) (any, error) {
 	return &ingestPayload{session: session, catalog: catalogPart, blobs: blobs}, nil
 }
 
-// serve hands the validated envelope to the ingest service once and serializes
-// the C2 result.
 func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 	payload, ok := middleware.Payload(r).(*ingestPayload)
 	if !ok {
@@ -168,8 +158,6 @@ func (h *ingestHandler) serve(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
-// catalogEnvelope is the part of the app catalog the API cross-checks. The
-// parser owns the anchors and owns rejecting a catalog it cannot read.
 type catalogEnvelope struct {
 	SessionID string `json:"sessionId"`
 	Chunked   []struct {
@@ -177,8 +165,6 @@ type catalogEnvelope struct {
 	} `json:"chunked"`
 }
 
-// crossCheckCatalog rejects a catalog that names another session or repeats a
-// type code. A catalog the API cannot decode is left to the parser.
 func crossCheckCatalog(catalog []byte, sessionID string) *middleware.Error {
 	var envelope catalogEnvelope
 	if err := json.Unmarshal(catalog, &envelope); err != nil {
@@ -200,8 +186,6 @@ func crossCheckCatalog(catalog []byte, sessionID string) *middleware.Error {
 	return nil
 }
 
-// meta applies the C2 session semantics. Every failure here is a 422 and has
-// already consumed the request nonce.
 func (f sessionFields) meta() (store.SessionMeta, *middleware.Error) {
 	invalid := middleware.Fail(http.StatusUnprocessableEntity, middleware.CodeInvalidSession)
 	if f.sessionID == "" || len(f.sessionID) > 64 || !printableASCII(f.sessionID) {
@@ -239,8 +223,6 @@ func (f sessionFields) meta() (store.SessionMeta, *middleware.Error) {
 	}, nil
 }
 
-// parseInstant reads an offset-bearing RFC3339 timestamp. A naive value has no
-// zone and fails, so no local time is assumed.
 func parseInstant(value string) (time.Time, error) {
 	parsed, err := time.Parse(time.RFC3339, value)
 	if err != nil {
@@ -280,8 +262,6 @@ func hasNonEmptyBlob(blobs map[string][]byte) bool {
 	return false
 }
 
-// sessionFieldsOf checks the required session keys, rejects any other key and
-// checks the declared JSON types.
 func sessionFieldsOf(fields map[string]json.RawMessage) (sessionFields, *middleware.Error) {
 	invalid := middleware.Fail(http.StatusBadRequest, middleware.CodeInvalidBody)
 	var out sessionFields
@@ -318,8 +298,6 @@ func sessionFieldsOf(fields map[string]json.RawMessage) (sessionFields, *middlew
 	return out, nil
 }
 
-// writeIngestError maps a service error to the C2 status. Only declared
-// sentinels become client errors; everything else is infrastructure.
 func writeIngestError(w http.ResponseWriter, err error) {
 	var parseErr *parse.ParseError
 	var invalidRow *store.InvalidRowError
@@ -338,8 +316,6 @@ func writeIngestError(w http.ResponseWriter, err error) {
 	}
 }
 
-// parseFailure maps the parser error codes to the C2 codes. Only the band type
-// code is added to the safe message.
 func parseFailure(parseErr *parse.ParseError) *middleware.Error {
 	code := middleware.CodeInvalidType
 	switch parseErr.Code {
@@ -355,7 +331,6 @@ func parseFailure(parseErr *parse.ParseError) *middleware.Error {
 	return failure
 }
 
-// normalizeIngestResult keeps every list an array and every map an object.
 func normalizeIngestResult(result *store.IngestResult) {
 	if result.Types == nil {
 		result.Types = make(map[string]store.TypeResult)
@@ -371,8 +346,6 @@ func normalizeIngestResult(result *store.IngestResult) {
 	}
 }
 
-// strictObject decodes exactly one JSON object, rejects duplicate keys and any
-// trailing data, and returns the raw value of each key.
 func strictObject(body []byte) (map[string]json.RawMessage, *middleware.Error) {
 	invalid := middleware.Fail(http.StatusBadRequest, middleware.CodeInvalidBody)
 	decoder := json.NewDecoder(bytes.NewReader(body))
@@ -411,7 +384,6 @@ func strictObject(body []byte) (map[string]json.RawMessage, *middleware.Error) {
 	return out, nil
 }
 
-// decodeString reads a JSON string.
 func decodeString(raw json.RawMessage) (string, bool) {
 	var value string
 	if err := json.Unmarshal(raw, &value); err != nil {
@@ -420,7 +392,6 @@ func decodeString(raw json.RawMessage) (string, bool) {
 	return value, true
 }
 
-// decodeNullableString reads a JSON string or null.
 func decodeNullableString(raw json.RawMessage) (*string, bool) {
 	trimmed := bytes.TrimSpace(raw)
 	if string(trimmed) == "null" {
@@ -433,8 +404,6 @@ func decodeNullableString(raw json.RawMessage) (*string, bool) {
 	return &value, true
 }
 
-// decodeNullableNumber keeps a JSON number token exactly as written. A JSON
-// string that looks like a number is rejected.
 func decodeNullableNumber(raw json.RawMessage) (*json.Number, bool) {
 	trimmed := bytes.TrimSpace(raw)
 	if string(trimmed) == "null" {

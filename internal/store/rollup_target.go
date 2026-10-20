@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// EnsureDailyMetricsRows creates daily rows for supported dates only.
 func (v *TxView) EnsureDailyMetricsRows(ctx context.Context, days []time.Time) error {
 	supported, err := v.ListCanonicalDayKeys(ctx, days)
 	if err != nil {
@@ -21,7 +20,6 @@ func (v *TxView) EnsureDailyMetricsRows(ctx context.Context, days []time.Time) e
 	return v.q.EnsureDailyRows(ctx, pgDates(supported))
 }
 
-// ListCanonicalDayKeys returns the supported subset of the supplied dates.
 func (v *TxView) ListCanonicalDayKeys(ctx context.Context, days []time.Time) ([]time.Time, error) {
 	unique := uniqueDays(days)
 	if len(unique) == 0 {
@@ -34,8 +32,6 @@ func (v *TxView) ListCanonicalDayKeys(ctx context.Context, days []time.Time) ([]
 	return daysOf(rows), nil
 }
 
-// NormalizeDailyDomainTx deletes unsupported daily rows inside the affected set
-// and fails if a supported day has no computed row.
 func (v *TxView) NormalizeDailyDomainTx(ctx context.Context, days []time.Time) ([]time.Time, error) {
 	if len(days) == 0 {
 		return []time.Time{}, nil
@@ -68,8 +64,6 @@ func (v *TxView) NormalizeDailyDomainTx(ctx context.Context, days []time.Time) (
 	return daysOf(deleted), nil
 }
 
-// CanonicalDayBounds returns the first and last canonical ownership dates, or
-// two nil pointers when nothing is stored.
 func (v *TxView) CanonicalDayBounds(ctx context.Context) (*time.Time, *time.Time, error) {
 	queries := []func(context.Context) ([]pgtype.Date, error){
 		v.q.HeartRateDayBounds,
@@ -105,8 +99,6 @@ func (v *TxView) CanonicalDayBounds(ctx context.Context) (*time.Time, *time.Time
 	return first, last, nil
 }
 
-// ReadRollupInputs reads exact canonical inputs for inclusive IST dates. Sleep
-// intervals starting before the range extend the sample read backwards.
 func (v *TxView) ReadRollupInputs(ctx context.Context, fromDay, toDay time.Time) (RollupInputs, error) {
 	fromAt := fromDay
 	toAt := nextDay(toDay)
@@ -209,8 +201,6 @@ func listPAI(ctx context.Context, q *db.Queries, fromDay, toDay time.Time) ([]PA
 	return out, nil
 }
 
-// AffectedSleepDays returns attributed days whose stored interval intersects
-// the changed instant range.
 func (v *TxView) AffectedSleepDays(ctx context.Context, from, to time.Time) ([]time.Time, error) {
 	rows, err := v.q.AffectedSleepDays(ctx, db.AffectedSleepDaysParams{
 		ToAt:   tsAt(to),
@@ -222,7 +212,6 @@ func (v *TxView) AffectedSleepDays(ctx context.Context, from, to time.Time) ([]t
 	return daysOf(rows), nil
 }
 
-// uniqueDailyDays rejects duplicate day keys before a set-based update runs.
 func uniqueDailyDays(table string, days []time.Time) ([]time.Time, error) {
 	unique := uniqueDays(days)
 	if len(unique) != len(days) {
@@ -231,7 +220,6 @@ func uniqueDailyDays(table string, days []time.Time) ([]time.Time, error) {
 	return unique, nil
 }
 
-// supportedSet keeps writers off dates without canonical support.
 func (v *TxView) supportedSet(ctx context.Context, days []time.Time) (map[int64]struct{}, error) {
 	supported, err := v.ListCanonicalDayKeys(ctx, days)
 	if err != nil {
@@ -244,7 +232,6 @@ func (v *TxView) supportedSet(ctx context.Context, days []time.Time) (map[int64]
 	return out, nil
 }
 
-// WriteDailyAggregates assigns the aggregate columns exactly, including NULL.
 func (v *TxView) WriteDailyAggregates(ctx context.Context, rows []DailyAggregate) error {
 	if len(rows) == 0 {
 		return nil
@@ -421,7 +408,6 @@ func (v *TxView) WriteDailyAggregates(ctx context.Context, rows []DailyAggregate
 	return v.q.WriteDailyAggregates(ctx, params)
 }
 
-// WriteLoad assigns the training-load column exactly, including NULL.
 func (v *TxView) WriteLoad(ctx context.Context, rows []LoadUpdate) error {
 	if len(rows) == 0 {
 		return nil
@@ -459,8 +445,6 @@ func (v *TxView) WriteLoad(ctx context.Context, rows []LoadUpdate) error {
 	return v.q.WriteDailyLoad(ctx, params)
 }
 
-// WriteReadiness assigns readiness, its components and the temperature
-// deviation exactly, including NULL.
 func (v *TxView) WriteReadiness(ctx context.Context, rows []ReadinessUpdate) error {
 	if len(rows) == 0 {
 		return nil
@@ -510,7 +494,6 @@ func (v *TxView) WriteReadiness(ctx context.Context, rows []ReadinessUpdate) err
 	return v.q.WriteDailyReadiness(ctx, params)
 }
 
-// ReadReadinessHistory returns supported days in ascending order.
 func (v *TxView) ReadReadinessHistory(ctx context.Context, fromDay, toDay time.Time) ([]DailyAggregate, error) {
 	rows, err := v.q.ListDailyMetrics(ctx, db.ListDailyMetricsParams{
 		FromDay: pgDate(fromDay),
@@ -570,7 +553,6 @@ func dailyAggregateFromRow(r db.DailyMetric) DailyAggregate {
 	}
 }
 
-// ReadActivityMinutes joins observed step minutes with optional 0x01 HR.
 func (v *TxView) ReadActivityMinutes(ctx context.Context, from, to time.Time) ([]ActivityMinute, error) {
 	steps, err := listSteps(ctx, v.q, from, to)
 	if err != nil {
@@ -598,7 +580,6 @@ func (v *TxView) ReadActivityMinutes(ctx context.Context, from, to time.Time) ([
 	return out, nil
 }
 
-// ListWorkoutIntervals returns authoritative workout barriers in range.
 func (v *TxView) ListWorkoutIntervals(ctx context.Context, from, to time.Time) ([]WorkoutInterval, error) {
 	rows, err := v.q.ListWorkoutIntervalsRange(ctx, db.ListWorkoutIntervalsRangeParams{
 		FromAt: tsAt(from),
@@ -614,7 +595,6 @@ func (v *TxView) ListWorkoutIntervals(ctx context.Context, from, to time.Time) (
 	return out, nil
 }
 
-// ListAutoActivitiesOverlapping returns current auto rows in range.
 func (v *TxView) ListAutoActivitiesOverlapping(ctx context.Context, from, to time.Time) ([]ActivityRow, error) {
 	rows, err := v.q.ListAutoActivities(ctx, db.ListAutoActivitiesParams{
 		FromAt: tsAt(from),
@@ -642,8 +622,6 @@ func (v *TxView) ListAutoActivitiesOverlapping(ctx context.Context, from, to tim
 	return out, nil
 }
 
-// ReplaceAutoActivities replaces only interval-overlapping auto rows with the
-// full current detector output. Trigger lineage is bookkeeping, not freshness.
 func (v *TxView) ReplaceAutoActivities(ctx context.Context, from, to time.Time,
 	rows []ActivityRow, sessionID string, observedAt time.Time) (Mutation, error) {
 	b := newMutation()
@@ -764,8 +742,6 @@ func (v *TxView) ReplaceAutoActivities(ctx context.Context, from, to time.Time,
 	return b.result(), nil
 }
 
-// SessionTypeDataThrough maps the C2 watermark rules over this session's
-// surviving canonical rows. It never updates global coverage.
 func (v *TxView) SessionTypeDataThrough(ctx context.Context, sessionID string,
 	typeCodes []string) (map[string]*time.Time, error) {
 	if sessionID == "" {

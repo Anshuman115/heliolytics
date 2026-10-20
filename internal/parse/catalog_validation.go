@@ -2,29 +2,23 @@ package parse
 
 import "time"
 
-// headeredRoundVersion is the only round version 0x25 and 0x26 accept.
 const headeredRoundVersion = 0x02
 
-// roundAnchor is one validated catalog round position inside a payload.
 type roundAnchor struct {
 	off int
 	at  time.Time
 }
 
-// minuteRecord is one fixed-stride record anchored to an absolute minute.
 type minuteRecord struct {
 	at  time.Time
 	off int
 }
 
-// headeredRecord is one record inside a version-headered round.
 type headeredRecord struct {
 	off       int
 	nextRound *time.Time
 }
 
-// minuteRecords expands the anchored segments of a minute type into per-record
-// offsets and times, reporting any trailing fragment that is not a record.
 func minuteRecords(code string, raw []byte, entry *CatalogEntry, stride int) ([]minuteRecord, int, error) {
 	anchors, err := minuteAnchors(code, raw, entry, stride)
 	if err != nil {
@@ -123,8 +117,6 @@ func validateMinuteAnchor(code string, offset int, roundStart string, size, stri
 	return roundAnchor{off: offset, at: EpochUTC(sec)}, nil
 }
 
-// payloadSegments returns the round offsets of a version-headered type. A blob
-// without catalog segments is one round at offset 0.
 func payloadSegments(code string, raw []byte, entry *CatalogEntry) ([]int, error) {
 	size := len(raw)
 	if entry == nil || len(entry.RoundSegments) == 0 {
@@ -157,8 +149,6 @@ func payloadSegments(code string, raw []byte, entry *CatalogEntry) ([]int, error
 	return out, nil
 }
 
-// headeredRecords splits version-headered rounds into record offsets and
-// reports a trailing fragment in the final round.
 func headeredRecords(code string, raw []byte, entry *CatalogEntry, stride int) ([]headeredRecord, int, error) {
 	starts, err := payloadSegments(code, raw, entry)
 	if err != nil {
@@ -203,8 +193,6 @@ func headeredRecords(code string, raw []byte, entry *CatalogEntry, stride int) (
 	return out, trailing, nil
 }
 
-// fixedRecords returns the offsets of whole fixed-stride records and the size
-// of a trailing fragment.
 func fixedRecords(code string, raw []byte, stride int) ([]int, int, error) {
 	complete := len(raw) / stride
 	remainder := len(raw) % stride

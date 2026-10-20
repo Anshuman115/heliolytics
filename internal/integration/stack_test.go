@@ -17,7 +17,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/testutil"
 )
 
-// newRequestTo builds one signed request for an absolute base URL.
 func (s *stack) newRequestTo(t *testing.T, base, kid, method, path, query string,
 	body []byte, contentType string) *http.Request {
 	t.Helper()
@@ -36,8 +35,6 @@ func (s *stack) newRequestTo(t *testing.T, base, kid, method, path, query string
 	return request
 }
 
-// TestStackServesSignedRequestsOverTCP runs the real mux on a real listener so
-// the wire path, headers and public routes are exercised without shortcuts.
 func TestStackServesSignedRequestsOverTCP(t *testing.T) {
 	s := newStack(t)
 	server := httptest.NewServer(s.handler)
@@ -106,8 +103,6 @@ func TestStackServesSignedRequestsOverTCP(t *testing.T) {
 	}
 }
 
-// TestStackLivenessWithoutDatabase proves /health stays a liveness check while
-// a data route fails closed on an unreachable database.
 func TestStackLivenessWithoutDatabase(t *testing.T) {
 	s := offlineStack(t)
 	server := httptest.NewServer(s.handler)
@@ -140,7 +135,6 @@ func TestStackLivenessWithoutDatabase(t *testing.T) {
 	}
 }
 
-// lockedBuffer collects subprocess output.
 type lockedBuffer struct {
 	mu   sync.Mutex
 	text string
@@ -159,7 +153,6 @@ func (b *lockedBuffer) String() string {
 	return b.text
 }
 
-// processEnv copies the environment with the supplied variables replaced.
 func processEnv(overrides map[string]string) []string {
 	env := make([]string, 0, len(os.Environ())+len(overrides))
 	for _, entry := range os.Environ() {
@@ -175,7 +168,6 @@ func processEnv(overrides map[string]string) []string {
 	return env
 }
 
-// freeLoopbackAddress reserves and releases one loopback address.
 func freeLoopbackAddress(t *testing.T) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -189,8 +181,6 @@ func freeLoopbackAddress(t *testing.T) string {
 	return address
 }
 
-// TestCompiledServerLifecycle builds the real binary, checks the injected build
-// metadata, sends one signed write and requires a clean SIGTERM exit.
 func TestCompiledServerLifecycle(t *testing.T) {
 	root := repoRoot(t)
 	const commit = "subprocess-commit"

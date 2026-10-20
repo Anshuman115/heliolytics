@@ -1,5 +1,4 @@
 -- name: UpsertHeartRateSamples :exec
--- Newer observation tuples win; an older sync never regresses a canonical value.
 INSERT INTO heart_rate_samples (sampled_at, source, bpm, session_id, observed_at)
 SELECT v.sampled_at, v.source, v.bpm, v.session_id, v.observed_at
 FROM ROWS FROM (

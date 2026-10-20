@@ -8,8 +8,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// activity is one C3.3 unified activity row. A workout and an automatic
-// activity may share a timestamp; kind keeps them distinct.
 type activity struct {
 	Kind        string `json:"kind"`
 	DayKey      string `json:"dayKey"`
@@ -30,8 +28,6 @@ type activitiesResponse struct {
 	Activities []activity `json:"activities"`
 }
 
-// activities serves the stored unified activity rows in ascending start order.
-// Labels and durations come from storage; nothing is derived here.
 func (h *metricsHandler) activities(w http.ResponseWriter, r *http.Request) {
 	from, to, failure := h.rangeBounds(r, maxDailyRangeDays)
 	if failure != nil {

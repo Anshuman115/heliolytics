@@ -12,8 +12,6 @@ var day = time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 
 func ptr(v float64) *float64 { return &v }
 
-// shrink is the spread formula, restated here so expectations never
-// come from the production helper.
 func shrink(personal float64, n int, prior, floor float64) float64 {
 	variance := (float64(n)*personal*personal + 7*prior*prior) / (float64(n) + 7)
 	return math.Max(floor, math.Sqrt(variance))
@@ -23,8 +21,6 @@ func night(hrv, sleepHR, resp, temp *float64) readiness.Night {
 	return readiness.Night{HRV: hrv, SleepingHR: sleepHR, RespRate: resp, SkinTempC: temp, SleepScore: ptr(50), TRIMP: ptr(20)}
 }
 
-// filled builds a history where every one of the count prior nights carries
-// identical values.
 func filled(count int, hrv, sleepHR, resp, temp float64) map[time.Time]readiness.Night {
 	out := map[time.Time]readiness.Night{}
 	trimp := 20.0
@@ -224,8 +220,6 @@ func TestBaselineRequiresRecentNights(t *testing.T) {
 
 	history[day.AddDate(0, 0, -3)] = readiness.Night{HRV: ptr(50)}
 	res = readiness.Compute(day, history, readiness.DefaultParams())
-	// Recency gates validity only. Once three recent nights make the baseline
-	// valid, C4 scores from the full baseline night count, here 35.
 	if res.Status != readiness.StatusScored {
 		t.Fatalf("three recent nights status = %q, want scored", res.Status)
 	}
@@ -347,7 +341,6 @@ func TestTemperatureDeadBand(t *testing.T) {
 
 func TestLoadComponentEligibility(t *testing.T) {
 	thirteen := filled(14, 50, 60, 14, 33)
-	// Only thirteen days carry a load value, so the chronic mean is ineligible.
 	for i := 1; i <= 13; i++ {
 		n := thirteen[day.AddDate(0, 0, -i)]
 		n.TRIMP = ptr(20)

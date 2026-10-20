@@ -33,7 +33,6 @@ import (
 )
 
 const (
-	// fixturePackage and fixtureSet locate the committed parser corpus.
 	fixturePackage = "parse"
 	fixtureSet     = "real-dumpp-2026-06"
 
@@ -41,20 +40,15 @@ const (
 	phoneKid     = "phone"
 	webKid       = "web"
 
-	// istOffsetSeconds is the fixed device zone used for day keys.
 	istOffsetSeconds = 5*3600 + 30*60
 )
 
-// istZone mirrors the server's fixed IST zone for day labels.
 var istZone = time.FixedZone("IST", istOffsetSeconds)
 
-// fixtureCodes is the complete committed raw set.
 var fixtureCodes = []string{
 	"0x01", "0x05", "0x06", "0x0D", "0x13", "0x26", "0x2E", "0x38", "0x46", "0x48", "0x49",
 }
 
-// appTables is the public application inventory, auth_nonces last so callers
-// can separate replay rows from data rows.
 var appTables = []string{
 	"sync_sessions", "raw_blobs",
 	"heart_rate_samples", "step_samples", "temperature_samples", "hrv_samples",
@@ -63,7 +57,6 @@ var appTables = []string{
 	"pai_scores", "coverage", "daily_metrics", "profile", "auth_nonces",
 }
 
-// testKeys returns fixed, non-published secrets for these tests.
 func testKeys() auth.KeySet {
 	var phone, web [32]byte
 	for i := range phone {
@@ -75,7 +68,6 @@ func testKeys() auth.KeySet {
 	return auth.NewKeySet(phone, web)
 }
 
-// testConfig is a valid configuration with generous limits.
 func testConfig(keys auth.KeySet) config.Config {
 	return config.Config{
 		Keys:                   keys,
@@ -86,14 +78,12 @@ func testConfig(keys auth.KeySet) config.Config {
 	}
 }
 
-// stack is the real API over one disposable database.
 type stack struct {
 	handler http.Handler
 	db      *store.Store
 	keys    auth.KeySet
 }
 
-// newStack opens a fresh schema-applied database and the production mux.
 func newStack(t *testing.T) *stack {
 	t.Helper()
 	dsn := testutil.NewDB(t)
@@ -107,7 +97,6 @@ func newStack(t *testing.T) *stack {
 	return &stack{handler: newHandler(db, keys), db: db, keys: keys}
 }
 
-// newHandler wires the production mux over one store.
 func newHandler(db *store.Store, keys auth.KeySet) http.Handler {
 	return api.NewMux(db, testConfig(keys),
 		func(ctx context.Context, meta store.SessionMeta, catalog []byte,
@@ -120,7 +109,6 @@ func newHandler(db *store.Store, keys auth.KeySet) http.Handler {
 	)
 }
 
-// offlineStack builds the mux over a store whose pool never connects.
 func offlineStack(t *testing.T) *stack {
 	t.Helper()
 	db, err := store.New(t.Context(),
@@ -133,7 +121,6 @@ func offlineStack(t *testing.T) *stack {
 	return &stack{handler: newHandler(db, keys), db: db, keys: keys}
 }
 
-// httpBody returns a request body reader, or nil when there is no body.
 func httpBody(body []byte) io.Reader {
 	if len(body) == 0 {
 		return nil
@@ -141,13 +128,11 @@ func httpBody(body []byte) io.Reader {
 	return bytes.NewReader(body)
 }
 
-// readAll reads a bounded response body and closes it.
 func readAll(response *http.Response) ([]byte, error) {
 	defer response.Body.Close()
 	return io.ReadAll(io.LimitReader(response.Body, 1<<20))
 }
 
-// newRequest builds a request and signs it with a fresh nonce.
 func (s *stack) newRequest(t *testing.T, kid, method, path, query string,
 	body []byte, contentType string) *http.Request {
 	t.Helper()
@@ -166,7 +151,6 @@ func (s *stack) newRequest(t *testing.T, kid, method, path, query string,
 	return request
 }
 
-// sign applies the auth header to one request and body.
 func (s *stack) sign(t *testing.T, kid string, request *http.Request,
 	body []byte, nonce string, ts int64) {
 	t.Helper()
@@ -189,20 +173,17 @@ func (s *stack) sign(t *testing.T, kid string, request *http.Request,
 	request.Header.Set(auth.HeaderBodySHA256, hash)
 }
 
-// serve runs one request through the production mux.
 func (s *stack) serve(request *http.Request) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	s.handler.ServeHTTP(recorder, request)
 	return recorder
 }
 
-// get issues one signed read.
 func (s *stack) get(t *testing.T, kid, path, query string) *httptest.ResponseRecorder {
 	t.Helper()
 	return s.serve(s.newRequest(t, kid, http.MethodGet, path, query, nil, ""))
 }
 
-// upload sends one signed multipart ingest.
 func (s *stack) upload(t *testing.T, kid string, session, catalog []byte,
 	blobs map[string][]byte) *httptest.ResponseRecorder {
 	t.Helper()
@@ -210,7 +191,6 @@ func (s *stack) upload(t *testing.T, kid string, session, catalog []byte,
 	return s.serve(s.newRequest(t, kid, http.MethodPost, "/api/ingest", "", body, contentType))
 }
 
-// uploadOK uploads and requires the C2 200.
 func (s *stack) uploadOK(t *testing.T, session, catalog []byte, blobs map[string][]byte) store.IngestResult {
 	t.Helper()
 	recorder := s.upload(t, phoneKid, session, catalog, blobs)
@@ -220,7 +200,6 @@ func (s *stack) uploadOK(t *testing.T, session, catalog []byte, blobs map[string
 	return decodeResult(t, recorder)
 }
 
-// count returns the row count of one table.
 func (s *stack) count(t *testing.T, table string) int {
 	t.Helper()
 	var total int
@@ -233,8 +212,6 @@ func (s *stack) count(t *testing.T, table string) int {
 	return total
 }
 
-// countWhere counts the rows of one table matching a fixed clause. The clause
-// is test-authored, never caller input.
 func (s *stack) countWhere(t *testing.T, table, clause string) int {
 	t.Helper()
 	var total int
@@ -247,7 +224,6 @@ func (s *stack) countWhere(t *testing.T, table, clause string) int {
 	return total
 }
 
-// queryText returns one textual cell.
 func (s *stack) queryText(t *testing.T, statement string, args ...any) string {
 	t.Helper()
 	var value string
@@ -260,7 +236,6 @@ func (s *stack) queryText(t *testing.T, statement string, args ...any) string {
 	return value
 }
 
-// tabulated counts every application table.
 func (s *stack) tabulated(t *testing.T) map[string]int {
 	t.Helper()
 	out := make(map[string]int, len(appTables))
@@ -270,7 +245,6 @@ func (s *stack) tabulated(t *testing.T) map[string]int {
 	return out
 }
 
-// daily returns one stored day row through the production reader.
 func (s *stack) daily(t *testing.T, day string) store.DayMetric {
 	t.Helper()
 	rows, err := s.db.ListDays(context.Background(), day, day)
@@ -283,7 +257,6 @@ func (s *stack) daily(t *testing.T, day string) store.DayMetric {
 	return rows[0]
 }
 
-// dailyKeys lists every stored daily row date.
 func (s *stack) dailyKeys(t *testing.T) []string {
 	t.Helper()
 	var keys []string
@@ -308,7 +281,6 @@ func (s *stack) dailyKeys(t *testing.T) []string {
 	return keys
 }
 
-// multipartBody renders the signed multipart envelope.
 func multipartBody(t *testing.T, session, catalog []byte, blobs map[string][]byte) ([]byte, string) {
 	t.Helper()
 	var buffer bytes.Buffer
@@ -329,7 +301,6 @@ func multipartBody(t *testing.T, session, catalog []byte, blobs map[string][]byt
 	return buffer.Bytes(), writer.FormDataContentType()
 }
 
-// writePart appends one form field.
 func writePart(t *testing.T, writer *multipart.Writer, name string, data []byte) {
 	t.Helper()
 	part, err := writer.CreateFormField(name)
@@ -341,7 +312,6 @@ func writePart(t *testing.T, writer *multipart.Writer, name string, data []byte)
 	}
 }
 
-// decodeResult reads the C2 response.
 func decodeResult(t *testing.T, recorder *httptest.ResponseRecorder) store.IngestResult {
 	t.Helper()
 	var result store.IngestResult
@@ -351,7 +321,6 @@ func decodeResult(t *testing.T, recorder *httptest.ResponseRecorder) store.Inges
 	return result
 }
 
-// errorCode reads the C3 error code.
 func errorCode(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	t.Helper()
 	var envelope struct {
@@ -365,7 +334,6 @@ func errorCode(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	return envelope.Error.Code
 }
 
-// freshNonce returns a 16-byte hex nonce.
 func freshNonce(t *testing.T) string {
 	t.Helper()
 	buffer := make([]byte, 16)
@@ -375,7 +343,6 @@ func freshNonce(t *testing.T) string {
 	return hex.EncodeToString(buffer)
 }
 
-// repoRoot locates the module root from this source file.
 func repoRoot(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -385,7 +352,6 @@ func repoRoot(t *testing.T) string {
 	return filepath.Dir(filepath.Dir(filepath.Dir(file)))
 }
 
-// fixturePath locates a committed corpus file from this source file.
 func fixturePath(t *testing.T, name string) string {
 	t.Helper()
 	root := repoRoot(t)
@@ -396,7 +362,6 @@ func fixturePath(t *testing.T, name string) string {
 	return path
 }
 
-// readFixture reads one required corpus file.
 func readFixture(t *testing.T, name string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(fixturePath(t, name))
@@ -409,19 +374,16 @@ func readFixture(t *testing.T, name string) []byte {
 	return data
 }
 
-// realSession is the committed session envelope.
 func realSession(t *testing.T) []byte {
 	t.Helper()
 	return readFixture(t, "session.json")
 }
 
-// realCatalog is the committed catalog bytes.
 func realCatalog(t *testing.T) []byte {
 	t.Helper()
 	return readFixture(t, "catalog.json")
 }
 
-// realBlobs is the committed raw set keyed by type code.
 func realBlobs(t *testing.T) map[string][]byte {
 	t.Helper()
 	blobs := make(map[string][]byte, len(fixtureCodes))
@@ -431,7 +393,6 @@ func realBlobs(t *testing.T) map[string][]byte {
 	return blobs
 }
 
-// sessionPart renders one synthetic session envelope.
 func sessionPart(t *testing.T, id string, startedAt, endedAt time.Time) []byte {
 	t.Helper()
 	payload := struct {
@@ -453,14 +414,11 @@ func sessionPart(t *testing.T, id string, startedAt, endedAt time.Time) []byte {
 	return encoded
 }
 
-// catalogEntry is one chunked entry of a synthetic catalog.
 type catalogEntry struct {
 	Code       string
 	RoundStart string
 }
 
-// catalogPart renders a catalog; entries may be empty when no type needs an
-// anchor.
 func catalogPart(t *testing.T, entries ...catalogEntry) []byte {
 	t.Helper()
 	type entry struct {
@@ -483,12 +441,10 @@ func catalogPart(t *testing.T, entries ...catalogEntry) []byte {
 	return encoded
 }
 
-// istWallClock renders the offsetless IST wall clock a catalog anchor uses.
 func istWallClock(at time.Time) string {
 	return at.In(istZone).Format("2006-01-02T15:04:05.000")
 }
 
-// sleepRecord builds one 594-byte 0x48 main sleep record.
 func sleepRecord(t *testing.T, sleepDay, start, end time.Time) []byte {
 	t.Helper()
 	record := make([]byte, 594)
@@ -512,7 +468,6 @@ func sleepRecord(t *testing.T, sleepDay, start, end time.Time) []byte {
 	return record
 }
 
-// workoutRecord builds one confirmed 0x05 summary protobuf.
 func workoutRecord(t *testing.T, start time.Time, durationSec, sport int) []byte {
 	t.Helper()
 	var buffer bytes.Buffer
@@ -525,7 +480,6 @@ func workoutRecord(t *testing.T, start time.Time, durationSec, sport int) []byte
 	return buffer.Bytes()
 }
 
-// activityMinute builds one 8-byte 0x01 minute.
 func activityMinute(bpm, steps byte) []byte {
 	record := make([]byte, 8)
 	record[2] = steps
@@ -533,32 +487,27 @@ func activityMinute(bpm, steps byte) []byte {
 	return record
 }
 
-// temperatureMinute builds one 8-byte 0x2E minute.
 func temperatureMinute(hundredths int16) []byte {
 	record := make([]byte, 8)
 	binary.LittleEndian.PutUint16(record[2:], uint16(hundredths))
 	return record
 }
 
-// protoVarint encodes field plus varint value.
 func protoVarint(field int, value uint64) []byte {
 	out := appendUvarint(nil, uint64(field)<<3)
 	return appendUvarint(out, value)
 }
 
-// writeProtoVarint appends one varint field.
 func writeProtoVarint(buffer *bytes.Buffer, field int, value uint64) {
 	buffer.Write(protoVarint(field, value))
 }
 
-// writeProtoMessage appends one length-delimited field.
 func writeProtoMessage(buffer *bytes.Buffer, field int, payload []byte) {
 	buffer.Write(appendUvarint(nil, uint64(field)<<3|2))
 	buffer.Write(appendUvarint(nil, uint64(len(payload))))
 	buffer.Write(payload)
 }
 
-// appendUvarint appends a protobuf varint.
 func appendUvarint(dst []byte, value uint64) []byte {
 	for value >= 0x80 {
 		dst = append(dst, byte(value)|0x80)
@@ -567,7 +516,6 @@ func appendUvarint(dst []byte, value uint64) []byte {
 	return append(dst, byte(value))
 }
 
-// optionalIntText renders an optional count for a failure message.
 func optionalIntText(value *int) string {
 	if value == nil {
 		return "null"
@@ -575,7 +523,6 @@ func optionalIntText(value *int) string {
 	return strconv.Itoa(*value)
 }
 
-// optionalFloatText renders an optional float for a failure message.
 func optionalFloatText(value *float64) string {
 	if value == nil {
 		return "null"
@@ -583,7 +530,6 @@ func optionalFloatText(value *float64) string {
 	return strconv.FormatFloat(*value, 'g', -1, 64)
 }
 
-// optionalText renders an optional string for a failure message.
 func optionalText(value *string) string {
 	if value == nil {
 		return "null"
@@ -591,9 +537,6 @@ func optionalText(value *string) string {
 	return *value
 }
 
-// optionalDayText renders an optional calendar date for a failure message. A
-// date-only value is read back in the server zone, so its own location holds
-// the stored date.
 func optionalDayText(value *time.Time) string {
 	if value == nil {
 		return "null"
@@ -601,7 +544,6 @@ func optionalDayText(value *time.Time) string {
 	return value.Format("2006-01-02")
 }
 
-// failReader reports any read attempt.
 type failReader struct {
 	read bool
 }

@@ -14,7 +14,6 @@ const (
 	testPorts       = `"5432/tcp":[{"HostIp":"127.0.0.1","HostPort":"5445"}]`
 )
 
-// testInspectJSON renders the docker inspect shape from literal fragments.
 func testInspectJSON(id, image, labels, mounts, ports string) string {
 	return `[{"Id":"` + id + `","Config":{"Image":"` + image + `","Labels":{` + labels + `}},` +
 		`"Mounts":[` + mounts + `],"NetworkSettings":{"Ports":{` + ports + `}}}]`

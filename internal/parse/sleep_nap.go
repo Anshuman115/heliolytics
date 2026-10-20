@@ -12,7 +12,6 @@ const (
 	sleepNapStageOff = 0x155
 )
 
-// knownSleepStage reports the four stage types the protocol defines.
 func knownSleepStage(stageType int) bool {
 	return stageType == 4 || stageType == 5 || stageType == 7 || stageType == 8
 }

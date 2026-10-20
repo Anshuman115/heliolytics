@@ -8,8 +8,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// Daily Banister TRIMP constants. The coverage floor and intensity threshold
-// are project choices, not universal training-load rules.
 const (
 	loadMinMinutes      = 720
 	loadMinIntensity    = 0.30
@@ -18,8 +16,6 @@ const (
 	restingMinValues    = 3
 )
 
-// completedAge is the completed calendar-year age at day. A February 29
-// birthday advances on March 1 in non-leap years through time.Date.
 func completedAge(day, birth time.Time) int {
 	age := day.Year() - birth.Year()
 	anniversary := time.Date(day.Year(), birth.Month(), birth.Day(), 0, 0, 0, 0, day.Location())
@@ -29,10 +25,8 @@ func completedAge(day, birth time.Time) int {
 	return age
 }
 
-// maxHeartRate is the Tanaka population estimate.
 func maxHeartRate(age int) float64 { return 208 - 0.7*float64(age) }
 
-// loadCoefficients returns the sex-specific Banister coefficients.
 func loadCoefficients(sex string) (a, b float64, ok bool) {
 	switch sex {
 	case "male":
@@ -43,9 +37,6 @@ func loadCoefficients(sex string) (a, b float64, ok bool) {
 	return 0, 0, false
 }
 
-// trimp computes one IST day's training load from canonical 0x01 minutes. It
-// returns nil when profile inputs, the resting baseline, the reserve or the
-// minute coverage are missing or invalid.
 func trimp(day time.Time, hr []store.HeartRateSample, hrRest *float64,
 	birth *time.Time, sex string) *float64 {
 	if birth == nil || sex == "" || hrRest == nil {
@@ -92,9 +83,6 @@ func trimp(day time.Time, hr []store.HeartRateSample, hrRest *float64,
 	return new(total)
 }
 
-// restingHRBaseline returns the prior median resting HR when the baseline has
-// at least three values, three of them recent. It falls back to the day's own
-// value and never invents one.
 func restingHRBaseline(history map[int]float64, day time.Time, current *float64) *float64 {
 	all := make([]float64, 0, restingBaselineDays)
 	recent := 0

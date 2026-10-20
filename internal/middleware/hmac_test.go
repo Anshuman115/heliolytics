@@ -22,7 +22,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/auth"
 )
 
-// nonceRecorder is a replay store that records usage without a database.
 type nonceRecorder struct {
 	mu    sync.Mutex
 	used  map[string]bool
@@ -60,7 +59,6 @@ func testKeySet() auth.KeySet {
 	return auth.NewKeySet(phone, web)
 }
 
-// signedRequest builds a signed request for a test operator.
 func signedRequest(t *testing.T, keys auth.KeySet, kid, method, target, contentType string, body []byte) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(method, target, bytes.NewReader(body))
@@ -91,7 +89,6 @@ func signedRequest(t *testing.T, keys auth.KeySet, kid, method, target, contentT
 	return req
 }
 
-// testGuardConfig is a valid configuration with permissive limits.
 func testGuardConfig(keys auth.KeySet, nonces NonceStore) GuardConfig {
 	return GuardConfig{
 		Keys:     keys,
@@ -104,7 +101,6 @@ func testGuardConfig(keys auth.KeySet, nonces NonceStore) GuardConfig {
 	}
 }
 
-// unreadBody fails the test if a rejected request reads its body.
 type unreadBody struct {
 	t *testing.T
 }
@@ -214,7 +210,6 @@ func TestGuardPreAuthRateLimit(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	// Drain the bucket for the socket peer httptest assigns.
 	for i := range 60 {
 		if allowed, _ := cfg.IPLimit.Allow("192.0.2.1"); !allowed {
 			t.Fatalf("drain request %d denied", i)
@@ -310,7 +305,6 @@ func TestGuardBodySlotBusy(t *testing.T) {
 	close(release)
 }
 
-// recordedCode reads the C3 error code from a recorded response.
 func recordedCode(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	t.Helper()
 	var envelope struct {

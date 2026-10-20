@@ -4,7 +4,6 @@ import "time"
 
 const istOffsetSec int64 = 5*3600 + 30*60
 
-// IstDayKey returns the IST calendar date of a UTC epoch second.
 func IstDayKey(epochSec int64) string {
 	days := floorDiv(epochSec+istOffsetSec, 86400)
 	return time.Unix(days*86400, 0).UTC().Format("2006-01-02")
@@ -17,8 +16,6 @@ func floorDiv(value, divisor int64) int64 {
 	return -((-value + divisor - 1) / divisor)
 }
 
-// ParseRoundStartIst converts an offsetless IST wall clock round start to a UTC
-// epoch second. Malformed input, a Z suffix and explicit offsets return -1.
 func ParseRoundStartIst(raw string) int64 {
 	sec, _, ok := parseRoundStart(raw)
 	if !ok {
@@ -27,7 +24,6 @@ func ParseRoundStartIst(raw string) int64 {
 	return sec
 }
 
-// parseRoundStart reports the epoch second and whether the fraction is nonzero.
 func parseRoundStart(raw string) (sec int64, fraction bool, ok bool) {
 	if len(raw) < 19 {
 		return 0, false, false

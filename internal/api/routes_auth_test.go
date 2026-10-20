@@ -16,7 +16,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// countingReader proves that a rejected request never touched its body.
 type countingReader struct {
 	reader io.Reader
 	mu     sync.Mutex
@@ -40,8 +39,6 @@ func (c *countingReader) ReadCount() int {
 	return c.reads
 }
 
-// blockingProfile holds one request inside the handler so its body slot stays
-// taken.
 type blockingProfile struct {
 	entered chan struct{}
 	release chan struct{}

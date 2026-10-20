@@ -7,7 +7,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// Shared fixtures for the pure rollup tests.
 var testDay = time.Date(2026, 10, 20, 0, 0, 0, 0, store.IST)
 
 func at(hour, minute int) time.Time {

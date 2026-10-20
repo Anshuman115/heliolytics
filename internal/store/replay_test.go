@@ -14,7 +14,6 @@ func TestReadReplaySessionsPagesInEndedAtOrder(t *testing.T) {
 	started := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 	ended := started.Add(12 * time.Hour)
 
-	// Equal ended_at forces the session_id bytewise tie break.
 	for _, id := range []string{"replay-c", "replay-a", "replay-b"} {
 		seedSession(t, st, id, started, ended)
 	}

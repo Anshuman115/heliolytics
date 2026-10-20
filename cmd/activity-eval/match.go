@@ -7,7 +7,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/activity"
 )
 
-// Match pairs one prediction interval with one reference interval.
 type Match struct {
 	Prediction     int
 	Reference      int
@@ -75,7 +74,6 @@ func ScoreIntervals(predictions, references []activity.Interval) Score {
 	return score
 }
 
-// edge is one candidate prediction/reference pair.
 type edge struct {
 	prediction int
 	reference  int
@@ -110,7 +108,6 @@ const (
 	iouScale          = int64(1_000_000)
 )
 
-// maximumMatch returns the deterministic maximum-cardinality, max-IoU matching.
 func maximumMatch(predictionCount, referenceCount int, edges []edge) []Match {
 	if len(edges) == 0 {
 		return nil
@@ -184,7 +181,6 @@ func (n *flowNetwork) addEdge(from, to, capacity int, cost int64) {
 	n.graph[to] = append(n.graph[to], flowEdge{to: from, rev: len(n.graph[from]) - 1, capacity: 0, cost: -cost})
 }
 
-// augment pushes one unit along a shortest residual path; false means none left.
 func (n *flowNetwork) augment(source, sink int) bool {
 	const infinity = int64(1) << 60
 	nodes := len(n.graph)

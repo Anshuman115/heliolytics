@@ -1,10 +1,6 @@
 #!/usr/bin/env bash
-# Secret-safe preflight for the resolved deployment environment.
-#
-# It reads the private env file, checks every field format and separation rule,
-# then streams `docker compose config --format json` into a one-off Node helper
-# for the resolved compose checks. It never prints a value, never saves the
-# resolved config and never starts a container service.
+# Validate resolved Compose configuration without printing secrets or saving it.
+# Does not start services.
 set -euo pipefail
 
 usage() {
@@ -397,8 +393,6 @@ fi
 private_dir=
 private_dir="$(umask 077 && mktemp -d)"
 trap 'rm -rf "$private_dir"' EXIT
-# Both variables hold the generator bytes, so the helper compares the generator
-# output, the bytes Docker hands to the process, and the resolved compose value.
 {
   printf 'HELIOLYTICS_WEB_PASSWORD_HASH=%s\n' "$raw_expected"
   printf 'HELIOLYTICS_EXPECTED_WEB_PASSWORD_HASH=%s\n' "$raw_expected"

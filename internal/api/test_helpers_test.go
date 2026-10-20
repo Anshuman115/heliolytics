@@ -21,8 +21,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// testKeys are fixed, non-published secrets so tests never reuse the public
-// signing fixture.
 func testKeys() auth.KeySet {
 	var phone, web [32]byte
 	for i := range phone {
@@ -32,7 +30,6 @@ func testKeys() auth.KeySet {
 	return auth.NewKeySet(phone, web)
 }
 
-// testConfig is a valid configuration with generous limits.
 func testConfig(keys auth.KeySet) config.Config {
 	return config.Config{
 		Keys:                   keys,
@@ -43,8 +40,6 @@ func testConfig(keys auth.KeySet) config.Config {
 	}
 }
 
-// fakeNonces is a replay store with the same semantics as the real one but no
-// database.
 type fakeNonces struct {
 	mu    sync.Mutex
 	used  map[string]struct{}
@@ -75,7 +70,6 @@ func (f *fakeNonces) consumeCount() int {
 	return f.calls
 }
 
-// offlineStore cannot reach a database, so a route that queries fails the test.
 func offlineStore(t *testing.T) *store.Store {
 	t.Helper()
 	st, err := store.New(context.Background(),
@@ -87,8 +81,6 @@ func offlineStore(t *testing.T) *store.Store {
 	return st
 }
 
-// testStore returns a store on a fresh database. The pool closes before the
-// helper drops the database because cleanups run last-in first-out.
 func testStore(t *testing.T) *store.Store {
 	t.Helper()
 	dsn := testutil.NewDB(t)
@@ -100,7 +92,6 @@ func testStore(t *testing.T) *store.Store {
 	return st
 }
 
-// seed executes test fixture SQL in its own transaction.
 func seed(t *testing.T, st *store.Store, statement string, args ...any) {
 	t.Helper()
 	ctx := context.Background()
@@ -112,13 +103,11 @@ func seed(t *testing.T, st *store.Store, statement string, args ...any) {
 	}
 }
 
-// signRequest signs a request with a fresh nonce and the current time.
 func signRequest(t *testing.T, keys auth.KeySet, kid string, req *http.Request, body []byte) {
 	t.Helper()
 	signRequestWithNonce(t, keys, kid, req, body, randomNonce(t), time.Now().Unix())
 }
 
-// signRequestWithNonce signs a request with the supplied nonce and timestamp.
 func signRequestWithNonce(t *testing.T, keys auth.KeySet, kid string, req *http.Request,
 	body []byte, nonce string, ts int64) {
 	t.Helper()
@@ -149,7 +138,6 @@ func randomNonce(t *testing.T) string {
 	return hex.EncodeToString(buf)
 }
 
-// stubIngest records the single call the API makes and answers with result.
 type stubIngest struct {
 	calls   int
 	meta    store.SessionMeta
@@ -166,7 +154,6 @@ func (s *stubIngest) run(ctx context.Context, meta store.SessionMeta,
 	return s.result, s.err
 }
 
-// stubProfile records the single callback and answers with err.
 type stubProfile struct {
 	calls   int
 	profile *store.Profile
@@ -179,14 +166,12 @@ func (s *stubProfile) update(ctx context.Context, profile *store.Profile) error 
 	return s.err
 }
 
-// serve runs one request through a handler.
 func serve(handler http.Handler, req *http.Request) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
 	return recorder
 }
 
-// decodeJSON decodes a recorded body into target.
 func decodeJSON(t *testing.T, recorder *httptest.ResponseRecorder, target any) {
 	t.Helper()
 	if err := json.Unmarshal(recorder.Body.Bytes(), target); err != nil {
@@ -194,7 +179,6 @@ func decodeJSON(t *testing.T, recorder *httptest.ResponseRecorder, target any) {
 	}
 }
 
-// errorCode returns the C3 error code carried by a response.
 func errorCode(t *testing.T, recorder *httptest.ResponseRecorder) string {
 	t.Helper()
 	var envelope struct {

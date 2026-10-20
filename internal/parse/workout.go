@@ -78,7 +78,6 @@ func markerOffsets(raw, marker []byte) []int {
 	return out
 }
 
-// row converts a decoded summary into a row when its interval fits the window.
 func (s *workoutSummary) row(window Window) (WorkoutRow, bool) {
 	if !anchorPlausible(s.startedAt) || s.durationSec <= 0 || s.durationSec > maxAnchorSec {
 		return WorkoutRow{}, false

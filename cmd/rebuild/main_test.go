@@ -5,10 +5,8 @@ import (
 	"testing"
 )
 
-// testContainerID is a full lowercase hex ID, the only accepted shape.
 func testContainerID() string { return strings.Repeat("a", 64) }
 
-// testArgs returns one complete acknowledgement plus inputs.
 func testArgs() []string {
 	return []string{
 		"-test-only",

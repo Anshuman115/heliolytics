@@ -88,7 +88,6 @@ type ReadReplaySessionIDsRow struct {
 	EndedAt   pgtype.Timestamptz `json:"ended_at"`
 }
 
-// Keyset pagination over (ended_at, session_id bytewise); blobs are fetched after.
 func (q *Queries) ReadReplaySessionIDs(ctx context.Context, arg ReadReplaySessionIDsParams) ([]ReadReplaySessionIDsRow, error) {
 	rows, err := q.db.Query(ctx, readReplaySessionIDs, arg.AfterEndedAt, arg.AfterSessionID, arg.PageLimit)
 	if err != nil {

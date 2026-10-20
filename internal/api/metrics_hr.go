@@ -7,12 +7,10 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// compactDaysResponse is the shared {"days": CompactDay[]} envelope.
 type compactDaysResponse struct {
 	Days []store.CompactDay `json:"days"`
 }
 
-// hr serves the compact 0x01 heart rate series.
 func (h *metricsHandler) hr(w http.ResponseWriter, r *http.Request) {
 	from, to, failure := h.rangeBounds(r, maxSampleRangeDays)
 	if failure != nil {

@@ -9,8 +9,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// Profile is the nullable singleton profile. No row reads as all null rather
-// than invented zeros, and there is no age field.
 type Profile struct {
 	Name      *string
 	BirthDate *time.Time
@@ -42,8 +40,6 @@ func getProfile(ctx context.Context, q *db.Queries) (Profile, error) {
 	return p, nil
 }
 
-// PutProfile replaces all five values, including clearing to NULL, inside the
-// caller's locked transaction.
 func (v *TxView) PutProfile(ctx context.Context, p Profile) error {
 	if p.Sex != nil && *p.Sex != "male" && *p.Sex != "female" {
 		return invalidRow("profile", "sex must be male or female")

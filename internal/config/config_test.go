@@ -19,8 +19,6 @@ var configEnvs = []string{
 	"TRUSTED_PROXY_CIDRS",
 }
 
-// clearEnv leaves every configuration variable unset for the test body and
-// restores the caller's environment afterwards.
 func clearEnv(t *testing.T) {
 	t.Helper()
 	for _, name := range configEnvs {

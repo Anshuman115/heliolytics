@@ -12,7 +12,6 @@ import (
 	"time"
 )
 
-// signingVector mirrors internal/auth/testdata/signing.json.
 type signingVector struct {
 	ID            string `json:"id"`
 	Kid           string `json:"kid"`
@@ -48,7 +47,6 @@ func loadVectors(t *testing.T) []signingVector {
 	return fixture.Vectors
 }
 
-// keyFor turns a vector's secret hex into a key set holding that one secret.
 func keyFor(t *testing.T, secretHex string) KeySet {
 	t.Helper()
 	raw, err := hex.DecodeString(secretHex)
@@ -97,7 +95,6 @@ func TestSigningVectorsMatchFixture(t *testing.T) {
 				t.Fatalf("Verify: %v", err)
 			}
 
-			// Any change to the signed interpretation must break the MAC.
 			if err := key.Verify(header, vector.Method, vector.EscapedPath+"x", vector.RawQuery,
 				vector.BodySHA256, vector.ContentType); err == nil {
 				t.Fatal("changed path accepted")

@@ -5,11 +5,8 @@ import (
 	"fmt"
 )
 
-// ErrSessionConflict marks an immutable envelope or candidate retry that
-// disagrees with stored state. B06 maps it to 409 session_conflict.
 var ErrSessionConflict = errors.New("session conflict")
 
-// InvalidRowError marks caller rows the store refuses before any write.
 type InvalidRowError struct {
 	Table  string
 	Reason string

@@ -10,33 +10,24 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// readinessHaloDays is the longest readiness baseline window plus one day.
 const readinessHaloDays = 60
 
-// AutoTrigger is the immutable session that triggered auto recomputation. It
-// is lineage bookkeeping, never a freshness watermark.
 type AutoTrigger struct {
 	SessionID  string
 	ObservedAt time.Time
 }
 
-// RunInput is the rollup service input. TouchedDays carries the actual old and
-// new affected IST dates and MutationIntervals the changed real intervals.
-// A nil Auto disables the detector entirely.
 type RunInput struct {
 	TouchedDays       []time.Time
 	MutationIntervals []store.InstantInterval
 	Auto              *AutoTrigger
 }
 
-// Run recomputes every supported day affected by the supplied changes inside
-// the caller transaction.
 func Run(ctx context.Context, st *store.Store, tx pgx.Tx, in RunInput) error {
 	now := time.Now().In(store.IST)
 	return runAt(ctx, st, tx, in, store.Day(now.Year(), now.Month(), now.Day()))
 }
 
-// runAt takes the wall clock explicitly so tests stay deterministic.
 func runAt(ctx context.Context, _ *store.Store, tx pgx.Tx, in RunInput, today time.Time) error {
 	view := store.NewTxView(tx)
 
@@ -194,8 +185,6 @@ func runAt(ctx context.Context, _ *store.Store, tx pgx.Tx, in RunInput, today ti
 	return err
 }
 
-// aggregateDay computes every C1.4 aggregate column except TRIMP, readiness
-// and temperature deviation from the exact canonical rows of one IST day.
 func aggregateDay(day time.Time, in store.RollupInputs) store.DailyAggregate {
 	from := dayStart(day)
 	to := from.AddDate(0, 0, 1)
@@ -259,7 +248,6 @@ func sexOf(p store.Profile) string {
 	return *p.Sex
 }
 
-// between slices a time-sorted row set to the half-open range [from, to).
 func between[T any](rows []T, at func(T) time.Time, from, to time.Time) []T {
 	lo := sort.Search(len(rows), func(i int) bool { return !at(rows[i]).Before(from) })
 	hi := sort.Search(len(rows), func(i int) bool { return !at(rows[i]).Before(to) })
@@ -269,8 +257,6 @@ func between[T any](rows []T, at func(T) time.Time, from, to time.Time) []T {
 	return rows[lo:hi]
 }
 
-// inSpans collects the rows inside any span. Spans are disjoint and sorted, so
-// the result stays sorted.
 func inSpans[T any](rows []T, at func(T) time.Time, spans []span) []T {
 	out := make([]T, 0, len(rows))
 	for _, s := range spans {
@@ -320,10 +306,8 @@ func stressAt(r store.StressSample) time.Time     { return r.At }
 func respAt(r store.RespSample) time.Time         { return r.At }
 func spo2At(r store.SpO2Sample) time.Time         { return r.At }
 
-// dayStart is IST midnight of a civil date.
 func dayStart(day time.Time) time.Time { return store.Day(day.Year(), day.Month(), day.Day()) }
 
-// dayOf normalizes an instant to its IST calendar date.
 func dayOf(t time.Time) time.Time {
 	local := t.In(store.IST)
 	return store.Day(local.Year(), local.Month(), local.Day())
@@ -339,7 +323,6 @@ func calendarRange(start, end time.Time) []time.Time {
 	return out
 }
 
-// mergeIntIntervals sorts and merges touching or overlapping changed spans.
 func mergeIntIntervals(in []store.InstantInterval) []store.InstantInterval {
 	sorted := make([]store.InstantInterval, len(in))
 	copy(sorted, in)
@@ -376,7 +359,6 @@ func intervalBounds(in []store.InstantInterval) (time.Time, time.Time, bool) {
 	return from, to, to.After(from)
 }
 
-// daySet is a set of IST calendar dates keyed by civil date.
 type daySet struct {
 	byKey map[int]time.Time
 }

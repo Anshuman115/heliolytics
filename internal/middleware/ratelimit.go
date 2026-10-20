@@ -11,27 +11,17 @@ import (
 	"time"
 )
 
-// ErrProxyHeader reports a trusted socket peer that did not supply exactly one
-// valid CF-Connecting-IP address literal.
 var ErrProxyHeader = errors.New("middleware: invalid proxy header")
 
-// MaxIPKeys bounds the pre-auth limiter table. The oldest key is evicted when
-// the table is full, so memory stays fixed under address rotation.
 const MaxIPKeys = 10000
 
-// invalidPeerKey is the shared bucket for a peer address that cannot be
-// parsed. It keeps such peers limited under one bounded key.
 const invalidPeerKey = "invalid"
 
-// IPPolicy decides which address a request is limited by. Forwarded headers
-// are consulted only for a configured trusted socket peer.
 type IPPolicy struct {
 	TrustProxy bool
 	Trusted    []netip.Prefix
 }
 
-// ClientKey returns the limiter identity for a request. X-Forwarded-For and
-// X-Real-IP are never read.
 func (p IPPolicy) ClientKey(r *http.Request) (string, error) {
 	peer, err := socketPeer(r.RemoteAddr)
 	if err != nil {
@@ -60,7 +50,6 @@ func (p IPPolicy) trusted(peer netip.Addr) bool {
 	return false
 }
 
-// socketPeer parses the immediate peer and canonicalizes IPv4-mapped IPv6.
 func socketPeer(remoteAddr string) (netip.Addr, error) {
 	host, _, err := net.SplitHostPort(remoteAddr)
 	if err != nil {
@@ -76,8 +65,6 @@ func socketPeer(remoteAddr string) (netip.Addr, error) {
 	return address.Unmap(), nil
 }
 
-// Limiter is a token bucket with a bounded LRU key table. One instance serves
-// one key class and is created once per mux.
 type Limiter struct {
 	mu        sync.Mutex
 	burst     float64
@@ -94,13 +81,10 @@ type limiterEntry struct {
 	elem   *list.Element
 }
 
-// NewLimiter builds a limiter that allows perMinute requests per key with a
-// burst equal to that budget.
 func NewLimiter(perMinute, maxKeys int) *Limiter {
 	return NewLimiterWithClock(perMinute, maxKeys, time.Now)
 }
 
-// NewLimiterWithClock is NewLimiter with an injected clock.
 func NewLimiterWithClock(perMinute, maxKeys int, clock func() time.Time) *Limiter {
 	if perMinute <= 0 {
 		perMinute = 1
@@ -121,8 +105,6 @@ func NewLimiterWithClock(perMinute, maxKeys int, clock func() time.Time) *Limite
 	}
 }
 
-// Allow takes one token for key. When no token is available it reports the
-// whole seconds until the next one, never less than one.
 func (l *Limiter) Allow(key string) (bool, int) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
@@ -161,14 +143,12 @@ func (l *Limiter) evictOldest() {
 	l.order.Remove(oldest)
 }
 
-// Semaphore bounds concurrent retained bodies without queueing.
 type Semaphore struct {
 	mu       sync.Mutex
 	free     int
 	capacity int
 }
 
-// NewSemaphore builds a semaphore with slots permits.
 func NewSemaphore(slots int) *Semaphore {
 	if slots <= 0 {
 		slots = 1
@@ -176,7 +156,6 @@ func NewSemaphore(slots int) *Semaphore {
 	return &Semaphore{free: slots, capacity: slots}
 }
 
-// Acquire takes a permit without waiting.
 func (s *Semaphore) Acquire() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -187,7 +166,6 @@ func (s *Semaphore) Acquire() bool {
 	return true
 }
 
-// Release returns a permit, ignoring an extra release.
 func (s *Semaphore) Release() {
 	s.mu.Lock()
 	defer s.mu.Unlock()

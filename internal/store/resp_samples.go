@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// WriteResp stores one bounded batch of respiration samples.
 func (s *Store) WriteResp(ctx context.Context, tx pgx.Tx, rows []RespSample,
 	sessionID string, observedAt time.Time) (Mutation, error) {
 	const table = "resp_samples"

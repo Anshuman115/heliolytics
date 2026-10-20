@@ -1,9 +1,4 @@
-// Resolved-environment checks for deploy/validate-env.sh.
-//
-// Input: `docker compose config --format json` on stdin.
-// The compose source arrives base64 in HELIOLYTICS_VALIDATOR_COMPOSE_SOURCE.
-// Output: field-name-only reasons, or one PASS line per check group.
-// It never prints a value, a hash, a DSN or a fingerprint.
+// Read resolved Compose JSON from stdin; never print values, hashes or DSNs.
 
 import process from 'node:process';
 
@@ -197,7 +192,6 @@ function validate(config) {
   const api = service(config, 'api');
   const web = service(config, 'web');
 
-  // Networks: internal for data and application, bridge for ingress and tools.
   const networks = asObject(config.networks);
   if (asObject(networks.data).internal !== true) fail('compose.networks.data', 'data network must be internal');
   if (asObject(networks.application).internal !== true) {
@@ -222,7 +216,6 @@ function validate(config) {
   const dbNetworks = Object.keys(networksOf(db));
   if (dbNetworks.length !== 1 || dbNetworks[0] !== 'data') fail('compose.db.networks', 'db must join data only');
 
-  // db: no published port, four read-only binds, one named data volume.
   if (portBindings(db).length !== 0) fail('compose.db.ports', 'the database must not publish a port');
   const source = Buffer.from(process.env.HELIOLYTICS_VALIDATOR_COMPOSE_SOURCE ?? '', 'base64').toString('utf8');
   if (!source.includes('services:')) fail('compose', 'the compose source was not supplied');
@@ -245,7 +238,6 @@ function validate(config) {
   }
   if (!db.healthcheck) fail('compose.db.healthcheck', 'an authenticated healthcheck is required');
 
-  // api: app role DSN only, no web-only secret, bounded limits and hardening.
   const dsn = env(api, 'DATABASE_URL');
   if (!dsn.startsWith('postgres://heliolytics_app:')) {
     fail('compose.api.DATABASE_URL', 'api must connect as the restricted app role');
@@ -288,7 +280,6 @@ function validate(config) {
     fail('compose.api.tmpfs', 'a bounded /tmp tmpfs is required');
   }
 
-  // web: nonroot, its own web key, session secret, no database credential.
   if (String(web.user ?? '') !== '1000:1000') fail('compose.web.user', 'web must run as uid and gid 1000');
   if (hasEnv(web, 'DATABASE_URL')) fail('compose.web.environment', 'web must not receive a database URL');
   if (!/^web\.[0-9a-f]{64}$/.test(env(web, 'HELIOLYTICS_API_KEY'))) {
@@ -318,7 +309,6 @@ function validate(config) {
     fail('compose.web.tmpfs', '.next cache must be mode 0700');
   }
 
-  // Build metadata: both images carry a full SHA and one UTC build time.
   const apiArgs = asObject(asObject(api.build).args);
   const webArgs = asObject(asObject(web.build).args);
   if (!SHA40.test(String(apiArgs.GIT_SHA ?? ''))) fail('compose.api.build.GIT_SHA', 'full lowercase SHA required');
@@ -330,7 +320,6 @@ function validate(config) {
     fail('compose.web.build.BUILD_TIME', 'api and web build times must match');
   }
 
-  // Optional profile services stay out of the default start.
   const allServices = asObject(config.services);
   if (!asArray(asObject(allServices.adminer).profiles).includes('tools')) {
     fail('compose.adminer.profiles', 'adminer must stay behind the tools profile');

@@ -16,18 +16,13 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// profileHandler validates the replacement profile and calls the injected
-// mutation exactly once.
 type profileHandler struct {
 	update ProfileFunc
 	now    func() time.Time
 }
 
-// profileFields is the required ProfilePut key set.
 var profileFields = []string{"name", "birthDate", "sex", "heightCm", "weightKg"}
 
-// profilePayload is a structurally valid body waiting for the semantic checks
-// in the handler.
 type profilePayload struct {
 	name      *string
 	birthDate *string
@@ -36,8 +31,6 @@ type profilePayload struct {
 	weightKg  *json.Number
 }
 
-// prepare enforces the structural part of C3: one object, known keys only,
-// every key present, and the declared JSON types.
 func (h *profileHandler) prepare(r *http.Request, body []byte) (any, error) {
 	fields, failure := strictObject(body)
 	if failure != nil {
@@ -72,8 +65,6 @@ func (h *profileHandler) prepare(r *http.Request, body []byte) (any, error) {
 	return &payload, nil
 }
 
-// put validates the profile values and answers 204 only after the callback
-// commits.
 func (h *profileHandler) put(w http.ResponseWriter, r *http.Request) {
 	payload, ok := middleware.Payload(r).(*profilePayload)
 	if !ok {
@@ -92,8 +83,6 @@ func (h *profileHandler) put(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// validate applies the C3 profile semantics. A null value clears the field; it
-// is never replaced by a default.
 func (h *profileHandler) validate(payload *profilePayload) (*store.Profile, *middleware.Error) {
 	invalid := middleware.Fail(http.StatusUnprocessableEntity, middleware.CodeInvalidProfile)
 	profile := &store.Profile{}
@@ -139,7 +128,6 @@ func (h *profileHandler) validate(payload *profilePayload) (*store.Profile, *mid
 	return profile, nil
 }
 
-// boundedNumber converts a JSON number and enforces its domain.
 func boundedNumber(number json.Number, min, max float64) (float64, bool) {
 	value, err := strconv.ParseFloat(string(number), 64)
 	if err != nil || math.IsInf(value, 0) || math.IsNaN(value) {
@@ -160,8 +148,6 @@ func hasControl(value string) bool {
 	return false
 }
 
-// writeProfileError maps a callback failure. The old profile and its derived
-// rows survive because the callback owns the transaction.
 func writeProfileError(w http.ResponseWriter, err error) {
 	var invalidRow *store.InvalidRowError
 	switch {

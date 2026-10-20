@@ -1,6 +1,4 @@
-// Package auth holds the C5 request signing grammar, key material and the
-// fixed kid permissions. Verification here is pure: it never reads the body,
-// consults a database or looks at the process clock on its own.
+// Package auth implements request signing and credential permissions.
 package auth
 
 import (
@@ -15,7 +13,6 @@ import (
 	"time"
 )
 
-// Protocol constants from C5.
 const (
 	HeaderAuth       = "X-Heliolytics-Auth"
 	HeaderBodySHA256 = "X-Heliolytics-Content-SHA256"
@@ -31,8 +28,7 @@ const (
 	maxHeaderLength   = 512
 )
 
-// Verification failures. Callers answer every one of them with a uniform 401
-// and log the error value as a reason code, never the supplied header text.
+// Return uniform 401 responses; never log supplied credentials.
 var (
 	ErrMissingHeader   = errors.New("auth: missing credential")
 	ErrMalformedHeader = errors.New("auth: malformed credential")
@@ -46,7 +42,6 @@ var (
 	lowerHex     = regexp.MustCompile(`^[0-9a-f]+$`)
 )
 
-// Header is a parsed X-Heliolytics-Auth value.
 type Header struct {
 	Kid       string
 	Timestamp int64
@@ -54,8 +49,6 @@ type Header struct {
 	Signature []byte
 }
 
-// ParseHeader reads the exact header grammar
-// <kid>.<ts>.<nonce>.<sig>. It rejects every other shape.
 func ParseHeader(value string) (Header, error) {
 	if value == "" {
 		return Header{}, ErrMissingHeader
@@ -87,8 +80,6 @@ func ParseHeader(value string) (Header, error) {
 	return Header{Kid: parts[0], Timestamp: ts, Nonce: parts[2], Signature: signature}, nil
 }
 
-// parseSeconds reads a non-negative decimal timestamp without sign or
-// overflow.
 func parseSeconds(value string) (int64, error) {
 	if value == "" {
 		return 0, ErrMalformedHeader
@@ -105,16 +96,12 @@ func parseSeconds(value string) (int64, error) {
 	return ts, nil
 }
 
-// WindowOK reports whether a signed timestamp may authenticate at now. Both
-// edges are inclusive.
 func WindowOK(now time.Time, ts int64) bool {
 	nowSeconds := now.Unix()
 	return ts >= nowSeconds-pastSkewSeconds && ts <= nowSeconds+futureSkewSeconds
 }
 
-// CanonicalText builds the C5 string to sign: eight newline-joined fields with
-// no trailing newline beyond the separator before an empty final field. The
-// method is upper-cased here so a caller cannot sign a lower-case verb.
+// Join the eight fields without a terminator; an empty Content-Type leaves its separator.
 func CanonicalText(kid string, ts int64, nonce, method, escapedPath, rawQuery, declaredHash, contentType string) string {
 	return strings.Join([]string{
 		kid,
@@ -128,24 +115,17 @@ func CanonicalText(kid string, ts int64, nonce, method, escapedPath, rawQuery, d
 	}, "\n")
 }
 
-// IsBodyHash reports whether s is a 64-character lowercase SHA-256 digest.
 func IsBodyHash(s string) bool {
 	return len(s) == hex.EncodedLen(sha256.Size) && lowerHex.MatchString(s)
 }
 
-// Key is one configured credential. The secret is the raw 32 bytes, not the
-// 64-character hex text.
 type Key struct {
 	Kid    string
 	secret [32]byte
 }
 
-// CanWrite reports the fixed C5 permission: only the phone kid may POST an
-// ingest or PUT a profile. Every kid may read protected GET routes.
 func (k Key) CanWrite() bool { return k.Kid == KidPhone }
 
-// Verify checks the MAC over the declared body digest and the exact
-// Content-Type value. It never looks at the body itself.
 func (k Key) Verify(h Header, method, escapedPath, rawQuery, declaredHash, contentType string) error {
 	if k.Kid == "" || k.Kid != h.Kid {
 		return ErrUnknownKey
@@ -162,16 +142,13 @@ func (k Key) Verify(h Header, method, escapedPath, rawQuery, declaredHash, conte
 	return nil
 }
 
-// SecretHex returns the configured secret as lowercase hex. It exists for
-// construction of test requests, not for logging.
+// Never log the returned secret.
 func (k Key) SecretHex() string { return hex.EncodeToString(k.secret[:]) }
 
-// KeySet is the fixed phone and web credential pair.
 type KeySet struct {
 	keys map[string]Key
 }
 
-// NewKeySet builds the credential set from raw secret bytes.
 func NewKeySet(phone, web [32]byte) KeySet {
 	return KeySet{keys: map[string]Key{
 		KidPhone: {Kid: KidPhone, secret: phone},
@@ -179,8 +156,6 @@ func NewKeySet(phone, web [32]byte) KeySet {
 	}}
 }
 
-// Lookup returns the credential for a kid. Kids outside the fixed pair are
-// unknown no matter how they are spelled.
 func (s KeySet) Lookup(kid string) (Key, error) {
 	key, ok := s.keys[kid]
 	if !ok {
@@ -189,7 +164,6 @@ func (s KeySet) Lookup(kid string) (Key, error) {
 	return key, nil
 }
 
-// Kids lists the configured kid names in ascending order.
 func (s KeySet) Kids() []string {
 	out := make([]string, 0, len(s.keys))
 	for kid := range s.keys {
@@ -199,19 +173,13 @@ func (s KeySet) Kids() []string {
 	return out
 }
 
-// Empty reports whether no credential is configured.
 func (s KeySet) Empty() bool { return len(s.keys) == 0 }
 
-// burnedSecretDigests are SHA-256 digests of published or development secrets
-// that must never authenticate a running server. Only digests are stored.
+// Published signing secrets must never authenticate a running server.
 var burnedSecretDigests = map[string]struct{}{
-	// The public test fixture secret from internal/auth/testdata/signing.json.
 	"630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd": {},
 }
 
-// ParseKeySet reads HELIOLYTICS_API_KEYS. The grammar is exactly
-// web.<64 lowercase hex>,phone.<64 lowercase hex> in either order: both fixed
-// kids once each, distinct secrets, no empty entries, no burned secret.
 func ParseKeySet(spec string) (KeySet, error) {
 	if strings.TrimSpace(spec) == "" {
 		return KeySet{}, errors.New("auth: api keys are required")

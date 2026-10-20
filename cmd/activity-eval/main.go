@@ -215,8 +215,6 @@ func selectParameters(export Export, sources Sources, development partition) (se
 		}
 	}
 
-	// Score the frozen point again so match and unmatched details come from the
-	// same partition filtering used here.
 	frozenPredictions := sessionIntervals(activity.DetectWithParams(minutes, workouts, best.params))
 	developmentRecord, developmentScore := scorePartition(development, export, frozenPredictions, workouts)
 
@@ -244,7 +242,6 @@ func selectParameters(export Export, sources Sources, development partition) (se
 	return artifact, developmentScore
 }
 
-// targetOf records whether one score reaches the project precision/recall target.
 func targetOf(score Score) targetRecord {
 	target := targetRecord{
 		PrecisionTarget: precisionTarget,
@@ -289,8 +286,6 @@ func evaluateSelection(export Export, sources Sources, selection selectionArtifa
 	return report, gate, holdoutScore
 }
 
-// scorePartition scores one partition from its own stages and predictions.
-// Intervals that cross a split boundary are excluded and counted.
 func scorePartition(p partition, export Export, predictions, workouts []activity.Interval) (partitionRecord, Score) {
 	stages, crossedReferences := stagesInPartition(export.Stages, p, referenceMinDuration)
 	references, referenceStats := References(stages, workouts, referenceMinDuration)
@@ -331,7 +326,6 @@ func scorePartition(p partition, export Export, predictions, workouts []activity
 	}, score
 }
 
-// stagesInPartition keeps stages fully inside p and counts stages that cross it.
 func stagesInPartition(stages []StageRow, p partition, minDuration time.Duration) ([]StageRow, int) {
 	kept := make([]StageRow, 0, len(stages))
 	crossed := 0
@@ -371,7 +365,6 @@ func betterCandidate(a, b scoredCandidate) bool {
 	return false
 }
 
-// rankOf returns F1, min(precision, recall) and precision, with -1 when undefined.
 func rankOf(candidate scoredCandidate) (float64, float64, float64) {
 	f1, floor, precision := -1.0, -1.0, -1.0
 	if candidate.record.F1 != nil {
@@ -481,7 +474,6 @@ func writeJSON(path string, value any) error {
 	return nil
 }
 
-// partition is one fixed half-open scoring window.
 type partition struct {
 	from time.Time
 	to   time.Time
@@ -491,7 +483,6 @@ func (p partition) contains(interval activity.Interval) bool {
 	return !interval.Start.Before(p.from) && !interval.End.After(p.to)
 }
 
-// filterPartition keeps fully contained intervals and counts crossed ones.
 func filterPartition(intervals []activity.Interval, p partition) ([]activity.Interval, int) {
 	kept := make([]activity.Interval, 0, len(intervals))
 	crossed := 0
@@ -671,7 +662,6 @@ func limitations() []string {
 	}
 }
 
-// paramsRecord is the frozen detector parameter set as written to artifacts.
 type paramsRecord struct {
 	CadenceMin  int `json:"cadenceMin"`
 	GapMax      int `json:"gapMax"`
@@ -737,7 +727,6 @@ type coverageRecord struct {
 	HeartRateIgnored       int     `json:"heartRateIgnoredOutOfRange"`
 }
 
-// untouchedRecord scores predictions against stages with no workout subtraction.
 type untouchedRecord struct {
 	PredictionCount    int      `json:"predictionCount"`
 	ReferenceCount     int      `json:"referenceCount"`
@@ -836,7 +825,6 @@ type gateRecord struct {
 	Reason          string   `json:"reason"`
 }
 
-// targetRecord records target status without a gate verdict.
 type targetRecord struct {
 	PrecisionTarget float64  `json:"precisionTarget"`
 	RecallTarget    float64  `json:"recallTarget"`

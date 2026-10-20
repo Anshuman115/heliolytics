@@ -13,8 +13,6 @@ import (
 
 var chainDay = time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 
-// sleepCandidate is the shared A/B/C regression payload: non-nap, 60 asleep
-// minutes, no stages, attributed to chainDay's IST date.
 func sleepCandidate(start, end time.Time) SleepRow {
 	return SleepRow{
 		StartedAt:       start,
@@ -125,8 +123,6 @@ func chainObservedAt(name string) time.Time {
 	}
 }
 
-// chainWinners selects winners newest-first over the uploaded candidates, which
-// is the canonical set after each upload.
 func chainWinners(uploaded []string) map[string]bool {
 	ordered := make([]string, len(uploaded))
 	copy(ordered, uploaded)
@@ -159,7 +155,6 @@ func chainWinners(uploaded []string) map[string]bool {
 	return out
 }
 
-// sameNames reports whether two candidate name sets hold the same members.
 func sameNames(a, b map[string]bool) bool {
 	if len(a) != len(b) {
 		return false
@@ -300,7 +295,6 @@ func TestSleepCandidateConflictIsAtomic(t *testing.T) {
 	}
 }
 
-// candidateStarts lists a candidate table's start instants in ascending order.
 func candidateStarts(t *testing.T, st *Store, table string) []time.Time {
 	t.Helper()
 	rows, err := st.pool.Query(context.Background(),
@@ -544,7 +538,6 @@ func TestSleepChangedStartReplacesWinner(t *testing.T) {
 
 func TestCrossMidnightWorkoutDisplacement(t *testing.T) {
 	st := newTestStore(t)
-	// D is an IST calendar date, so A starts on the previous IST day.
 	day := Day(2026, time.October, 2)
 	seedSession(t, st, "midnight-a", day.Add(-2*time.Hour), day.Add(24*time.Hour))
 	seedSession(t, st, "midnight-b", day.Add(-2*time.Hour), day.Add(48*time.Hour))

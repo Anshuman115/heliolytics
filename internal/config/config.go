@@ -1,5 +1,4 @@
-// Package config loads the C7 API settings. Loading never terminates the
-// process, never prints secrets and never falls back on a malformed value.
+// Package config loads API settings from the environment.
 package config
 
 import (
@@ -14,7 +13,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/auth"
 )
 
-// Defaults from the C7 contract.
 const (
 	DefaultRateLimitPerMin        = 120
 	DefaultRateLimitPerKeyPerMin  = 600
@@ -25,9 +23,6 @@ const (
 	defaultAddr              = ":8080"
 )
 
-// Config is the full API configuration. Commit and BuiltAt are injected by
-// cmd/server from linker flags; an empty value means the binary was built
-// without them and /version reports null.
 type Config struct {
 	Addr                   string
 	DBURL                  string
@@ -42,8 +37,6 @@ type Config struct {
 	BuiltAt                string
 }
 
-// Load reads the environment once. Errors name the variable they came from
-// and never include the supplied value.
 func Load() (Config, error) {
 	cfg := Config{
 		Addr:                   defaultAddr,
@@ -93,7 +86,6 @@ func Load() (Config, error) {
 	return cfg, nil
 }
 
-// requiredEnv returns a non-empty variable and refuses an unset one.
 func requiredEnv(name string) (string, error) {
 	value, ok := os.LookupEnv(name)
 	if !ok || value == "" {
@@ -102,8 +94,6 @@ func requiredEnv(name string) (string, error) {
 	return value, nil
 }
 
-// stringEnv applies a default only when the variable is unset, so an explicit
-// empty override is an error rather than a silent default.
 func stringEnv(name, def string) (string, error) {
 	value, ok := os.LookupEnv(name)
 	if !ok {
@@ -115,8 +105,6 @@ func stringEnv(name, def string) (string, error) {
 	return value, nil
 }
 
-// positiveIntEnv parses an integer above zero, refusing overflow and an
-// optional upper bound.
 func positiveIntEnv(name string, def, max int) (int, error) {
 	value, ok := os.LookupEnv(name)
 	if !ok {
@@ -138,7 +126,6 @@ func positiveIntEnv(name string, def, max int) (int, error) {
 	return n, nil
 }
 
-// boolEnv accepts exactly true or false.
 func boolEnv(name string, def bool) (bool, error) {
 	value, ok := os.LookupEnv(name)
 	if !ok {
@@ -153,8 +140,6 @@ func boolEnv(name string, def bool) (bool, error) {
 	return false, fmt.Errorf("config: %s must be true or false", name)
 }
 
-// cidrEnv parses a comma-separated prefix list. An empty entry or a bad
-// prefix is an error.
 func cidrEnv(name string) ([]netip.Prefix, error) {
 	value, ok := os.LookupEnv(name)
 	if !ok {

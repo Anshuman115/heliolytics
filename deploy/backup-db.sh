@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# One whole-database backup: custom-format dump, SHA-256 sidecar, small info file,
-# verified off-host copy, then retention. Exits 0 only after the off-host copy and
-# its read-back hash match. Secrets stay in the database container environment.
+# Backup succeeds only after the off-host copy and read-back hash match.
 set -euo pipefail
 umask 0077
 
@@ -159,7 +157,6 @@ for artifact in "$dump_path" "$sha_path" "$info_path"; do
   chmod 600 -- "$artifact"
 done
 
-# Off-host copy: .partial names first, rename only after every transfer succeeds.
 scp_options=(-q -o BatchMode=yes -o StrictHostKeyChecking=yes)
 for artifact in "$dump_path" "$sha_path" "$info_path"; do
   name="$(basename -- "$artifact")"

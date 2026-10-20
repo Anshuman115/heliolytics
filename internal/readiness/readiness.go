@@ -1,6 +1,4 @@
-// Package readiness computes the Heliolytics daily readiness score from
-// nightly vitals and prior training load. It is pure math: no queries, no
-// clock, no store imports. The caller supplies normalized IST dates.
+// Package readiness computes daily readiness from nightly vitals and prior load.
 package readiness
 
 import (
@@ -10,7 +8,6 @@ import (
 	"time"
 )
 
-// Component names in persistence order.
 const (
 	NameHRV        = "hrv"
 	NameHRVBalance = "hrv_balance"
@@ -21,7 +18,6 @@ const (
 	NameLoad       = "load"
 )
 
-// Status values persisted with every explanation.
 const (
 	StatusScored      = "scored"
 	StatusCalibrating = "calibrating"
@@ -29,8 +25,6 @@ const (
 	StatusNoData      = "no_data"
 )
 
-// Night is one IST day's inputs. A nil field means the input is missing; it is
-// never treated as zero.
 type Night struct {
 	HRV        *float64
 	SleepingHR *float64
@@ -40,8 +34,6 @@ type Night struct {
 	TRIMP      *float64
 }
 
-// Component is one uniform explanation entry. Fields that do not apply to a
-// component stay nil so the JSON shape never varies.
 type Component struct {
 	Name       string   `json:"name"`
 	Value      *float64 `json:"value"`
@@ -60,7 +52,6 @@ type Component struct {
 	Dev        *float64 `json:"dev"`
 }
 
-// Result is the complete persisted explanation plus the derived columns.
 type Result struct {
 	Status         string      `json:"status"`
 	Score          *int        `json:"score"`
@@ -71,11 +62,8 @@ type Result struct {
 	TempDeviationC *float64    `json:"-"`
 }
 
-// JSON renders the persisted component document.
 func (r Result) JSON() ([]byte, error) { return json.Marshal(r) }
 
-// Params is the immutable constant set. Changing any value requires a
-// fresh-target replay, so the struct is never edited at runtime.
 type Params struct {
 	BaselineDays     int
 	RecencyDays      int
@@ -112,8 +100,6 @@ type Params struct {
 	FloorSkinTemp float64
 }
 
-// DefaultParams returns the shipped constants. The weights, priors,
-// floors, gain and thresholds are Heliolytics product choices.
 func DefaultParams() Params {
 	return Params{
 		BaselineDays:     60,
@@ -152,8 +138,6 @@ func DefaultParams() Params {
 	}
 }
 
-// Compute scores one day from its own night plus prior history. History keys
-// are compared by calendar date, so any location representation is accepted.
 func Compute(day time.Time, nights map[time.Time]Night, p Params) Result {
 	c := &calc{
 		p:      p,
@@ -293,8 +277,6 @@ func (c *calc) at(offset int) (Night, bool) {
 	return n, ok
 }
 
-// values collects transformed values in the closed offset range [from, to],
-// where both offsets are negative or zero and from is the more recent edge.
 func (c *calc) values(from, to int, get func(Night) *float64,
 	transform func(float64) float64) []float64 {
 	out := make([]float64, 0, 8)

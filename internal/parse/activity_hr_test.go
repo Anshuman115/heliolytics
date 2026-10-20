@@ -14,8 +14,6 @@ func activityMinute(steps, bpm byte) []byte {
 	return []byte{0x50, 0, steps, bpm, 0, 0, 0, 0}
 }
 
-// TestActivityHeartRateMatchesZepp pins the 0x01 minute HR stream against the
-// independently exported Zepp auto HR rows.
 func TestActivityHeartRateMatchesZepp(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 	window := loadFixtureWindow(t)

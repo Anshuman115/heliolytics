@@ -5,7 +5,6 @@ import (
 	"sort"
 )
 
-// scalarSpec describes one absolute-timestamped scalar type.
 type scalarSpec struct {
 	code       string
 	stride     int

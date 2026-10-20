@@ -25,8 +25,6 @@ type ConsumeNonceParams struct {
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 }
 
-// One statement consumes an absent or expired (kid, nonce) pair; zero rows means
-// the pair is still live, so the request is a replay.
 func (q *Queries) ConsumeNonce(ctx context.Context, arg ConsumeNonceParams) (string, error) {
 	row := q.db.QueryRow(ctx, consumeNonce, arg.Kid, arg.Nonce, arg.ExpiresAt)
 	var kid string

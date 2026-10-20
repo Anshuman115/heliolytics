@@ -7,16 +7,12 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// Sleep-derived resting heart rate constants.
 const (
 	rhrCoverageRatio  = 0.6
 	rhrWindowMinutes  = 5
 	rhrWindowRequired = 4
 )
 
-// restingHeartRate returns the lowest five-minute mean wholly inside one
-// contiguous sleep interval. Windows need four of five valid 0x01 minutes and
-// the night needs continuous coverage of at least 60 percent.
 func restingHeartRate(rows []store.HeartRateSample, w []span) *float64 {
 	total := totalMinutes(w)
 	if total == 0 {

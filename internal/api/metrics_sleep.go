@@ -15,7 +15,6 @@ type sleepStage struct {
 	Type  int    `json:"type"`
 }
 
-// sleepSession is one stored sleep session.
 type sleepSession struct {
 	StartedAt       string       `json:"startedAt"`
 	EndedAt         string       `json:"endedAt"`
@@ -29,7 +28,6 @@ type sleepSession struct {
 	Stages          []sleepStage `json:"stages"`
 }
 
-// sleepDay groups one stored day key into its main session and its naps.
 type sleepDay struct {
 	DayKey string         `json:"dayKey"`
 	Main   *sleepSession  `json:"main"`
@@ -40,8 +38,6 @@ type sleepResponse struct {
 	Days []sleepDay `json:"days"`
 }
 
-// sleep serves stored sleep grouped by the parser's day key. Main is the
-// longest non-nap session; naps keep their own order and never carry a score.
 func (h *metricsHandler) sleep(w http.ResponseWriter, r *http.Request) {
 	from, to, failure := h.rangeBounds(r, maxDailyRangeDays)
 	if failure != nil {
@@ -69,8 +65,6 @@ func (h *metricsHandler) sleep(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, sleepResponse{Days: out})
 }
 
-// groupSleepDay selects the main session by longest totalMins and earliest
-// start on a tie. A nap-only day reports a null main.
 func groupSleepDay(dayKey string, metrics []store.SleepMetric) sleepDay {
 	naps := make([]store.SleepRow, 0, len(metrics))
 	var main *store.SleepRow
@@ -98,7 +92,6 @@ func groupSleepDay(dayKey string, metrics []store.SleepMetric) sleepDay {
 	return out
 }
 
-// sleepSessionOf maps one stored session; naps never expose a score.
 func sleepSessionOf(row store.SleepRow, isNap bool) sleepSession {
 	stages := make([]sleepStage, 0, len(row.Stages))
 	for _, stage := range row.Stages {

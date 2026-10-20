@@ -6,8 +6,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/middleware"
 )
 
-// temperature serves the compact on-wrist temperature series. Ambient rows are
-// excluded by the store reader.
 func (h *metricsHandler) temperature(w http.ResponseWriter, r *http.Request) {
 	from, to, failure := h.rangeBounds(r, maxSampleRangeDays)
 	if failure != nil {

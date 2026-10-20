@@ -32,7 +32,6 @@ func (s *Store) ConsumeNonce(ctx context.Context, kid, nonce string, expiresAt t
 	return true, nil
 }
 
-// PurgeNonces deletes only rows already expired at the supplied instant.
 func (s *Store) PurgeNonces(ctx context.Context, now time.Time) (int64, error) {
 	return s.q.PurgeNonces(ctx, tsAt(normInstant(now)))
 }

@@ -8,9 +8,6 @@ import (
 	"time"
 )
 
-// Outcome is the per-request state shared between the worker goroutine and the
-// outer access logger. Every field is mutex-guarded because a timed-out
-// request keeps working after the log line is written.
 type Outcome struct {
 	mu     sync.Mutex
 	route  string
@@ -55,8 +52,6 @@ func withOutcome(ctx context.Context, o *Outcome) context.Context {
 	return context.WithValue(ctx, outcomeKey{}, o)
 }
 
-// OutcomeFrom returns the per-request outcome. It never returns nil so a
-// handler used outside RequestLog still works.
 func OutcomeFrom(r *http.Request) *Outcome {
 	if o, ok := r.Context().Value(outcomeKey{}).(*Outcome); ok {
 		return o
@@ -103,8 +98,6 @@ func RequestLog(logger *log.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// statusWriter records the first status, the byte count and whether a
-// response was committed.
 type statusWriter struct {
 	http.ResponseWriter
 	mu      sync.Mutex
@@ -113,14 +106,12 @@ type statusWriter struct {
 	written bool
 }
 
-// HeaderWritten reports whether the response has been committed.
 func (w *statusWriter) HeaderWritten() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.written
 }
 
-// Unwrap exposes the underlying writer to http.ResponseController.
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *statusWriter) WriteHeader(code int) {
@@ -149,7 +140,6 @@ func (w *statusWriter) Write(p []byte) (int, error) {
 	return n, err
 }
 
-// State returns the recorded status and byte count.
 func (w *statusWriter) State() (status int, bytes int64) {
 	w.mu.Lock()
 	defer w.mu.Unlock()

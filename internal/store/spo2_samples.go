@@ -9,8 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// WriteSpO2 stores one bounded batch of real 0x25 oximetry samples. Placeholder
-// 0x26 bytes are raw-only and never reach this table.
 func (s *Store) WriteSpO2(ctx context.Context, tx pgx.Tx, rows []SpO2Sample,
 	sessionID string, observedAt time.Time) (Mutation, error) {
 	const table = "spo2_samples"

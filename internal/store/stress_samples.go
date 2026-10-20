@@ -9,7 +9,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// WriteStress stores one bounded batch of stress samples.
 func (s *Store) WriteStress(ctx context.Context, tx pgx.Tx, rows []StressSample,
 	sessionID string, observedAt time.Time) (Mutation, error) {
 	const table = "stress_samples"

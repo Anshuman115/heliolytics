@@ -18,8 +18,6 @@ const (
 	sleepTotalsOff      = 0x24a
 )
 
-// parseSleep decodes 594-byte sleep records. A record whose flags report no
-// main sleep still contributes its independent naps.
 func parseSleep(raw []byte, window Window) ([]SleepRow, TypeResult, error) {
 	offsets, trailing, err := fixedRecords(typeSleep, raw, sleepRecordSize)
 	if err != nil {
@@ -79,8 +77,6 @@ func parseSleepRecord(record []byte, window Window) ([]SleepRow, int) {
 	return out, dropped + napDropped
 }
 
-// mainSleepRow uses the sleep-day midnight field for identity and the header
-// minutes for the half-open window. The device summary stays authoritative.
 func mainSleepRow(record []byte, base int64, dayKey string, window Window) (SleepRow, bool) {
 	startMinute := int(binary.LittleEndian.Uint16(record[sleepHeaderStartOff:]))
 	endMinute := int(binary.LittleEndian.Uint16(record[sleepHeaderEndOff:]))
@@ -111,8 +107,6 @@ func mainSleepRow(record []byte, base int64, dayKey string, window Window) (Slee
 	}, true
 }
 
-// mainStages decodes the bounded 51-slot main timeline as half-open stages. A
-// stage outside the header window is omitted and flagged.
 func mainStages(record []byte, base int64, count int, sessionStart, sessionEnd time.Time) ([]SleepStage, bool) {
 	limit := count
 	if limit > sleepMainStageMax {
@@ -149,8 +143,6 @@ func mainStages(record []byte, base int64, count int, sessionStart, sessionEnd t
 	return stages, omitted
 }
 
-// sleepTruncated flags a timeline that may have lost stages. Totals and the
-// header window stay valid either way.
 func sleepTruncated(count int, stages []SleepStage, start, end time.Time, remin, light, deep, wake int, omitted bool) bool {
 	if count >= sleepMainStageMax-1 || omitted {
 		return true

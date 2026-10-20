@@ -269,7 +269,6 @@ type WriteDailyAggregatesParams struct {
 	PaiScore           []pgtype.Numeric `json:"pai_score"`
 }
 
-// Owns the aggregate columns only; identical writes leave updated_at untouched.
 func (q *Queries) WriteDailyAggregates(ctx context.Context, arg WriteDailyAggregatesParams) error {
 	_, err := q.db.Exec(ctx, writeDailyAggregates,
 		arg.DayKey,

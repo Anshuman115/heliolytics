@@ -7,9 +7,7 @@ import (
 	"sync"
 )
 
-// Recover handles a panic in the goroutine that runs the handler. Before the
-// response starts it logs the stack and writes the C3 internal error; after
-// that it keeps the sent status and aborts through http.ErrAbortHandler.
+// After headers are committed, abort rather than write a second response.
 func Recover(logger *log.Logger) func(http.Handler) http.Handler {
 	if logger == nil {
 		logger = log.Default()
@@ -51,22 +49,18 @@ func Recover(logger *log.Logger) func(http.Handler) http.Handler {
 	}
 }
 
-// recoverWriter records whether the handler committed a response, so the
-// abort decision holds even when the wrapped writer cannot be inspected.
 type recoverWriter struct {
 	http.ResponseWriter
 	mu      sync.Mutex
 	written bool
 }
 
-// HeaderWritten reports whether a response has been committed.
 func (w *recoverWriter) HeaderWritten() bool {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	return w.written
 }
 
-// Unwrap exposes the underlying writer to http.ResponseController.
 func (w *recoverWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
 func (w *recoverWriter) WriteHeader(code int) {

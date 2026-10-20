@@ -12,13 +12,11 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// profileMux builds a mux with offline storage and the supplied callbacks.
 func profileMux(t *testing.T, keys auth.KeySet, nonces *fakeNonces, profile *stubProfile) http.Handler {
 	t.Helper()
 	return newMux(offlineStore(t), testConfig(keys), (&stubIngest{}).run, profile.update, nonces)
 }
 
-// putProfile sends one signed profile replacement.
 func putProfile(t *testing.T, handler http.Handler, keys auth.KeySet, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPut, "/api/profile", strings.NewReader(string(body)))

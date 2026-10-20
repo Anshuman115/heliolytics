@@ -5,8 +5,6 @@ import (
 	"math"
 )
 
-// workoutSport reads the confirmed numeric sport id from field 3. The name
-// table never decides whether an id is kept.
 func workoutSport(message *protoMessage, budget *protoBudget) (int, error) {
 	if message == nil {
 		return 0, nil

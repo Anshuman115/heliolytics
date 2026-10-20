@@ -139,7 +139,6 @@ type RefreshTemperatureWearProxyRow struct {
 	OnWrist   bool               `json:"on_wrist"`
 }
 
-// Wear proxy is same UTC minute canonical 0x01 HR plus an in-domain temperature.
 func (q *Queries) RefreshTemperatureWearProxy(ctx context.Context, arg RefreshTemperatureWearProxyParams) ([]RefreshTemperatureWearProxyRow, error) {
 	rows, err := q.db.Query(ctx, refreshTemperatureWearProxy, arg.FromAt, arg.ToAt)
 	if err != nil {

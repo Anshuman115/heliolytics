@@ -20,7 +20,6 @@ import (
 
 const testBoundary = "helio-test"
 
-// part describes one multipart part.
 type part struct {
 	name     string
 	filename string
@@ -28,8 +27,6 @@ type part struct {
 	headers  map[string]string
 }
 
-// buildUpload serializes parts with a fixed boundary and returns the exact
-// bytes plus the Content-Type that must be signed with them.
 func buildUpload(t *testing.T, parts []part) ([]byte, string) {
 	t.Helper()
 	var buffer bytes.Buffer
@@ -66,8 +63,6 @@ const validSessionJSON = `{"sessionId":"session-1","startedAt":"2026-10-01T00:00
 
 const validCatalogJSON = `{"sessionId":"session-1","chunked":[]}`
 
-// validUpload is the smallest accepted envelope: session, catalog and one
-// non-empty raw part.
 func validUpload(t *testing.T) ([]byte, string) {
 	t.Helper()
 	return buildUpload(t, []part{
@@ -77,13 +72,11 @@ func validUpload(t *testing.T) ([]byte, string) {
 	})
 }
 
-// ingestMux builds a mux with offline storage and a recording service.
 func ingestMux(t *testing.T, keys auth.KeySet, nonces *fakeNonces, ingest *stubIngest) http.Handler {
 	t.Helper()
 	return newMux(offlineStore(t), testConfig(keys), ingest.run, (&stubProfile{}).update, nonces)
 }
 
-// postIngest sends one signed multipart upload.
 func postIngest(t *testing.T, handler http.Handler, keys auth.KeySet, body []byte, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, "/api/ingest", bytes.NewReader(body))

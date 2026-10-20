@@ -34,8 +34,6 @@ func (b *protoBudget) spend() error {
 	return nil
 }
 
-// readUvarint decodes a base-128 varint. A varint is at most ten bytes and the
-// tenth byte may only carry the final bit.
 func readUvarint(buf []byte, off int) (uint64, int, error) {
 	if off < 0 || off >= len(buf) {
 		return 0, off, fmt.Errorf("varint offset %d is outside the %d-byte buffer", off, len(buf))
@@ -57,8 +55,6 @@ func readUvarint(buf []byte, off int) (uint64, int, error) {
 	return 0, off, fmt.Errorf("varint at offset %d is longer than ten bytes", off)
 }
 
-// readLengthDelimited reads a length-prefixed payload after checking the length
-// against the bytes that remain.
 func readLengthDelimited(buf []byte, off int) ([]byte, int, error) {
 	length, next, err := readUvarint(buf, off)
 	if err != nil {

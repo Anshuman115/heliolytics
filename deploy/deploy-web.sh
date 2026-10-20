@@ -1,8 +1,5 @@
 #!/usr/bin/env bash
-# Rebuilds and recreates only the web container. db, api and the tunnel stay running.
-#
-# Production guard: the backend and web checkouts must both be on main, clean, and
-# the supplied SHA and build time must match. Failures stop before any build.
+# Recreates only web. Production requires clean backend and web checkouts on main.
 set -euo pipefail
 
 usage() {
@@ -140,7 +137,6 @@ compose() {
     --file "$compose_file" "$@"
 }
 
-# Build metadata is passed as build args, not exported into the environment.
 export HELIOLYTICS_WEB_COMMIT="$web_commit"
 export HELIOLYTICS_BUILT_AT="$built_at"
 

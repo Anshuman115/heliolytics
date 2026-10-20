@@ -13,7 +13,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// statusPartial marks a type that accepted a complete prefix only.
 const statusPartial = "partial"
 
 // Run stores one immutable upload and every derived aggregate in one locked
@@ -78,8 +77,6 @@ func Run(ctx context.Context, st *store.Store, meta store.SessionMeta,
 	return result, nil
 }
 
-// applyBatch writes every decoded row and reports the merged canonical changes.
-// existing marks a retried envelope, so candidate writes must match the store.
 func applyBatch(ctx context.Context, st *store.Store, tx pgx.Tx,
 	meta store.SessionMeta, batch parse.ParsedBatch, existing bool) (store.Mutation, error) {
 	rows := convertBatch(batch)
@@ -143,7 +140,6 @@ func applyBatch(ctx context.Context, st *store.Store, tx pgx.Tx,
 	return store.Mutation{Days: days, Intervals: spans, Changed: changed}, nil
 }
 
-// submittedCodes returns the parsed type codes in a stable order.
 func submittedCodes(batch parse.ParsedBatch) []string {
 	codes := make([]string, 0, len(batch.Types))
 	for code := range batch.Types {
@@ -153,8 +149,6 @@ func submittedCodes(batch parse.ParsedBatch) []string {
 	return codes
 }
 
-// buildResult renders the C2 response from the parse outcome and the surviving
-// canonical watermarks of this session.
 func buildResult(sessionID string, batch parse.ParsedBatch,
 	through map[string]*time.Time) store.IngestResult {
 	types := make(map[string]store.TypeResult, len(batch.Types))

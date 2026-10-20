@@ -6,8 +6,6 @@ import (
 	"time"
 )
 
-// TestRealFixtureReplay decodes the committed trimmed dump and compares every
-// type outcome with the independently checked expectations.
 func TestRealFixtureReplay(t *testing.T) {
 	catalog := loadFixtureCatalog(t)
 	window := loadFixtureWindow(t)
@@ -93,7 +91,6 @@ func checkRealSteps(t *testing.T, batch ParsedBatch, expected expectedFixture) {
 	if sum != expected.Steps.Sum {
 		t.Errorf("step sum = %d, want %d", sum, expected.Steps.Sum)
 	}
-	// Every sentinel minute loses one step candidate and one HR candidate.
 	if dropped := batch.Types[typeActivity].Dropped; dropped != 2*expected.Steps.SentinelMinutes {
 		t.Errorf("0x01 dropped = %d, want %d for the sentinel minutes", dropped, 2*expected.Steps.SentinelMinutes)
 	}
@@ -315,7 +312,6 @@ func compareStages(t *testing.T, name string, got, want []SleepStage) {
 	}
 }
 
-// zeppSleepRuns turns the sleep-minute export into contiguous stage runs.
 func zeppSleepRuns(t *testing.T) []SleepStage {
 	t.Helper()
 	rows := readZeppCSV(t, "sleep-minute.csv")

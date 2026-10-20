@@ -67,7 +67,6 @@ func NewDB(t testing.TB) string {
 	return dsn
 }
 
-// requireEnv reads a mandatory environment variable, never a fallback.
 func requireEnv(t testing.TB, key string) string {
 	t.Helper()
 
@@ -78,7 +77,6 @@ func requireEnv(t testing.TB, key string) string {
 	return value
 }
 
-// validateAdminDSN accepts only the disposable maintenance database.
 func validateAdminDSN(dsn string) error {
 	cfg, err := pgconn.ParseConfig(dsn)
 	if err != nil {
@@ -90,7 +88,6 @@ func validateAdminDSN(dsn string) error {
 	return nil
 }
 
-// readSchema loads the repository schema from the module root.
 func readSchema(t testing.TB) string {
 	t.Helper()
 
@@ -108,7 +105,6 @@ func readSchema(t testing.TB) string {
 	return string(content)
 }
 
-// schemaPath walks up from this source file to the repository root.
 func schemaPath() (string, error) {
 	_, file, _, ok := runtime.Caller(0)
 	if !ok {
@@ -127,7 +123,6 @@ func schemaPath() (string, error) {
 	}
 }
 
-// createDatabase creates one uniquely named database and returns its DSN.
 func createDatabase(ctx context.Context, t testing.TB, adminDSN string) (string, string) {
 	t.Helper()
 
@@ -152,7 +147,6 @@ func createDatabase(ctx context.Context, t testing.TB, adminDSN string) (string,
 	return name, dsn
 }
 
-// applySchema loads schema.sql into the freshly created database.
 func applySchema(ctx context.Context, t testing.TB, dsn, schema string) {
 	t.Helper()
 
@@ -171,7 +165,6 @@ func applySchema(ctx context.Context, t testing.TB, dsn, schema string) {
 	}
 }
 
-// createUniqueDatabase retries on the rare generated-name collision.
 func createUniqueDatabase(ctx context.Context, admin *pgx.Conn) (string, error) {
 	for range createAttempts {
 		name, err := newDatabaseName()
@@ -191,7 +184,6 @@ func createUniqueDatabase(ctx context.Context, admin *pgx.Conn) (string, error) 
 	return "", fmt.Errorf("no unique name after %d attempts", createAttempts)
 }
 
-// dropDatabase removes the per-test database after re-checking the resource.
 func dropDatabase(t testing.TB, containerID, adminDSN, wantImage, name string) {
 	t.Helper()
 
@@ -219,7 +211,6 @@ func dropDatabase(t testing.TB, containerID, adminDSN, wantImage, name string) {
 	}
 }
 
-// newDatabaseName returns a collision-safe name in the allowed grammar.
 func newDatabaseName() (string, error) {
 	var raw [randomSuffix]byte
 	if _, err := rand.Read(raw[:]); err != nil {
@@ -228,7 +219,6 @@ func newDatabaseName() (string, error) {
 	return databasePrefix + hex.EncodeToString(raw[:]), nil
 }
 
-// validDatabaseName matches heliolytics_test_ plus 16 lowercase hex digits.
 func validDatabaseName(name string) bool {
 	suffix, ok := strings.CutPrefix(name, databasePrefix)
 	if !ok || len(suffix) != 2*randomSuffix {
@@ -242,7 +232,6 @@ func validDatabaseName(name string) bool {
 	return true
 }
 
-// replaceDatabase points a validated DSN at another generated database.
 func replaceDatabase(dsn, name string) (string, error) {
 	if !validDatabaseName(name) {
 		return "", fmt.Errorf("database name %q is not %s<16 hex digits>", name, databasePrefix)

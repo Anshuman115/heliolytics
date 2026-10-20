@@ -1,5 +1,3 @@
-// Command server runs the Heliolytics API: signed reads, ingest, profile
-// writes, liveness and build metadata.
 package main
 
 import (
@@ -22,14 +20,10 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// commit and builtAt are injected at build time with
-// -ldflags '-X main.commit=... -X main.builtAt=...'. An empty value makes
-// /version report null.
+// Set with -ldflags '-X main.commit=... -X main.builtAt=...'.
 var commit, builtAt string
 
 const (
-	// healthEndpoint is the documented local probe target. D01's image runs
-	// the binary with -healthcheck and this exact port.
 	healthEndpoint = "http://127.0.0.1:8080/health"
 
 	healthcheckTimeout = 2 * time.Second
@@ -43,16 +37,12 @@ const (
 	maxHeaderBytes    = 16 << 10
 )
 
-// probeTarget is a variable so tests can point the healthcheck at their own
-// listener. Production always uses healthEndpoint.
 var probeTarget = healthEndpoint
 
 func main() {
 	os.Exit(run(os.Args[1:], os.Stderr))
 }
 
-// run owns the process lifecycle and returns the exit code, so no goroutine
-// needs log.Fatal to escape its defers.
 func run(args []string, stderr io.Writer) int {
 	logger := log.New(stderr, "", log.LstdFlags)
 
@@ -82,14 +72,11 @@ func run(args []string, stderr io.Writer) int {
 	return serve(ctx, cfg, logger)
 }
 
-// applyBuildInfo copies the linker values into the fields /version reports.
 func applyBuildInfo(cfg *config.Config) {
 	cfg.Commit = commit
 	cfg.BuiltAt = builtAt
 }
 
-// serve opens the store, serves until ctx is cancelled and shuts down within a
-// bounded budget. The database is only contacted by request handlers.
 func serve(ctx context.Context, cfg config.Config, logger *log.Logger) int {
 	st, err := store.New(ctx, cfg.DBURL)
 	if err != nil {
@@ -148,8 +135,6 @@ func serve(ctx context.Context, cfg config.Config, logger *log.Logger) int {
 	return exit
 }
 
-// newHandler wires the API to this store. A nil store or a missing callback is
-// a startup failure, never a degraded server.
 func newHandler(st *store.Store, cfg config.Config) http.Handler {
 	return api.NewMux(st, cfg,
 		func(ctx context.Context, meta store.SessionMeta, catalog []byte,
@@ -162,8 +147,7 @@ func newHandler(st *store.Store, cfg config.Config) http.Handler {
 	)
 }
 
-// purgeNonces deletes expired replay rows for storage only. Replay rejection
-// never depends on this ticker running.
+// Replay rejection does not depend on this cleanup running.
 func purgeNonces(ctx context.Context, st *store.Store, logger *log.Logger) {
 	ticker := time.NewTicker(noncePurgeInterval)
 	defer ticker.Stop()
@@ -188,7 +172,6 @@ func purgeNonces(ctx context.Context, st *store.Store, logger *log.Logger) {
 	}
 }
 
-// healthcheckExit probes the local API. It needs no config, key or database.
 func healthcheckExit(logger *log.Logger) int {
 	ctx, cancel := context.WithTimeout(context.Background(), healthcheckTimeout)
 	defer cancel()
@@ -199,8 +182,6 @@ func healthcheckExit(logger *log.Logger) int {
 	return 0
 }
 
-// checkHealth requires status 200 and the documented body, optionally followed
-// by one newline.
 func checkHealth(ctx context.Context, target string) error {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
 	if err != nil {

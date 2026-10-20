@@ -15,7 +15,6 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// openStore opens one store on a DSN and closes it before the database drop.
 func openStore(t *testing.T, dsn string) *store.Store {
 	t.Helper()
 	db, err := store.New(t.Context(), dsn)
@@ -26,19 +25,16 @@ func openStore(t *testing.T, dsn string) *store.Store {
 	return db
 }
 
-// stackOn wraps one existing store in the test client.
 func stackOn(db *store.Store) *stack {
 	keys := testKeys()
 	return &stack{handler: newHandler(db, keys), db: db, keys: keys}
 }
 
-// testLogger adapts testing.T to the rebuild log callback.
 func testLogger(t *testing.T) func(string) {
 	t.Helper()
 	return func(message string) { t.Log(message) }
 }
 
-// scopeFor inspects one live resource and builds B05's disposable scope.
 func scopeFor(t *testing.T, dsn string) ingest.DisposableDatabase {
 	t.Helper()
 	containerID := os.Getenv("HELIOLYTICS_TEST_DB_CONTAINER_ID")
@@ -66,7 +62,6 @@ func scopeFor(t *testing.T, dsn string) ingest.DisposableDatabase {
 	}
 }
 
-// seedSource uploads the committed corpus and one profile into a source.
 func seedSource(t *testing.T, source *stack) {
 	t.Helper()
 	source.uploadOK(t, realSession(t), realCatalog(t), realBlobs(t))
@@ -78,7 +73,6 @@ func seedSource(t *testing.T, source *stack) {
 	}
 }
 
-// execute runs one statement against a store in its own transaction.
 func execute(t *testing.T, db *store.Store, statement string) {
 	t.Helper()
 	ctx := context.Background()
@@ -90,8 +84,6 @@ func execute(t *testing.T, db *store.Store, statement string) {
 	}
 }
 
-// TestRebuildReplaysIntoFreshTarget proves a disposable source replays into a
-// different empty target and that the source stays unchanged.
 func TestRebuildReplaysIntoFreshTarget(t *testing.T) {
 	sourceDSN := testutil.NewDB(t)
 	sourceStore := openStore(t, sourceDSN)
@@ -123,7 +115,6 @@ func TestRebuildReplaysIntoFreshTarget(t *testing.T) {
 			t.Fatalf("%s = %d on the target, want %d", table, got, want)
 		}
 	}
-	// Replay never copies replay bookkeeping.
 	if nonces := target.count(t, "auth_nonces"); nonces != 0 {
 		t.Fatalf("target auth_nonces = %d, want 0", nonces)
 	}
@@ -168,7 +159,6 @@ func TestRebuildReplaysIntoFreshTarget(t *testing.T) {
 	}
 }
 
-// equalOptionalInt compares two optional integer values.
 func equalOptionalInt(a, b *int) bool {
 	if a == nil || b == nil {
 		return a == nil && b == nil
@@ -176,8 +166,6 @@ func equalOptionalInt(a, b *int) bool {
 	return *a == *b
 }
 
-// TestRebuildRefusesSameDatabaseAliases sends one empty database through two
-// loopback endpoints and requires the stable identity refusal before mutation.
 func TestRebuildRefusesSameDatabaseAliases(t *testing.T) {
 	dsn := testutil.NewDB(t)
 	ipv4 := openStore(t, dsn)
@@ -208,7 +196,6 @@ func TestRebuildRefusesSameDatabaseAliases(t *testing.T) {
 	}
 }
 
-// TestRebuildRefusesNonEmptyTarget keeps a populated target untouched.
 func TestRebuildRefusesNonEmptyTarget(t *testing.T) {
 	sourceDSN := testutil.NewDB(t)
 	sourceStore := openStore(t, sourceDSN)
@@ -245,8 +232,6 @@ func TestRebuildRefusesNonEmptyTarget(t *testing.T) {
 	}
 }
 
-// TestRebuildRefusesProductionScope covers every scope guard. A nil store pair
-// proves the refusal happens before any resource is touched.
 func TestRebuildRefusesProductionScope(t *testing.T) {
 	valid := ingest.DisposableDatabase{
 		ContainerID: strings.Repeat("a", 64),
@@ -312,8 +297,6 @@ func TestRebuildRefusesProductionScope(t *testing.T) {
 	}
 }
 
-// TestRebuildLateFailureLeavesTargetEmpty injects a failure on a late daily
-// write, proves the target rollback and then retries cleanly.
 func TestRebuildLateFailureLeavesTargetEmpty(t *testing.T) {
 	sourceDSN := testutil.NewDB(t)
 	sourceStore := openStore(t, sourceDSN)

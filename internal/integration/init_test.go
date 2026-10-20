@@ -9,9 +9,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// TestFreshSchemaInitHasZeroApplicationRows proves a fresh schema has no
-// health or profile rows, web reads touch only nonces, and the first phone
-// upload creates exactly its own lineage.
 func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 	s := newStack(t)
 
@@ -21,7 +18,6 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 		}
 	}
 
-	// A signed web read may create its nonce and nothing else.
 	recorder := s.get(t, webKid, "/api/metrics/coverage", "")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("coverage status %d: %s", recorder.Code, recorder.Body.String())
@@ -59,7 +55,6 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 		}
 	}
 
-	// A web write is refused before the body is read and consumes no nonce.
 	body := &failReader{}
 	request, err := http.NewRequest(http.MethodPut, "http://api.test/api/profile", body)
 	if err != nil {
@@ -94,7 +89,6 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 		t.Fatalf("sync_sessions = %d after refused web writes", sessions)
 	}
 
-	// A phone profile-only write stores the profile and no derived day rows.
 	profile := []byte(`{"name":null,"birthDate":"1990-05-01","sex":"male","heightCm":175.0,"weightKg":70.0}`)
 	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 		profile, "application/json"))
@@ -111,7 +105,6 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 		t.Fatalf("daily_metrics = %d after a profile-only write", days)
 	}
 
-	// The first accepted phone upload creates exactly its own lineage.
 	minute := time.Date(2026, time.September, 21, 1, 5, 0, 0, time.UTC)
 	firstSession := sessionPart(t, "first-phone-upload-2026-09-21",
 		minute, minute.Add(10*time.Minute))
@@ -165,8 +158,6 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 	}
 }
 
-// TestProfileWriteIsStrictAndReplaces checks the profile envelope rules and a
-// committed clear without inventing values.
 func TestProfileWriteIsStrictAndReplaces(t *testing.T) {
 	s := newStack(t)
 

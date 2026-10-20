@@ -6,17 +6,11 @@ import (
 	"time"
 )
 
-// Window bounds the measured instants one upload may produce rows for. The
-// parser never reads the process clock, so the same bytes and window always
-// decode to the same rows.
 type Window struct {
 	StartedAt time.Time
 	EndedAt   time.Time
 }
 
-// ParseError codes. Callers map invalid_catalog and missing_anchor to 422
-// invalid_catalog, invalid_window to 422 invalid_session and the rest to 422
-// invalid_type.
 const (
 	ErrCodeInvalidCatalog      = "invalid_catalog"
 	ErrCodeMissingAnchor       = "missing_anchor"
@@ -28,7 +22,6 @@ const (
 	ErrCodeMalformedProtobuf   = "malformed_protobuf"
 )
 
-// Type codes the parser accepts.
 const (
 	typeActivity      = "0x01"
 	typeWorkout       = "0x05"
@@ -44,7 +37,6 @@ const (
 	typeHRV           = "0x49"
 )
 
-// ParseError reports a structural problem that rejects the whole upload.
 type ParseError struct {
 	Code       string
 	TypeCode   string
@@ -70,8 +62,7 @@ func newError(code, typeCode string, offset int, format string, args ...any) *Pa
 	}
 }
 
-// Warning is a stable machine code with the uploaded blob offset and count it
-// describes. It never carries raw bytes or device identity.
+// Warnings must not carry raw bytes or device identity.
 type Warning struct {
 	Code       string
 	ByteOffset int
@@ -82,7 +73,6 @@ func (w Warning) String() string {
 	return fmt.Sprintf("%s offset=%d count=%d", w.Code, w.ByteOffset, w.Count)
 }
 
-// TypeResult is one type's outcome inside an upload.
 type TypeResult struct {
 	Status           string
 	Rows             int
@@ -92,32 +82,27 @@ type TypeResult struct {
 	Warnings         []Warning
 }
 
-// HeartRateRow is one accepted heart rate minute from 0x01 or one 0x46 second.
 type HeartRateRow struct {
 	SampledAt time.Time
 	Source    string
 	BPM       int
 }
 
-// StepRow is one accepted minute step count. A known zero minute is a row.
 type StepRow struct {
 	SampledAt time.Time
 	Steps     int
 }
 
-// TemperatureRow keeps raw hundredths of a Celsius degree.
 type TemperatureRow struct {
 	SampledAt   time.Time
 	HundredthsC int
 }
 
-// ScalarRow is one accepted HRV, stress or respiration sample.
 type ScalarRow struct {
 	SampledAt time.Time
 	Value     float64
 }
 
-// SpO2Row is one accepted optical SpO2 sample.
 type SpO2Row struct {
 	SampledAt time.Time
 	Source    string
@@ -125,14 +110,12 @@ type SpO2Row struct {
 	Mode      string
 }
 
-// SleepStage is one half-open sleep stage.
 type SleepStage struct {
 	Start time.Time
 	End   time.Time
 	Type  int
 }
 
-// SleepRow is one normalized main or nap sleep session.
 type SleepRow struct {
 	StartedAt       time.Time
 	EndedAt         time.Time
@@ -148,7 +131,6 @@ type SleepRow struct {
 	StagesTruncated bool
 }
 
-// WorkoutRow is one confirmed 0x05 summary with optional attached detail.
 type WorkoutRow struct {
 	StartedAt time.Time
 	EndedAt   time.Time
@@ -162,15 +144,12 @@ type WorkoutRow struct {
 	HasDetail bool
 }
 
-// PAIRow is one device PAI score for an IST day.
 type PAIRow struct {
 	SampledAt time.Time
 	DayKey    string
 	Score     int
 }
 
-// ParsedBatch holds the pure parse output of one upload. A fatal error returns
-// the zero batch, never a partial one.
 type ParsedBatch struct {
 	Catalog     Catalog
 	HeartRate   []HeartRateRow
@@ -207,9 +186,6 @@ func (w Window) containsInterval(start, end time.Time) bool {
 	return !start.Before(w.low()) && !end.After(w.high())
 }
 
-// ParseBlobs decodes every submitted type against the given catalog and window.
-// Types outside the accepted set are ignored because callers reject unknown
-// parts before parsing. Any structural error returns the zero batch.
 func ParseBlobs(catalog Catalog, blobs map[string][]byte, window Window) (ParsedBatch, error) {
 	if err := window.validate(); err != nil {
 		return ParsedBatch{}, err
@@ -346,8 +322,6 @@ func maxTime(current *time.Time, candidate time.Time) *time.Time {
 	return current
 }
 
-// mergeHeartRate keeps one row per (timestamp, source), with a later decoded
-// record replacing an earlier one at the same key.
 func mergeHeartRate(existing, extra []HeartRateRow) []HeartRateRow {
 	type key struct {
 		at     int64

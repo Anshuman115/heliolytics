@@ -17,7 +17,6 @@ import (
 
 const testMAC = "02:00:00:00:00:01"
 
-// fixtureDir resolves the committed sanitized dump used for real decode tests.
 func fixtureDir(t *testing.T) string {
 	t.Helper()
 	_, file, _, ok := runtime.Caller(0)
@@ -133,8 +132,6 @@ func TestRunRejectsBadFramingAtomically(t *testing.T) {
 	st := openStore(t)
 	fixture := loadFixture(t)
 
-	// A catalog is validated against its own payload, so a genuine framing
-	// failure needs a catalog that describes the truncated 0x01 round.
 	catalog := []byte(`{"sessionId":"fixture-dumpp-2026-06-22",` +
 		`"chunked":[{"code":"0x01","status":"ok","roundStart":"2026-06-21T11:16:00.000"}],` +
 		`"unsolicited":[]}`)
@@ -157,8 +154,6 @@ func TestRunRejectsBadFramingAtomically(t *testing.T) {
 		t.Fatalf("a rejected upload must not record a session: %+v", coverage)
 	}
 
-	// The rejection must not poison the session id, so the same envelope with
-	// its real catalog is accepted afterwards.
 	result, err := Run(context.Background(), st, fixture.meta, fixture.catalog, fixture.blobs)
 	if err != nil {
 		t.Fatalf("valid upload after a rejected one: %v", err)

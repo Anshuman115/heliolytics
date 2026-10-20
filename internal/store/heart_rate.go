@@ -108,7 +108,6 @@ func (s *Store) WriteHeartRate(ctx context.Context, tx pgx.Tx, rows []HeartRateS
 	return b.result(), nil
 }
 
-// listHeartRate reads every source so rollup code keeps provenance.
 func listHeartRate(ctx context.Context, q *db.Queries, from, to time.Time) ([]HeartRateSample, error) {
 	rows, err := q.ListHeartRateSamples(ctx, db.ListHeartRateSamplesParams{
 		FromAt: tsAt(from),
@@ -124,7 +123,6 @@ func listHeartRate(ctx context.Context, q *db.Queries, from, to time.Time) ([]He
 	return out, nil
 }
 
-// ListHeartRateSamplesCompact reads source 0x01 only, as the API contract says.
 func (s *Store) ListHeartRateSamplesCompact(ctx context.Context, from, to string) ([]CompactDay, error) {
 	fromAt, toAt, err := dayRange(from, to)
 	if err != nil {

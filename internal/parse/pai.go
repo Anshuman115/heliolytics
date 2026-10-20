@@ -72,7 +72,6 @@ func parsePAI(raw []byte, window Window) ([]PAIRow, TypeResult, error) {
 	return out, result, nil
 }
 
-// paiScore reads the fixed in-record float32 total.
 func paiScore(record []byte) (int, bool) {
 	value := math.Float32frombits(binary.LittleEndian.Uint32(record[paiScoreAt:]))
 	total := float64(value)

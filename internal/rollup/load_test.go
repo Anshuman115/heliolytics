@@ -80,7 +80,6 @@ func TestTRIMPRequiresSevenHundredTwentyMinutes(t *testing.T) {
 func TestTRIMPIntensityThreshold(t *testing.T) {
 	birth := time.Date(1986, 1, 1, 0, 0, 0, 0, store.IST)
 	hrRest := 80.0
-	// age 40 gives HRmax 180 and a reserve of exactly 100 beats.
 	below := trimp(testDay, hrSeries(720, 109), &hrRest, &birth, "male")
 	if below == nil || *below != 0 {
 		t.Fatalf("reserve 0.29 = %v, want an exact zero", below)

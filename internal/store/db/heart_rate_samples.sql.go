@@ -232,7 +232,6 @@ type UpsertHeartRateSamplesParams struct {
 	ObservedAt []pgtype.Timestamptz `json:"observed_at"`
 }
 
-// Newer observation tuples win; an older sync never regresses a canonical value.
 func (q *Queries) UpsertHeartRateSamples(ctx context.Context, arg UpsertHeartRateSamplesParams) error {
 	_, err := q.db.Exec(ctx, upsertHeartRateSamples,
 		arg.SampledAt,

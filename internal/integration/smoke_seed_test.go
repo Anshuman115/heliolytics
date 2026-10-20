@@ -27,7 +27,6 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// smokeConfig is the explicit smoke run scope. Every value is required.
 type smokeConfig struct {
 	apiContainer string
 	dbContainer  string
@@ -37,7 +36,6 @@ type smokeConfig struct {
 	secret       []byte
 }
 
-// smokeEnv reads and validates the smoke environment.
 func smokeEnv(t *testing.T) smokeConfig {
 	t.Helper()
 	if os.Getenv("HELIOLYTICS_SMOKE_TEST_ONLY") != "true" {
@@ -71,7 +69,6 @@ func smokeEnv(t *testing.T) smokeConfig {
 	}
 }
 
-// smokeContainer is the inspected subset of one container.
 type smokeContainer struct {
 	ID     string `json:"Id"`
 	Name   string `json:"Name"`
@@ -93,7 +90,6 @@ type smokeContainer struct {
 	} `json:"NetworkSettings"`
 }
 
-// inspectContainer reads one container through the Docker CLI.
 func inspectContainer(t *testing.T, containerID string) smokeContainer {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -115,7 +111,6 @@ func inspectContainer(t *testing.T, containerID string) smokeContainer {
 	return containers[0]
 }
 
-// requireTestLabels refuses any container outside the labelled test resources.
 func requireTestLabels(t *testing.T, container smokeContainer, role string) {
 	t.Helper()
 	if container.Config.Labels["heliolytics.test"] != "true" {
@@ -130,7 +125,6 @@ func requireTestLabels(t *testing.T, container smokeContainer, role string) {
 	}
 }
 
-// requireAPIScope binds the API URL to the inspected container and database.
 func requireAPIScope(t *testing.T, config smokeConfig, api, database smokeContainer) {
 	t.Helper()
 	target, err := url.Parse(config.apiURL)
@@ -191,13 +185,11 @@ func requireAPIScope(t *testing.T, config smokeConfig, api, database smokeContai
 	}
 }
 
-// smokeClient signs real requests with the smoke phone key.
 type smokeClient struct {
 	base   string
 	secret []byte
 }
 
-// do issues one signed request and returns the status and body.
 func (c *smokeClient) do(t *testing.T, method, path, query string,
 	body []byte, contentType string) (int, []byte) {
 	t.Helper()
@@ -246,7 +238,6 @@ func (c *smokeClient) do(t *testing.T, method, path, query string,
 	return response.StatusCode, payload
 }
 
-// smokeCount counts one table in the smoke database.
 func smokeCount(t *testing.T, dsn, table string) int {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -295,7 +286,6 @@ func TestSeedLocalSmoke(t *testing.T) {
 
 	client := &smokeClient{base: config.apiURL, secret: config.secret}
 
-	// A profile-only write stores the profile and no daily rows.
 	profile := []byte(`{"name":null,"birthDate":"1991-02-03","sex":"male","heightCm":176.0,"weightKg":70.0}`)
 	status, payload := client.do(t, http.MethodPut, "/api/profile", "", profile, "application/json")
 	if status != http.StatusNoContent {
@@ -305,7 +295,6 @@ func TestSeedLocalSmoke(t *testing.T) {
 		t.Fatalf("daily_metrics = %d after a profile-only write", count)
 	}
 
-	// The immutable June corpus goes through real signed ingest.
 	uploadBody, contentType := multipartBody(t, realSession(t), realCatalog(t), realBlobs(t))
 	status, payload = client.do(t, http.MethodPost, "/api/ingest", "", uploadBody, contentType)
 	if status != http.StatusOK {
@@ -357,8 +346,6 @@ func TestSeedLocalSmoke(t *testing.T) {
 		t.Fatalf("June step totals = %v", stepsByDay)
 	}
 
-	// One synthetic day inside the current IST window keeps the dashboard
-	// selectable without claiming June is reachable.
 	now := time.Now().In(istZone)
 	syntheticMinute := time.Date(now.Year(), now.Month(), now.Day(), 6, 30, 0, 0, istZone).UTC()
 	syntheticDay := syntheticMinute.In(istZone).Format("2006-01-02")

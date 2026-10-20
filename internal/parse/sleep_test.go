@@ -156,8 +156,6 @@ func TestSleepPhantomMainRecordKeepsIndependentNap(t *testing.T) {
 	}
 }
 
-// TestNapTimelineStopsBeforeDeviceTotals pins that the nap stage area ends where
-// the device summary totals start.
 func TestNapTimelineStopsBeforeDeviceTotals(t *testing.T) {
 	record := sleepRecord(sleepFixtureWrite, sleepFixtureMidnight, 0, 0)
 	record[sleepFlagsOff+1] = 0
@@ -248,8 +246,6 @@ func TestNapInclusiveEndBecomesExclusive(t *testing.T) {
 	}
 }
 
-// TestSleepWriteDayRegression pins the production bug: a night that starts on
-// September 25 keeps September 25 even when the record is written on the 26th.
 func TestSleepWriteDayRegression(t *testing.T) {
 	midnight := time.Date(2026, 9, 24, 18, 30, 0, 0, time.UTC) // September 25 IST midnight
 	write := time.Date(2026, 9, 25, 21, 39, 0, 0, time.UTC)    // September 26 03:09 IST

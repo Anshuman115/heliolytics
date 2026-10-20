@@ -6,13 +6,10 @@ import (
 )
 
 const (
-	// sampleBatchSize bounds one UNNEST statement's row count.
 	sampleBatchSize = 4096
-	// pointInterval is the half-open span one changed point sample covers.
-	pointInterval = time.Microsecond
+	pointInterval   = time.Microsecond
 )
 
-// SessionMeta is the immutable sync envelope. EndedAt is required.
 type SessionMeta struct {
 	ID         string
 	DeviceMAC  string
@@ -29,15 +26,12 @@ func (m SessionMeta) Normalized() SessionMeta {
 	return m
 }
 
-// RawBlob is one submitted type's exact bytes; SHA256 is verified, never
-// trusted from the caller.
 type RawBlob struct {
 	TypeCode string
 	SHA256   [32]byte
 	Payload  []byte
 }
 
-// TypeResult is the C2 per-type response value, not a persisted ledger row.
 type TypeResult struct {
 	Status        string     `json:"status"`
 	Rows          int        `json:"rows"`
@@ -47,7 +41,6 @@ type TypeResult struct {
 	DataThrough   *time.Time `json:"dataThrough"`
 }
 
-// IngestResult is the C2 ingest response.
 type IngestResult struct {
 	SessionID string                `json:"sessionId"`
 	Complete  bool                  `json:"complete"`
@@ -55,7 +48,6 @@ type IngestResult struct {
 	Warnings  []string              `json:"warnings"`
 }
 
-// HeartRateSample is one heart rate reading with its provenance source.
 type HeartRateSample struct {
 	At     time.Time
 	Source string
@@ -67,13 +59,11 @@ type StepSample struct {
 	Steps int
 }
 
-// TemperatureSample carries hundredths of a degree so precision is exact.
 type TemperatureSample struct {
 	At     time.Time
 	CentiC int
 }
 
-// TemperatureReadRow is the read shape; OnWrist travels on reads only.
 type TemperatureReadRow struct {
 	At      time.Time
 	CentiC  int
@@ -102,7 +92,6 @@ type SpO2Sample struct {
 	Pct    int
 }
 
-// SleepRow is one sleep session candidate or canonical row.
 type SleepRow struct {
 	StartedAt       time.Time
 	EndedAt         time.Time
@@ -118,8 +107,6 @@ type SleepRow struct {
 	StagesTruncated bool
 }
 
-// ActivityRow is one workout candidate or canonical activity row. Its day is
-// the IST date of StartedAt; callers cannot supply it.
 type ActivityRow struct {
 	StartedAt time.Time
 	EndedAt   time.Time
@@ -134,27 +121,23 @@ type ActivityRow struct {
 	HasDetail bool
 }
 
-// PAIScore is one device PAI record with its own epoch.
 type PAIScore struct {
 	DayKey    time.Time
 	SampledAt time.Time
 	Score     int
 }
 
-// InstantInterval is a non-empty half-open real-instant interval.
 type InstantInterval struct {
 	From time.Time
 	To   time.Time
 }
 
-// Mutation reports what a canonical write actually changed.
 type Mutation struct {
 	Days      []time.Time
 	Intervals []InstantInterval
 	Changed   bool
 }
 
-// DataCoverage is the C3 coverage shape, always carrying all measured codes.
 type DataCoverage struct {
 	HasData      bool                  `json:"hasData"`
 	LastIngestAt *time.Time            `json:"lastIngestAt"`
@@ -182,7 +165,6 @@ func (m *mutationBuilder) addSpan(from, to time.Time) {
 	m.spans = append(m.spans, InstantInterval{From: from, To: to})
 }
 
-// addPoint marks one changed point sample and the IST day it belongs to.
 func (m *mutationBuilder) addPoint(at time.Time) {
 	m.addDay(at)
 	m.addSpan(at, at.Add(pointInterval))
@@ -199,7 +181,6 @@ func (m *mutationBuilder) result() Mutation {
 	return out
 }
 
-// mergeIntervals sorts and merges only overlapping or touching spans.
 func mergeIntervals(spans []InstantInterval) []InstantInterval {
 	if len(spans) == 0 {
 		return nil
@@ -227,7 +208,6 @@ func mergeIntervals(spans []InstantInterval) []InstantInterval {
 	return out
 }
 
-// normInstant matches PostgreSQL's microsecond timestamp precision.
 func normInstant(t time.Time) time.Time { return t.UTC().Truncate(time.Microsecond) }
 
 type sampleKey struct {
@@ -251,8 +231,6 @@ func tupleGE(observedAt time.Time, sessionID string, storedAt time.Time, storedS
 	return sessionID >= storedSessionID
 }
 
-// tupleAfter reports whether an observation tuple is strictly newer than the
-// stored one. Session IDs compare byte-wise, as the SQL COLLATE "C" order does.
 func tupleAfter(observedAt time.Time, sessionID string, storedAt time.Time, storedSessionID string) bool {
 	if observedAt.After(storedAt) {
 		return true
@@ -263,8 +241,6 @@ func tupleAfter(observedAt time.Time, sessionID string, storedAt time.Time, stor
 	return sessionID > storedSessionID
 }
 
-// dedupeSamples collapses exact repeats and rejects conflicting duplicates
-// before any statement runs.
 func dedupeSamples[T any](table string, rows []T, key func(T) sampleKey, value func(T) any) ([]T, error) {
 	seen := make(map[sampleKey]int, len(rows))
 	out := make([]T, 0, len(rows))

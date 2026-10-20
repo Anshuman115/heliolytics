@@ -18,11 +18,8 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
-// uiWindowDays is the inclusive IST window every scenario date stays inside.
 const uiWindowDays = 30
 
-// Synthetic night constants. Every baseline night repeats these inputs so the
-// expected aggregates stay exact and readable.
 const (
 	uiBaselineBPM    = 58
 	uiBaselineHRV    = 45
@@ -36,9 +33,6 @@ const (
 	uiWorkoutName    = "High Intensity Interval Training"
 )
 
-// TestSeedUIScenarios uploads labeled synthetic scenarios over signed phone
-// HTTP and asserts the API returns the expected values. It runs after
-// TestSeedLocalSmoke on the same heliolytics_smoke database.
 func TestSeedUIScenarios(t *testing.T) {
 	config := smokeEnv(t)
 	manifestPath := strings.TrimSpace(os.Getenv("HELIOLYTICS_SMOKE_MANIFEST"))
@@ -70,7 +64,6 @@ func TestSeedUIScenarios(t *testing.T) {
 	client := &smokeClient{base: config.apiURL, secret: config.secret}
 	today := uiIstToday()
 
-	// Training load needs a birth date and a sex, so the profile goes first.
 	profile := []byte(`{"name":null,"birthDate":"1991-02-03","sex":"male","heightCm":176.0,"weightKg":70.0}`)
 	if status, payload := client.do(t, http.MethodPut, "/api/profile", "", profile, "application/json"); status != http.StatusNoContent {
 		t.Fatalf("profile status %d: %s", status, payload)
@@ -86,25 +79,19 @@ func TestSeedUIScenarios(t *testing.T) {
 	uiWriteManifest(t, manifestPath, today, len(uploads), seeded)
 }
 
-// uiIstToday is the current IST calendar date at midnight.
 func uiIstToday() time.Time {
 	now := time.Now().In(istZone)
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, istZone)
 }
 
-// uiDate renders the YYYY-MM-DD label of a day.
 func uiDate(day time.Time) string { return day.In(istZone).Format("2006-01-02") }
 
-// uiAt returns the instant hour:minute on one IST day.
 func uiAt(day time.Time, hour, minute int) time.Time {
 	return day.Add(time.Duration(hour)*time.Hour + time.Duration(minute)*time.Minute)
 }
 
-// uiOffset returns today minus n IST days.
 func uiOffset(today time.Time, n int) time.Time { return today.AddDate(0, 0, -n) }
 
-// uiSleepMinute is one instant in whole minutes since the previous midnight,
-// the base a 0x48 record uses.
 func uiSleepMinute(sleepDay, at time.Time) int {
 	base := sleepDay.AddDate(0, 0, -1)
 	return int(at.Sub(base) / time.Minute)
@@ -112,7 +99,6 @@ func uiSleepMinute(sleepDay, at time.Time) int {
 
 type uiActivityMinute struct{ steps, bpm byte }
 
-// uiConstantActivity returns count minutes of one repeated activity value.
 func uiConstantActivity(count int, steps, bpm byte) []uiActivityMinute {
 	out := make([]uiActivityMinute, count)
 	for i := range out {
@@ -121,7 +107,6 @@ func uiConstantActivity(count int, steps, bpm byte) []uiActivityMinute {
 	return out
 }
 
-// uiActivityBlob builds one anchored 0x01 payload from per-minute values.
 func uiActivityBlob(minutes []uiActivityMinute) []byte {
 	out := make([]byte, 0, len(minutes)*8)
 	for _, minute := range minutes {
@@ -130,7 +115,6 @@ func uiActivityBlob(minutes []uiActivityMinute) []byte {
 	return out
 }
 
-// uiTemperatureBlob builds count contiguous 0x2E minutes.
 func uiTemperatureBlob(count int, hundredths int16) []byte {
 	out := make([]byte, 0, count*8)
 	for range count {
@@ -139,7 +123,6 @@ func uiTemperatureBlob(count int, hundredths int16) []byte {
 	return out
 }
 
-// uiScalarBlob builds absolute-timestamped scalar samples for 0x49 and 0x38.
 func uiScalarBlob(stride, count int, start time.Time, every time.Duration, value byte) []byte {
 	out := make([]byte, 0, count*stride)
 	for i := range count {
@@ -152,7 +135,6 @@ func uiScalarBlob(stride, count int, start time.Time, every time.Duration, value
 	return out
 }
 
-// uiStressBlob builds count contiguous 0x13 minutes.
 func uiStressBlob(count int, value byte) []byte {
 	out := make([]byte, count)
 	for i := range out {
@@ -167,7 +149,6 @@ type uiSpo2Sample struct {
 	auto bool
 }
 
-// uiSpo2Blob builds one version 2 0x25 round of absolute samples.
 func uiSpo2Blob(samples []uiSpo2Sample) []byte {
 	out := make([]byte, 0, 1+len(samples)*65)
 	out = append(out, 0x02)
@@ -184,15 +165,13 @@ func uiSpo2Blob(samples []uiSpo2Sample) []byte {
 	return out
 }
 
-// uiSleepStage is one half-open stage on the record minute grid. end is
-// inclusive, which is how the protocol stores it.
+// Wire endpoints are inclusive minutes.
 type uiSleepStage struct {
 	start int
 	end   int
 	kind  byte
 }
 
-// uiNap is one nap table entry with its own stages.
 type uiNap struct {
 	start   int
 	end     int
@@ -200,7 +179,6 @@ type uiNap struct {
 	stages  []uiSleepStage
 }
 
-// uiSleepRecord renders one 594-byte 0x48 record. Naps share the record.
 func uiSleepRecord(t *testing.T, sleepDay time.Time, main bool, score int,
 	startMin, endMin int, rem, light, deep, wake int,
 	stages []uiSleepStage, naps []uiNap) []byte {
@@ -256,7 +234,6 @@ func uiSleepRecord(t *testing.T, sleepDay time.Time, main bool, score int,
 	return record
 }
 
-// uiWorkoutRecord renders one confirmed 0x05 summary with calories and HR.
 func uiWorkoutRecord(t *testing.T, start time.Time, durationSec, sport,
 	calories, avgHR, maxHR, minHR int) []byte {
 	t.Helper()
@@ -272,7 +249,6 @@ func uiWorkoutRecord(t *testing.T, start time.Time, durationSec, sport,
 	return buffer.Bytes()
 }
 
-// uiUpload is one signed ingest request.
 type uiUpload struct {
 	name    string
 	session string
@@ -282,7 +258,6 @@ type uiUpload struct {
 	blobs   map[string][]byte
 }
 
-// uiSendUpload posts one upload with the smoke phone key.
 func uiSendUpload(t *testing.T, client *smokeClient, upload uiUpload) {
 	t.Helper()
 	session := sessionPart(t, upload.session, upload.started, upload.ended)
@@ -302,8 +277,6 @@ func uiSendUpload(t *testing.T, client *smokeClient, upload uiUpload) {
 	}
 }
 
-// uiNightUpload builds one complete baseline night: a four hour main sleep
-// with stages, HRV, respiration, temperature and twelve hours of steps and HR.
 func uiNightUpload(t *testing.T, name string, day time.Time, score int) uiUpload {
 	t.Helper()
 	sleepStart := uiAt(day, uiNightStartHour, 0)
@@ -336,14 +309,11 @@ func uiNightUpload(t *testing.T, name string, day time.Time, score int) uiUpload
 	}
 }
 
-// uiUploads builds every scenario upload oldest first. Readiness depends on
-// older nights, so the order keeps each recompute consistent.
 func uiUploads(t *testing.T, today time.Time) []uiUpload {
 	t.Helper()
 	off := func(n int) time.Time { return uiOffset(today, n) }
 	out := make([]uiUpload, 0, uiWindowDays)
 
-	// vitals-no-spo2: stress plus a few steps and no optical samples.
 	stressed := off(29)
 	out = append(out, uiUpload{
 		name:    "vitals-no-spo2",
@@ -359,7 +329,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		},
 	})
 
-	// vitals-real-spo2, second day: three samples of a real 100.
 	perfect := off(28)
 	out = append(out, uiUpload{
 		name:    "vitals-real-spo2-100",
@@ -376,7 +345,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		},
 	})
 
-	// vitals-real-spo2, first day: mean 97.33, minimum 95, three samples.
 	sparse := off(27)
 	out = append(out, uiUpload{
 		name:    "vitals-real-spo2-mean",
@@ -393,7 +361,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		},
 	})
 
-	// readiness-missing no_data: a supported day with steps and no HRV night.
 	missing := off(26)
 	out = append(out, uiUpload{
 		name:    "readiness-missing-no-data",
@@ -407,17 +374,14 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		},
 	})
 
-	// readiness-missing no_baseline: a full HRV night with no earlier night.
 	out = append(out, uiNightUpload(t, "readiness-missing-no-baseline", off(25), uiNightScore))
 	// Offset 24 stays empty on purpose.
 
-	// readiness-calibrating priors, then its target night.
 	out = append(out, uiNightUpload(t, "readiness-baseline", off(23), uiNightScore))
 	out = append(out, uiNightUpload(t, "readiness-baseline", off(22), uiNightScore))
 	out = append(out, uiNightUpload(t, "readiness-baseline", off(21), uiNightScore))
 	out = append(out, uiNightUpload(t, "readiness-calibrating", off(20), uiNightScore))
 
-	// workout-and-auto: a threshold auto session plus one recorded workout.
 	active := off(19)
 	minutes := make([]uiActivityMinute, 0, 31)
 	minutes = append(minutes, uiConstantActivity(10, 0, 70)...)
@@ -436,7 +400,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		},
 	})
 
-	// split-night: two disjoint non-nap sessions on one day.
 	split := off(18)
 	first := uiSleepRecord(t, split, true, 80, 1260, 1500, 0, 180, 60, 0, []uiSleepStage{
 		{start: 1260, end: 1319, kind: 4},
@@ -458,7 +421,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		blobs:   map[string][]byte{"0x48": append(first, second...)},
 	})
 
-	// nap-only: no main sleep, one afternoon nap.
 	napOnly := off(17)
 	napRecord := uiSleepRecord(t, napOnly, false, 0, 0, 0, 0, 0, 0, 0, nil, []uiNap{
 		{start: 2220, end: 2264, minutes: 45, stages: []uiSleepStage{
@@ -475,7 +437,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		blobs:   map[string][]byte{"0x48": napRecord},
 	})
 
-	// main-and-nap: a truncated main sleep plus one complete nap.
 	napDay := off(16)
 	napStage := uiSleepMinute(napDay, uiAt(napDay, 14, 0))
 	mainNap := uiSleepRecord(t, napDay, true, 84, 1380, 1800, 120, 180, 90, 30, []uiSleepStage{
@@ -496,7 +457,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 		blobs:   map[string][]byte{"0x48": mainNap},
 	})
 
-	// Baseline nights, oldest first, so the scored target sees all of them.
 	for offset := 15; offset >= 2; offset-- {
 		out = append(out, uiNightUpload(t, "readiness-baseline", off(offset), uiNightScore))
 	}
@@ -504,7 +464,6 @@ func uiUploads(t *testing.T, today time.Time) []uiUpload {
 	return out
 }
 
-// uiDayRow is the daily-metrics day shape this test asserts.
 type uiDayRow struct {
 	DayKey              string          `json:"dayKey"`
 	Steps               *int            `json:"steps"`
@@ -536,7 +495,6 @@ type uiDayRow struct {
 	ReadinessComponents json.RawMessage `json:"readinessComponents"`
 }
 
-// uiSleepSession is one stored sleep session in the sleep route.
 type uiSleepSession struct {
 	StartedAt       string `json:"startedAt"`
 	EndedAt         string `json:"endedAt"`
@@ -554,14 +512,12 @@ type uiSleepSession struct {
 	} `json:"stages"`
 }
 
-// uiSleepDay is one day of the sleep route.
 type uiSleepDay struct {
 	DayKey string           `json:"dayKey"`
 	Main   *uiSleepSession  `json:"main"`
 	Naps   []uiSleepSession `json:"naps"`
 }
 
-// uiActivityRow is one unified activity row.
 type uiActivityRow struct {
 	Kind        string `json:"kind"`
 	DayKey      string `json:"dayKey"`
@@ -578,7 +534,6 @@ type uiActivityRow struct {
 	HasDetail   bool   `json:"hasDetail"`
 }
 
-// uiSeriesDay is one compact metric series day.
 type uiSeriesDay struct {
 	Metric    string    `json:"metric"`
 	DayKey    string    `json:"dayKey"`
@@ -587,8 +542,6 @@ type uiSeriesDay struct {
 	Values    []float64 `json:"values"`
 }
 
-// uiAssertStack reads every seeded route, compares the expected values and
-// returns every supported day the daily route lists.
 func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string {
 	t.Helper()
 	from := uiDate(uiOffset(today, uiWindowDays-1))
@@ -605,7 +558,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 		uiAssertBaselineNight(t, label, row)
 	}
 
-	// readiness-scored: at least fourteen prior HRV nights and a score.
 	scoredDay := uiDate(uiOffset(today, 1))
 	scored, ok := days[scoredDay]
 	if !ok {
@@ -619,7 +571,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantString(t, scoredDay+" readinessBand", scored.ReadinessBand, uiBandOf(*scored.Readiness))
 	uiAssertScoredComponents(t, scoredDay, scored.ReadinessComponents)
 
-	// readiness-calibrating: four prior HRV nights and no score.
 	calibratingDay := uiDate(uiOffset(today, 20))
 	calibrating, ok := days[calibratingDay]
 	if !ok {
@@ -630,7 +581,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantNullInt(t, calibratingDay+" readiness", calibrating.Readiness)
 	uiWantNullString(t, calibratingDay+" readinessBand", calibrating.ReadinessBand)
 
-	// readiness-missing no_baseline: HRV without an earlier night.
 	noBaselineDay := uiDate(uiOffset(today, 25))
 	noBaseline, ok := days[noBaselineDay]
 	if !ok {
@@ -640,7 +590,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantInt(t, noBaselineDay+" readinessBaselineNights", uiBaselineNights(t, noBaselineDay, noBaseline.ReadinessComponents), 0)
 	uiWantNullInt(t, noBaselineDay+" readiness", noBaseline.Readiness)
 
-	// readiness-missing no_data: a supported day with no HRV night.
 	noDataDay := uiDate(uiOffset(today, 26))
 	noData, ok := days[noDataDay]
 	if !ok {
@@ -654,7 +603,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantNullInt(t, noDataDay+" sleepMins", noData.SleepMins)
 	uiWantNullFloat(t, noDataDay+" spo2Avg", noData.Spo2Avg)
 
-	// vitals-no-spo2: stress present, optical samples absent.
 	stressDay := uiDate(uiOffset(today, 29))
 	stress, ok := days[stressDay]
 	if !ok {
@@ -667,7 +615,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantNullInt(t, stressDay+" spo2Min", stress.Spo2Min)
 	uiWantCount(t, stressDay+" spo2Samples", stress.Spo2Samples, 0)
 
-	// vitals-real-spo2: mean 97.33 rounds to 97.3 with minimum 95.
 	meanDay := uiDate(uiOffset(today, 27))
 	mean, ok := days[meanDay]
 	if !ok {
@@ -678,7 +625,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantCount(t, meanDay+" spo2Samples", mean.Spo2Samples, 3)
 	uiWantNullInt(t, meanDay+" steps", mean.Steps)
 
-	// A real 100 stays 100 and is never read as a placeholder.
 	perfectDay := uiDate(uiOffset(today, 28))
 	perfect, ok := days[perfectDay]
 	if !ok {
@@ -688,18 +634,13 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	uiWantInt(t, perfectDay+" spo2Min", perfect.Spo2Min, 100)
 	uiWantCount(t, perfectDay+" spo2Samples", perfect.Spo2Samples, 3)
 
-	// main-and-nap: truncated main stages plus one complete nap.
 	uiAssertMainAndNap(t, days[uiDate(uiOffset(today, 16))], uiDate(uiOffset(today, 16)))
-	// nap-only: a null main with one nap.
 	uiAssertNapOnly(t, days[uiDate(uiOffset(today, 17))], uiDate(uiOffset(today, 17)))
-	// split-night: both sessions counted, the longest reported as main.
 	uiAssertSplitNight(t, days[uiDate(uiOffset(today, 18))], uiDate(uiOffset(today, 18)))
 
-	// workout-and-auto: one threshold auto session and one recorded workout.
 	uiAssertActivities(t, client, uiDate(uiOffset(today, 19)))
 	uiAssertSeries(t, client, today, from, to)
 
-	// empty: a window date with no data returns an empty list.
 	emptyDay := uiDate(uiOffset(today, 24))
 	if _, present := days[emptyDay]; present {
 		t.Fatalf("daily-metrics lists %s, which the seed never writes", emptyDay)
@@ -729,7 +670,6 @@ func uiAssertStack(t *testing.T, client *smokeClient, today time.Time) []string 
 	return supported
 }
 
-// uiAssertBaselineNight checks the shared baseline night values.
 func uiAssertBaselineNight(t *testing.T, label string, row uiDayRow) {
 	t.Helper()
 	uiWantInt(t, label+" steps", row.Steps, 0)
@@ -754,7 +694,6 @@ func uiAssertBaselineNight(t *testing.T, label string, row uiDayRow) {
 	uiWantFloat(t, label+" trainingLoad", row.TrainingLoad, 0)
 }
 
-// uiAssertMainAndNap checks the truncated main sleep and its nap.
 func uiAssertMainAndNap(t *testing.T, row uiDayRow, label string) {
 	t.Helper()
 	uiWantInt(t, label+" sleepScore", row.SleepScore, 84)
@@ -768,7 +707,6 @@ func uiAssertMainAndNap(t *testing.T, row uiDayRow, label string) {
 	uiWantCount(t, label+" napCount", row.NapCount, 1)
 }
 
-// uiAssertNapOnly checks a day whose sleep is one nap and no main session.
 func uiAssertNapOnly(t *testing.T, row uiDayRow, label string) {
 	t.Helper()
 	uiWantCount(t, label+" napCount", row.NapCount, 1)
@@ -778,7 +716,6 @@ func uiAssertNapOnly(t *testing.T, row uiDayRow, label string) {
 	uiWantNullInt(t, label+" sleepEfficiencyPct", row.SleepEfficiencyPct)
 }
 
-// uiAssertSplitNight checks both non-nap sessions of one night.
 func uiAssertSplitNight(t *testing.T, row uiDayRow, label string) {
 	t.Helper()
 	uiWantInt(t, label+" sleepMins", row.SleepMins, 460)
@@ -792,7 +729,6 @@ func uiAssertSplitNight(t *testing.T, row uiDayRow, label string) {
 	uiWantCount(t, label+" napCount", row.NapCount, 0)
 }
 
-// uiAssertScoredComponents checks the raw inputs the score was built from.
 func uiAssertScoredComponents(t *testing.T, label string, raw json.RawMessage) {
 	t.Helper()
 	var document struct {
@@ -839,7 +775,6 @@ func uiAssertScoredComponents(t *testing.T, label string, raw json.RawMessage) {
 	}
 }
 
-// uiBaselineNights reads baselineNights from the stored explanation.
 func uiBaselineNights(t *testing.T, label string, raw json.RawMessage) *int {
 	t.Helper()
 	var document struct {
@@ -851,7 +786,6 @@ func uiBaselineNights(t *testing.T, label string, raw json.RawMessage) *int {
 	return document.BaselineNights
 }
 
-// uiBandOf mirrors the documented score bands, never a stored label.
 func uiBandOf(score int) string {
 	switch {
 	case score >= 67:
@@ -863,7 +797,6 @@ func uiBandOf(score int) string {
 	}
 }
 
-// uiDailyRows reads the daily route into a map keyed by day.
 func uiDailyRows(t *testing.T, client *smokeClient, from, to string) map[string]uiDayRow {
 	t.Helper()
 	status, payload := client.do(t, http.MethodGet, "/api/daily-metrics",
@@ -884,7 +817,6 @@ func uiDailyRows(t *testing.T, client *smokeClient, from, to string) map[string]
 	return out
 }
 
-// uiAssertSleepRoute checks the stored sleep sessions by day.
 func uiAssertSleepRoute(t *testing.T, client *smokeClient, today time.Time) {
 	t.Helper()
 	from := uiDate(uiOffset(today, 25))
@@ -957,7 +889,6 @@ func uiAssertSleepRoute(t *testing.T, client *smokeClient, today time.Time) {
 	}
 }
 
-// uiAssertActivities checks the recorded workout and the auto session.
 func uiAssertActivities(t *testing.T, client *smokeClient, day string) {
 	t.Helper()
 	status, payload := client.do(t, http.MethodGet, "/api/activities",
@@ -1010,7 +941,6 @@ func uiAssertActivities(t *testing.T, client *smokeClient, day string) {
 	uiWantNullInt(t, day+" workout steps", workout.Steps)
 }
 
-// uiAssertSeries checks the compact series for HRV, SpO2 and stress.
 func uiAssertSeries(t *testing.T, client *smokeClient, today time.Time, from, to string) {
 	t.Helper()
 	status, payload := client.do(t, http.MethodGet, "/api/metrics/series",
@@ -1116,13 +1046,11 @@ func uiWantNullString(t *testing.T, label string, got *string) {
 	}
 }
 
-// uiManifestScenario is one scenario entry for the browser worker.
 type uiManifestScenario struct {
 	Date     string         `json:"date"`
 	Expected map[string]any `json:"expected"`
 }
 
-// uiManifest is the file the browser worker reads.
 type uiManifest struct {
 	GeneratedAt    string                        `json:"generatedAt"`
 	Provenance     string                        `json:"provenance"`
@@ -1138,8 +1066,6 @@ type uiManifest struct {
 	Notes          []string                      `json:"notes"`
 }
 
-// uiWriteManifest stores the scenario dates and expected values outside the
-// repository. The caller owns the directory.
 func uiWriteManifest(t *testing.T, path string, today time.Time, uploads int,
 	supported []string) {
 	t.Helper()

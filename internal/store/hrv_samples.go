@@ -10,7 +10,6 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// WriteHRV stores one bounded batch of HRV (RMSSD) samples.
 func (s *Store) WriteHRV(ctx context.Context, tx pgx.Tx, rows []HRVSample,
 	sessionID string, observedAt time.Time) (Mutation, error) {
 	const table = "hrv_samples"

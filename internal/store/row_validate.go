@@ -67,8 +67,6 @@ func validateInstant(at time.Time, table string) error {
 	return nil
 }
 
-// canonicalJSON normalizes a catalog so property order or number spelling
-// alone is not a conflict.
 func canonicalJSON(raw []byte) ([]byte, error) {
 	var value any
 	if err := json.Unmarshal(raw, &value); err != nil {

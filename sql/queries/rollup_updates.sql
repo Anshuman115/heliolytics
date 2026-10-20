@@ -44,7 +44,6 @@ WHERE day_key = ANY(sqlc.arg(days)::date[])
 RETURNING day_key;
 
 -- name: WriteDailyAggregates :exec
--- Owns the aggregate columns only; identical writes leave updated_at untouched.
 WITH v AS (
   SELECT * FROM ROWS FROM (
     unnest(sqlc.arg(day_key)::date[]),

@@ -8,8 +8,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store/db"
 )
 
-// DayMetric is the C3.3 day row. Every key is present and missing values stay
-// null. Readiness is read, never recomputed here.
 type DayMetric struct {
 	DayKey              string          `json:"dayKey"`
 	Steps               *int            `json:"steps"`
@@ -46,20 +44,17 @@ type DayMetric struct {
 	UpdatedAt           time.Time       `json:"updatedAt"`
 }
 
-// SleepMetric carries one stored sleep session with its attribution day.
 type SleepMetric struct {
 	DayKey string
 	Row    SleepRow
 }
 
-// ActivityMetric carries one stored activity row with its start day.
 type ActivityMetric struct {
 	DayKey      string
 	DurationSec int
 	Row         ActivityRow
 }
 
-// CompactDay is the compact per-day sample series shape.
 type CompactDay struct {
 	DayKey    string    `json:"dayKey"`
 	StartTime time.Time `json:"startTime"`
@@ -129,7 +124,6 @@ func dayMetricFromRow(r db.DailyMetric) DayMetric {
 	}
 }
 
-// readinessStatus mirrors the persisted components status; it never scores.
 func readinessStatus(components json.RawMessage) *string {
 	if len(components) == 0 {
 		return nil
@@ -143,7 +137,6 @@ func readinessStatus(components json.RawMessage) *string {
 	return new(wrapper.Status)
 }
 
-// readinessBand maps the stored score to its display band.
 func readinessBand(score *int) *string {
 	if score == nil {
 		return nil

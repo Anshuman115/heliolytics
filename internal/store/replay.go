@@ -9,28 +9,23 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// ReplayCursor is the keyset position in (ended_at, session_id) order.
 type ReplayCursor struct {
 	EndedAt   time.Time
 	SessionID string
 }
 
-// SessionReplay is one complete immutable source session.
 type SessionReplay struct {
 	Meta    SessionMeta
 	Catalog []byte
 	Blobs   []RawBlob
 }
 
-// DatabaseIdentity is the stable cluster plus database identity used to refuse
-// a rebuild into the source database.
 type DatabaseIdentity struct {
 	SystemIdentifier string
 	DatabaseOID      uint32
 	Database         string
 }
 
-// schemaRelations is the exact application relation inventory the schema creates.
 var schemaRelations = []string{
 	"sync_sessions", "raw_blobs",
 	"heart_rate_samples", "step_samples", "temperature_samples", "hrv_samples",
@@ -40,13 +35,9 @@ var schemaRelations = []string{
 	"canonical_day_keys",
 }
 
-// databaseIdentitySQL reads the owner-only helper. It stays a single constant
-// outside sqlc because sqlc cannot resolve a RETURNS TABLE function's columns.
 const databaseIdentitySQL = `SELECT system_identifier, database_oid, database_name
 FROM public.rebuild_database_identity()`
 
-// Identity reads the owner-only stable identity helper and fails closed when
-// the caller lacks the owner privilege.
 func (s *Store) Identity(ctx context.Context) (DatabaseIdentity, error) {
 	var (
 		systemIdentifier string
@@ -70,8 +61,6 @@ func (s *Store) Identity(ctx context.Context) (DatabaseIdentity, error) {
 	}, nil
 }
 
-// ReadReplaySessions pages source sessions in (ended_at, session_id) order and
-// returns each one's complete raw set.
 func (v *TxView) ReadReplaySessions(ctx context.Context, after *ReplayCursor, limit int) ([]SessionReplay, error) {
 	if limit <= 0 {
 		return nil, invalidRow("sync_sessions", "replay page limit must be positive")
@@ -137,8 +126,6 @@ func (v *TxView) ReadReplaySessions(ctx context.Context, after *ReplayCursor, li
 	return out, nil
 }
 
-// IsFreshTarget verifies the actual relation shape and that every application
-// table is empty before a rebuild mutates the target.
 func (v *TxView) IsFreshTarget(ctx context.Context) (bool, error) {
 	relations, err := v.q.CountRequiredRelations(ctx, schemaRelations)
 	if err != nil {

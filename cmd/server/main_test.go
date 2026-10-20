@@ -18,7 +18,6 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// testKeys returns fixed non-published secrets for this package's tests.
 func testKeys() auth.KeySet {
 	var phone, web [32]byte
 	for i := range phone {
@@ -28,8 +27,6 @@ func testKeys() auth.KeySet {
 	return auth.NewKeySet(phone, web)
 }
 
-// offlineStore builds a store whose pool never connects. Routes that need the
-// database fail; /health and /version do not touch it.
 func offlineStore(t *testing.T) *store.Store {
 	t.Helper()
 	st, err := store.New(context.Background(),
@@ -41,7 +38,6 @@ func offlineStore(t *testing.T) *store.Store {
 	return st
 }
 
-// syncBuffer collects output written from another goroutine.
 type syncBuffer struct {
 	mu   sync.Mutex
 	text string
@@ -60,12 +56,10 @@ func (b *syncBuffer) String() string {
 	return b.text
 }
 
-// newLogger builds the same logger shape run uses.
 func newLogger(w io.Writer) *log.Logger {
 	return log.New(w, "", log.LstdFlags)
 }
 
-// awaitText waits for a bounded time until the buffer contains want.
 func awaitText(t *testing.T, buffer *syncBuffer, want string) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
@@ -78,7 +72,6 @@ func awaitText(t *testing.T, buffer *syncBuffer, want string) {
 	t.Fatalf("log never contained %q: %q", want, buffer.String())
 }
 
-// serveHealth starts a real listener that answers with status and body.
 func serveHealth(t *testing.T, status int, body string) string {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
@@ -197,7 +190,6 @@ func TestApplyBuildInfoUninjectedReportsNull(t *testing.T) {
 	}
 }
 
-// getJSON issues one unauthenticated GET and decodes the response body.
 func getJSON(t *testing.T, handler http.Handler, path string) map[string]any {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
