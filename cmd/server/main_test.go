@@ -249,7 +249,8 @@ func TestRunRejectsPositionalArguments(t *testing.T) {
 
 func TestRunHealthcheckUsesProbeWithoutConfig(t *testing.T) {
 	t.Setenv("DATABASE_URL", "")
-	t.Setenv("HELIOLYTICS_API_KEYS", "")
+	t.Setenv("HELIOLYTICS_WEB_API_KEY", "")
+	t.Setenv("HELIOLYTICS_PHONE_API_KEY", "")
 
 	target := serveHealth(t, http.StatusOK, "ok")
 	previous := probeTarget
@@ -276,8 +277,8 @@ func TestRunHealthcheckFailsWithoutAPI(t *testing.T) {
 func TestServeStartsAndStopsBoundedly(t *testing.T) {
 	t.Setenv("ADDR", "127.0.0.1:0")
 	t.Setenv("DATABASE_URL", "postgres://nobody:nobody@127.0.0.1:1/heliolytics_test?sslmode=disable")
-	t.Setenv("HELIOLYTICS_API_KEYS",
-		"phone."+strings.Repeat("11", 32)+",web."+strings.Repeat("22", 32))
+	t.Setenv("HELIOLYTICS_WEB_API_KEY", "web."+strings.Repeat("22", 32))
+	t.Setenv("HELIOLYTICS_PHONE_API_KEY", "phone."+strings.Repeat("11", 32))
 
 	cfg, err := config.Load()
 	if err != nil {

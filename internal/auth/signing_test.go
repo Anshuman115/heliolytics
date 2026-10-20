@@ -155,40 +155,38 @@ func TestWindowOKEdges(t *testing.T) {
 	}
 }
 
-func TestParseKeySet(t *testing.T) {
-	first := strings.Repeat("11", 32)
-	second := strings.Repeat("22", 32)
-	third := strings.Repeat("33", 32)
-
-	valid, err := ParseKeySet("phone." + first + ",web." + second)
+func TestParseKeys(t *testing.T) {
+	web := "web." + strings.Repeat("22", 32)
+	phone := "phone." + strings.Repeat("11", 32)
+	valid, err := ParseKeys(web, phone)
 	if err != nil {
-		t.Fatalf("valid spec rejected: %v", err)
+		t.Fatalf("valid keys rejected: %v", err)
 	}
 	if kids := valid.Kids(); len(kids) != 2 || kids[0] != KidPhone || kids[1] != KidWeb {
 		t.Fatalf("kids = %v", kids)
 	}
-	if _, err := ParseKeySet("web." + second + ",phone." + first); err != nil {
-		t.Fatalf("reordered spec rejected: %v", err)
+	cases := []struct {
+		name, web, phone string
+	}{
+		{"empty web", "", phone},
+		{"empty phone", web, ""},
+		{"swapped", phone, web},
+		{"unknown kid", "tablet." + strings.Repeat("22", 32), phone},
+		{"same secret", web, "phone." + strings.Repeat("22", 32)},
+		{"no dot", "web" + strings.Repeat("22", 32), phone},
+		{"short secret", web[:len(web)-2], phone},
+		{"uppercase hex", "web." + strings.Repeat("AA", 32), phone},
+		{"non hex secret", web, "phone." + strings.Repeat("zz", 32)},
+		{"uppercase kid", web, "PHONE." + strings.Repeat("11", 32)},
+		{"web list", web + "," + phone, phone},
+		{"phone list", web, phone + "," + web},
+		{"published web", "web.000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f", phone},
+		{"published phone", web, "phone.000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"},
 	}
-
-	cases := map[string]string{
-		"empty":             "",
-		"empty entry":       "phone." + first + ",",
-		"missing web":       "phone." + first,
-		"third kid":         "phone." + first + ",web." + second + ",tablet." + third,
-		"duplicate kid":     "phone." + first + ",phone." + second,
-		"same secret":       "phone." + first + ",web." + first,
-		"no dot":            "phone" + first + ",web." + second,
-		"short secret":      "phone." + first[:62] + ",web." + second,
-		"uppercase hex":     "phone." + strings.Repeat("AA", 32) + ",web." + second,
-		"non hex secret":    "phone." + strings.Repeat("zz", 32) + ",web." + second,
-		"uppercase kid":     "PHONE." + first + ",web." + second,
-		"published example": "phone.000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f,web." + second,
-	}
-	for name, spec := range cases {
-		t.Run(name, func(t *testing.T) {
-			if _, err := ParseKeySet(spec); err == nil {
-				t.Fatal("invalid key spec accepted")
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := ParseKeys(tc.web, tc.phone); err == nil {
+				t.Fatal("invalid keys accepted")
 			}
 		})
 	}

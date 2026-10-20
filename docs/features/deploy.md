@@ -99,8 +99,8 @@ prints a value and never saves the resolved configuration. Required shape:
 | `HELIOLYTICS_BUILT_AT` | RFC3339 UTC, for example `2026-10-20T04:00:00Z` |
 | `POSTGRES_PASSWORD` | 64 lowercase hex, schema owner |
 | `APP_DB_PASSWORD` | 64 lowercase hex, distinct from the owner password |
-| `HELIOLYTICS_API_KEYS` | `web.<64 hex>,phone.<64 hex>`, exactly those two kids |
-| `HELIOLYTICS_API_KEY` | The same `web.` key, for the web container only |
+| `HELIOLYTICS_WEB_API_KEY` | `web.<64 lowercase hex>`, passed to the API and web |
+| `HELIOLYTICS_PHONE_API_KEY` | `phone.<64 lowercase hex>`, distinct secret, passed only to the API |
 | `HELIOLYTICS_SESSION_SECRET` | 64 lowercase hex, unequal to every API secret |
 | `HELIOLYTICS_WEB_PASSWORD_HASH` | One line, single-quoted `scrypt$N=32768$r=8$p=3$<salt>$<hash>` |
 | `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` | `true` plus the connector `/32` in production |
@@ -108,8 +108,9 @@ prints a value and never saves the resolved configuration. Required shape:
 
 The password hash is generated in the web checkout with `npm run auth:hash-password`.
 Keep the whole value single-quoted, because Compose expands `$` in unquoted and
-double-quoted values. The API never receives the session secret, the web password
-hash or the web API key.
+double-quoted values. Enter each API key once in the env file. Compose passes both
+to the API and only the web key to the web container. The API never receives the
+session secret or the web password hash.
 
 ## Health and readiness
 

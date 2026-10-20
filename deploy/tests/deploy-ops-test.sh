@@ -156,8 +156,8 @@ write_env() {
     printf 'HELIOLYTICS_BUILT_AT=2026-10-20T00:00:00Z\n'
     printf 'POSTGRES_PASSWORD=%s\n' "$hex64_a"
     printf 'APP_DB_PASSWORD=%s\n' "$hex64_b"
-    printf 'HELIOLYTICS_API_KEYS=web.%s,phone.%s\n' "$hex64_c" "$hex64_d"
-    printf 'HELIOLYTICS_API_KEY=web.%s\n' "$hex64_c"
+    printf 'HELIOLYTICS_WEB_API_KEY=web.%s\n' "$hex64_c"
+    printf 'HELIOLYTICS_PHONE_API_KEY=phone.%s\n' "$hex64_d"
     printf 'HELIOLYTICS_SESSION_SECRET=%s\n' "$hex64_e"
     printf "HELIOLYTICS_WEB_PASSWORD_HASH='%s'\n" "$hash_value"
     printf 'TRUST_PROXY=true\n'
@@ -236,7 +236,7 @@ validate() {
   "$sandbox_deploy/validate-env.sh" \
     --project "$project" \
     --env-file "${1:-$valid_env}" \
-    --compose-file "$sandbox_deploy/docker-compose.yml" \
+    --compose-file "${2:-$sandbox_deploy/docker-compose.yml}" \
     --node-image "$node_image"
 }
 
@@ -261,6 +261,13 @@ mutate_env() {
   printf '%s' "$target"
 }
 
+mutate_compose() {
+  local name="$1" expression="$2"
+  local target="$sandbox_deploy/$name.yml"
+  sed "$expression" "$sandbox_deploy/docker-compose.yml" >"$target"
+  printf '%s' "$target"
+}
+
 expect_failure 'validator rejects an empty build SHA' \
   validate "$(mutate_env no_sha '^HELIOLYTICS_COMMIT=.*' 'HELIOLYTICS_COMMIT=')"
 expect_failure 'validator rejects a short build SHA' \
@@ -271,10 +278,20 @@ expect_failure 'validator rejects equal database passwords' \
   validate "$(mutate_env same_db "APP_DB_PASSWORD=$hex64_b" "APP_DB_PASSWORD=$hex64_a")"
 expect_failure 'validator rejects a reused session secret' \
   validate "$(mutate_env same_session "HELIOLYTICS_SESSION_SECRET=$hex64_e" "HELIOLYTICS_SESSION_SECRET=$hex64_c")"
-expect_failure 'validator rejects a missing web membership' \
-  validate "$(mutate_env no_web "HELIOLYTICS_API_KEY=web.$hex64_c" "HELIOLYTICS_API_KEY=web.$hex64_d")"
-expect_failure 'validator rejects a duplicate kid' \
-  validate "$(mutate_env dup_kid "web.$hex64_c,phone.$hex64_d" "web.$hex64_c,web.$hex64_d")"
+expect_failure 'validator rejects a web key with the phone prefix' \
+  validate "$(mutate_env web_prefix '^HELIOLYTICS_WEB_API_KEY=.*' "HELIOLYTICS_WEB_API_KEY=phone.$hex64_c")"
+expect_failure 'validator rejects a phone key with the web prefix' \
+  validate "$(mutate_env phone_prefix '^HELIOLYTICS_PHONE_API_KEY=.*' "HELIOLYTICS_PHONE_API_KEY=web.$hex64_d")"
+expect_failure 'validator rejects a missing web key' \
+  validate "$(mutate_env no_web '^HELIOLYTICS_WEB_API_KEY=.*' '')"
+expect_failure 'validator rejects a missing phone key' \
+  validate "$(mutate_env no_phone '^HELIOLYTICS_PHONE_API_KEY=.*' '')"
+expect_failure 'validator rejects a reused API secret' \
+  validate "$(mutate_env same_api '^HELIOLYTICS_PHONE_API_KEY=.*' "HELIOLYTICS_PHONE_API_KEY=phone.$hex64_c")"
+expect_failure 'validator rejects a list in a key slot' \
+  validate "$(mutate_env key_list '^HELIOLYTICS_WEB_API_KEY=.*' "HELIOLYTICS_WEB_API_KEY=web.$hex64_c,phone.$hex64_d")"
+expect_failure 'validator rejects a session secret matching the phone secret' \
+  validate "$(mutate_env phone_session '^HELIOLYTICS_SESSION_SECRET=.*' "HELIOLYTICS_SESSION_SECRET=$hex64_d")"
 expect_failure 'validator rejects the documented example secret' \
   validate "$(mutate_env example_secret "$hex64_d" '000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f')"
 expect_failure 'validator rejects wrong scrypt parameters' \
@@ -283,6 +300,19 @@ expect_failure 'validator rejects secure cookies without trusted proxy' \
   validate "$(mutate_env no_proxy '^TRUST_PROXY=.*' 'TRUST_PROXY=false')"
 expect_failure 'validator rejects a wide trusted CIDR' \
   validate "$(mutate_env wide_cidr '^TRUSTED_PROXY_CIDRS=.*' 'TRUSTED_PROXY_CIDRS=10.0.0.0/8')"
+
+expect_failure 'validator rejects a missing resolved API phone key' \
+  validate "$valid_env" "$(mutate_compose api_no_phone '/HELIOLYTICS_PHONE_API_KEY:/d')"
+expect_failure 'validator rejects a resolved API web key with the wrong prefix' \
+  validate "$valid_env" "$(mutate_compose api_web_prefix "/^  api:/,/^  web:/ s|HELIOLYTICS_WEB_API_KEY:.*|HELIOLYTICS_WEB_API_KEY: phone.$hex64_c|")"
+expect_failure 'validator rejects resolved API keys reusing a secret' \
+  validate "$valid_env" "$(mutate_compose api_same_secret "s|HELIOLYTICS_PHONE_API_KEY:.*|HELIOLYTICS_PHONE_API_KEY: phone.$hex64_c|")"
+expect_failure 'validator rejects a resolved web key not matching the API' \
+  validate "$valid_env" "$(mutate_compose web_mismatch '/^  web:/,$ s|HELIOLYTICS_WEB_API_KEY:.*|HELIOLYTICS_WEB_API_KEY: web.'"$hex64_d"'|')"
+expect_failure 'validator rejects the phone variable on the web service' \
+  validate "$valid_env" "$(mutate_compose web_phone '/^  web:/,$ s|API_INTERNAL_URL:.*|API_INTERNAL_URL: http://api:8080\n      HELIOLYTICS_PHONE_API_KEY: phone.'"$hex64_d"'|')"
+expect_failure 'validator rejects a phone key under another web variable' \
+  validate "$valid_env" "$(mutate_compose web_phone_alias '/^  web:/,$ s|API_INTERNAL_URL:.*|API_INTERNAL_URL: http://api:8080\n      UNEXPECTED_KEY: phone.'"$hex64_d"'|')"
 
 if validate "$valid_env" >"$work_dir/case.out" 2>&1; then
   if grep -q 'environment validation: PASS' "$work_dir/case.out"; then

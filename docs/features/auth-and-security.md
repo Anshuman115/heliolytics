@@ -106,11 +106,16 @@ the read step at all.
 
 ## Credentials and configuration
 
-`HELIOLYTICS_API_KEYS` holds exactly `web.<64 lowercase hex>` and
-`phone.<64 lowercase hex>`, in either order, with two distinct secrets. An empty
-entry, an unknown kid, a repeated kid, a non-hex secret or the published example
-secret fails startup: the server stores digests of known published and
-development secrets and refuses them.
+Configure both signing keys once:
+
+```dotenv
+HELIOLYTICS_WEB_API_KEY=web.<64 lowercase hex>
+HELIOLYTICS_PHONE_API_KEY=phone.<64 lowercase hex>
+```
+
+Each variable requires its matching prefix and the secrets must differ. A missing,
+empty, malformed or published example secret fails startup. The server stores
+digests of known published secrets and refuses them.
 
 `internal/config/config.go` reads the environment once and returns an error naming
 the variable. It never prints a value, never falls back on a malformed value and
@@ -121,7 +126,8 @@ reports null when a build supplied neither.
 | Variable | Default | Notes |
 |---|---|---|
 | `DATABASE_URL` | none | Required |
-| `HELIOLYTICS_API_KEYS` | none | Required, exact grammar above |
+| `HELIOLYTICS_WEB_API_KEY` | none | Required, `web.<64 lowercase hex>`, GET only |
+| `HELIOLYTICS_PHONE_API_KEY` | none | Required, `phone.<64 lowercase hex>`, read and write |
 | `ADDR` | `:8080` | Listen address; an explicit empty value is an error |
 | `RATE_LIMIT_PER_MIN` | `120` | Per-client token bucket |
 | `RATE_LIMIT_PER_KEY_PER_MIN` | `600` | Per-kid token bucket |

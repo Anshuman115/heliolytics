@@ -118,8 +118,8 @@ HELIOLYTICS_WEB_COMMIT=
 HELIOLYTICS_BUILT_AT=
 POSTGRES_PASSWORD=
 APP_DB_PASSWORD=
-HELIOLYTICS_API_KEYS=
-HELIOLYTICS_API_KEY=
+HELIOLYTICS_WEB_API_KEY=
+HELIOLYTICS_PHONE_API_KEY=
 HELIOLYTICS_SESSION_SECRET=
 HELIOLYTICS_WEB_PASSWORD_HASH=
 API_PORT=
@@ -163,8 +163,8 @@ while IFS= read -r line || [[ -n "$line" ]]; do
     HELIOLYTICS_BUILT_AT) HELIOLYTICS_BUILT_AT="$value" ;;
     POSTGRES_PASSWORD) POSTGRES_PASSWORD="$value" ;;
     APP_DB_PASSWORD) APP_DB_PASSWORD="$value" ;;
-    HELIOLYTICS_API_KEYS) HELIOLYTICS_API_KEYS="$value" ;;
-    HELIOLYTICS_API_KEY) HELIOLYTICS_API_KEY="$value" ;;
+    HELIOLYTICS_WEB_API_KEY) HELIOLYTICS_WEB_API_KEY="$value" ;;
+    HELIOLYTICS_PHONE_API_KEY) HELIOLYTICS_PHONE_API_KEY="$value" ;;
     HELIOLYTICS_SESSION_SECRET) HELIOLYTICS_SESSION_SECRET="$value" ;;
     HELIOLYTICS_WEB_PASSWORD_HASH) HELIOLYTICS_WEB_PASSWORD_HASH="$value" ;;
     API_PORT) API_PORT="$value" ;;
@@ -201,8 +201,8 @@ require_value HELIOLYTICS_WEB_COMMIT "$HELIOLYTICS_WEB_COMMIT"
 require_value HELIOLYTICS_BUILT_AT "$HELIOLYTICS_BUILT_AT"
 require_value POSTGRES_PASSWORD "$POSTGRES_PASSWORD"
 require_value APP_DB_PASSWORD "$APP_DB_PASSWORD"
-require_value HELIOLYTICS_API_KEYS "$HELIOLYTICS_API_KEYS"
-require_value HELIOLYTICS_API_KEY "$HELIOLYTICS_API_KEY"
+require_value HELIOLYTICS_WEB_API_KEY "$HELIOLYTICS_WEB_API_KEY"
+require_value HELIOLYTICS_PHONE_API_KEY "$HELIOLYTICS_PHONE_API_KEY"
 require_value HELIOLYTICS_SESSION_SECRET "$HELIOLYTICS_SESSION_SECRET"
 require_value HELIOLYTICS_WEB_PASSWORD_HASH "$HELIOLYTICS_WEB_PASSWORD_HASH"
 require_value TRUST_PROXY "$TRUST_PROXY"
@@ -220,36 +220,11 @@ require_value INGRESS_SUBNET "$INGRESS_SUBNET"
 [[ "$APP_DB_PASSWORD" =~ $hex64 ]] || fail APP_DB_PASSWORD 'must be 64 lowercase hex characters'
 [[ "$POSTGRES_PASSWORD" != "$APP_DB_PASSWORD" ]] || fail APP_DB_PASSWORD 'owner and app database passwords must differ'
 
-phone_secret=
-web_secret=
-ring_entries=0
-IFS=',' read -r -a ring <<<"$HELIOLYTICS_API_KEYS"
-for entry in "${ring[@]}"; do
-  ring_entries=$((ring_entries + 1))
-  if [[ ! "$entry" =~ ^(phone|web)\.[0-9a-f]{64}$ ]]; then
-    fail HELIOLYTICS_API_KEYS 'each entry must be <phone|web>.<64 lowercase hex>'
-  fi
-  case "${entry%%.*}" in
-    phone)
-      [[ -z "$phone_secret" ]] || fail HELIOLYTICS_API_KEYS 'duplicate phone kid'
-      phone_secret="${entry#*.}"
-      ;;
-    web)
-      [[ -z "$web_secret" ]] || fail HELIOLYTICS_API_KEYS 'duplicate web kid'
-      web_secret="${entry#*.}"
-      ;;
-    *)
-      fail HELIOLYTICS_API_KEYS 'unknown kid'
-      ;;
-  esac
-done
-if [[ $ring_entries -ne 2 || -z "$phone_secret" || -z "$web_secret" ]]; then
-  fail HELIOLYTICS_API_KEYS 'exactly one phone and one web key are required'
-fi
-[[ "$phone_secret" != "$web_secret" ]] || fail HELIOLYTICS_API_KEYS 'phone and web keys must differ'
-
-[[ "$HELIOLYTICS_API_KEY" =~ ^web\.[0-9a-f]{64}$ ]] || fail HELIOLYTICS_API_KEY 'must be web.<64 lowercase hex>'
-[[ "${HELIOLYTICS_API_KEY#*.}" == "$web_secret" ]] || fail HELIOLYTICS_API_KEY 'web key is not present in the API key ring'
+[[ "$HELIOLYTICS_WEB_API_KEY" =~ ^web\.[0-9a-f]{64}$ ]] || fail HELIOLYTICS_WEB_API_KEY 'must be web.<64 lowercase hex>'
+[[ "$HELIOLYTICS_PHONE_API_KEY" =~ ^phone\.[0-9a-f]{64}$ ]] || fail HELIOLYTICS_PHONE_API_KEY 'must be phone.<64 lowercase hex>'
+web_secret="${HELIOLYTICS_WEB_API_KEY#*.}"
+phone_secret="${HELIOLYTICS_PHONE_API_KEY#*.}"
+[[ "$phone_secret" != "$web_secret" ]] || fail HELIOLYTICS_PHONE_API_KEY 'phone and web keys must differ'
 
 [[ "$HELIOLYTICS_SESSION_SECRET" =~ $hex64 ]] || fail HELIOLYTICS_SESSION_SECRET 'must be 64 lowercase hex characters'
 [[ "$HELIOLYTICS_SESSION_SECRET" != "$phone_secret" ]] || fail HELIOLYTICS_SESSION_SECRET 'must differ from every API secret'

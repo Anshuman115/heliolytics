@@ -207,7 +207,6 @@ func TestCompiledServerLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("lookup web: %v", err)
 	}
-	keysSpec := "phone." + phoneKey.SecretHex() + ",web." + webKey.SecretHex()
 
 	address := freeLoopbackAddress(t)
 	base := "http://" + address
@@ -216,10 +215,11 @@ func TestCompiledServerLifecycle(t *testing.T) {
 	var output lockedBuffer
 	command := exec.Command(binary)
 	command.Env = processEnv(map[string]string{
-		"ADDR":                 address,
-		"DATABASE_URL":         dsn,
-		"HELIOLYTICS_API_KEYS": keysSpec,
-		"TRUST_PROXY":          "false",
+		"ADDR":                      address,
+		"DATABASE_URL":              dsn,
+		"HELIOLYTICS_WEB_API_KEY":   "web." + webKey.SecretHex(),
+		"HELIOLYTICS_PHONE_API_KEY": "phone." + phoneKey.SecretHex(),
+		"TRUST_PROXY":               "false",
 	})
 	command.Stdout, command.Stderr = &output, &output
 	if err := command.Start(); err != nil {

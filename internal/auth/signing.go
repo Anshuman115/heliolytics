@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
@@ -180,50 +181,33 @@ var burnedSecretDigests = map[string]struct{}{
 	"630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd": {},
 }
 
-func ParseKeySet(spec string) (KeySet, error) {
-	if strings.TrimSpace(spec) == "" {
-		return KeySet{}, errors.New("auth: api keys are required")
+func ParseKeys(webValue, phoneValue string) (KeySet, error) {
+	web, err := parseKey(webValue, KidWeb)
+	if err != nil {
+		return KeySet{}, fmt.Errorf("HELIOLYTICS_WEB_API_KEY: %w", err)
 	}
-	secrets := make(map[string][32]byte, 2)
-	for _, entry := range strings.Split(spec, ",") {
-		if entry == "" {
-			return KeySet{}, errors.New("auth: api keys contain an empty entry")
-		}
-		kid, secretHex, ok := strings.Cut(entry, ".")
-		if !ok || !kidPattern.MatchString(kid) {
-			return KeySet{}, errors.New("auth: api key entries must be <kid>.<64 lowercase hex>")
-		}
-		if _, seen := secrets[kid]; seen {
-			return KeySet{}, errors.New("auth: api keys contain a duplicate kid")
-		}
-		if len(secretHex) != hex.EncodedLen(32) || !lowerHex.MatchString(secretHex) {
-			return KeySet{}, errors.New("auth: api key secrets must be 64 lowercase hex characters")
-		}
-		raw, err := hex.DecodeString(secretHex)
-		if err != nil {
-			return KeySet{}, errors.New("auth: api key secret is not hexadecimal")
-		}
-		var secret [32]byte
-		copy(secret[:], raw)
-		digest := sha256.Sum256(secret[:])
-		if _, burned := burnedSecretDigests[hex.EncodeToString(digest[:])]; burned {
-			return KeySet{}, errors.New("auth: api key secret is a published example")
-		}
-		secrets[kid] = secret
-	}
-	phone, hasPhone := secrets[KidPhone]
-	web, hasWeb := secrets[KidWeb]
-	if !hasPhone || !hasWeb {
-		return KeySet{}, errors.New("auth: api keys must contain exactly the phone and web kids")
-	}
-	if len(secrets) != 2 {
-		return KeySet{}, errors.New("auth: api keys must contain exactly the phone and web kids")
+	phone, err := parseKey(phoneValue, KidPhone)
+	if err != nil {
+		return KeySet{}, fmt.Errorf("HELIOLYTICS_PHONE_API_KEY: %w", err)
 	}
 	if phone == web {
-		return KeySet{}, errors.New("auth: phone and web secrets must differ")
+		return KeySet{}, errors.New("HELIOLYTICS_PHONE_API_KEY: must differ from HELIOLYTICS_WEB_API_KEY")
 	}
-	return KeySet{keys: map[string]Key{
-		KidPhone: {Kid: KidPhone, secret: phone},
-		KidWeb:   {Kid: KidWeb, secret: web},
-	}}, nil
+	return NewKeySet(phone, web), nil
+}
+
+func parseKey(value, kid string) ([32]byte, error) {
+	var secret [32]byte
+	secretHex, ok := strings.CutPrefix(value, kid+".")
+	if !ok || len(secretHex) != hex.EncodedLen(len(secret)) || !lowerHex.MatchString(secretHex) {
+		return secret, fmt.Errorf("auth: must be %s.<64 lowercase hex>", kid)
+	}
+	if _, err := hex.Decode(secret[:], []byte(secretHex)); err != nil {
+		return secret, errors.New("auth: secret is not hexadecimal")
+	}
+	digest := sha256.Sum256(secret[:])
+	if _, burned := burnedSecretDigests[hex.EncodeToString(digest[:])]; burned {
+		return secret, errors.New("auth: secret is a published example")
+	}
+	return secret, nil
 }
