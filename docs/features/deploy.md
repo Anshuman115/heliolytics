@@ -92,6 +92,16 @@ docker compose --project-name deploy --env-file deploy/.env \
 `schema.sql` on a new volume. There are no migrations, no compatibility paths and no
 restore step.
 
+## Reset the database
+
+```sh
+deploy/reset-db.sh
+```
+
+Defaults: project `deploy`, volume `deploy_pgdata`, and the env and compose files in
+`deploy/`. The script validates them, asks for `DELETE`, removes the stack with its
+volume, and starts it again. The database initializes from scratch.
+
 ## Update api and web
 
 ```sh
