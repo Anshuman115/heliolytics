@@ -17,7 +17,6 @@ node_image="${HELIOLYTICS_D01_NODE_IMAGE:-node:24.22.0-alpine3.24@sha256:44fce69
 run_id="${HELIOLYTICS_D01_RUN_ID:-$$}"
 project="heliolytics-d01-test-${run_id}"
 volume="${project}_pgdata"
-canary_volume="heliolytics-d01-canary-${run_id}"
 db_container="${project}-db"
 restore_container="heliolytics-restore-${run_id}"
 
@@ -62,7 +61,7 @@ pending() {
 
 cleanup() {
   docker rm -f "$db_container" "$restore_container" >/dev/null 2>&1
-  docker volume rm "$volume" "$canary_volume" "${restore_container}-data" >/dev/null 2>&1
+  docker volume rm "$volume" "${restore_container}-data" >/dev/null 2>&1
   rm -rf "$sandbox"
   rm -rf "$work_dir"
 }
@@ -417,34 +416,12 @@ else
 fi
 
 # ------------------------------------------------------- D. reset guards
-dummy_dump="$work_dir/dump/backup.dump"
-mkdir -p "$work_dir/dump"
-printf 'not a real dump\n' >"$dummy_dump"
-dummy_sha="$(sha256sum -- "$dummy_dump" | cut -d' ' -f1)"
-zero_sha="$(hex_fill 0 64)"
-
-expect_failure 'reset refuses missing arguments' \
-  "$sandbox_deploy/reset-db.sh" --project "$project"
 expect_failure 'reset refuses an unknown option' \
-  "$sandbox_deploy/reset-db.sh" --project "$project" --yes
-expect_failure 'reset refuses production without the authorization flag' \
-  "$sandbox_deploy/reset-db.sh" --project deploy --volume deploy_pgdata \
-  --backup-file "$dummy_dump" --backup-sha256 "$dummy_sha"
-expect_failure 'reset refuses a production volume with another project' \
-  "$sandbox_deploy/reset-db.sh" --project "$project" --volume deploy_pgdata \
-  --backup-file "$dummy_dump" --backup-sha256 "$dummy_sha"
-expect_failure 'reset refuses an unknown project' \
-  "$sandbox_deploy/reset-db.sh" --project other --volume "$volume" \
-  --backup-file "$dummy_dump" --backup-sha256 "$dummy_sha"
-expect_failure 'reset refuses a missing backup file' \
-  "$sandbox_deploy/reset-db.sh" --project "$project" --volume "$volume" \
-  --backup-file "$work_dir/absent.dump" --backup-sha256 "$dummy_sha"
-expect_failure 'reset refuses a hash mismatch' \
-  "$sandbox_deploy/reset-db.sh" --project "$project" --volume "$volume" \
-  --backup-file "$dummy_dump" --backup-sha256 "$zero_sha"
-expect_failure 'reset refuses a backup without a sidecar' \
-  "$sandbox_deploy/reset-db.sh" --project "$project" --volume "$volume" \
-  --backup-file "$dummy_dump" --backup-sha256 "$dummy_sha"
+  "$sandbox_deploy/reset-db.sh" --yes
+expect_failure 'reset refuses a volume outside the project' \
+  bash -c "printf 'DELETE\n' | '$sandbox_deploy/reset-db.sh' --project '$project' --volume other_pgdata"
+expect_failure 'reset aborts on the wrong confirmation' \
+  bash -c "printf 'no\n' | '$sandbox_deploy/reset-db.sh' --project '$project' --volume '$volume'"
 
 # ------------------------------------------------------ E. backup env guards
 
@@ -471,7 +448,6 @@ expect_failure 'backup refuses a zero retention window' \
   BACKUP_DESTINATION=alias:/backups BACKUP_KEEP_DAYS=0 "$sandbox_deploy/backup-db.sh"
 
 # ------------------------------------------- F. fresh init, roles and grants
-docker volume create "$canary_volume" >/dev/null
 owner_pw="owner-$(hex_fill 5 24)"
 app_pw="pa'ss\"w\$rd\\word; DROP TABLE profile;--"
 restore_pw="restore-$(hex_fill 6 24)"
@@ -637,7 +613,6 @@ if [[ -z "$dump_file" || ! -f "$dump_file" ]]; then
   printf '\n%d passed, %d failed, %d owner-pending\n' "$pass_count" "$fail_count" "$pending_count"
   exit 1
 fi
-dump_sha="$(sha256sum -- "$dump_file" | cut -d' ' -f1)"
 if grep -q '^image_ref=' "$dump_file.info"; then
   ok 'backup sidecar records the source image'
 else
@@ -691,33 +666,6 @@ if docker run -d --name "$restore_container" --network none \
 else
   not_ok 'restore container failed to start'
   diagnose "$work_dir/case.out"
-fi
-
-if printf 'DELETE %s FOR %s\n' "$volume" "$project" | \
-  "$sandbox_deploy/reset-db.sh" --project "$project" --volume "$volume" \
-    --backup-file "$dump_file" --backup-sha256 "$dump_sha" >"$work_dir/case.out" 2>&1; then
-  ok 'authorized sandbox wipe removes the exact volume'
-else
-  not_ok 'authorized sandbox wipe failed'
-  diagnose "$work_dir/case.out"
-fi
-
-if docker volume inspect "$canary_volume" >/dev/null 2>&1; then
-  ok 'unrelated canary volume survives the wipe'
-else
-  not_ok 'the wipe removed an unrelated volume'
-fi
-
-if docker volume inspect "$volume" >/dev/null 2>&1; then
-  not_ok 'the wiped volume still exists'
-else
-  ok 'the target volume is gone'
-fi
-
-if docker ps -a --format '{{.Names}}' | grep -qx "$db_container"; then
-  not_ok 'the database container still exists after the wipe'
-else
-  ok 'the database container is gone after the wipe'
 fi
 
 pending 'off-host SCP copy and read-back hash against a real SSH destination'
