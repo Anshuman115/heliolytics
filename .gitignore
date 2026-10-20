@@ -41,7 +41,6 @@ PLAN.md
 deploy/DEV.md
 _learnspace/
 lessons/
-.github/
 
 # Documentation: only feature docs are published.
 docs/*
