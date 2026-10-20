@@ -43,6 +43,9 @@ keep_days="${BACKUP_KEEP_DAYS:-30}"
 [[ -f "$deploy_dir/docker-compose.yml" && -f "$deploy_dir/.env" ]] \
   || fail 'canonical deploy compose file or env file is missing'
 
+compose_project="$(sed -n 's/^COMPOSE_PROJECT_NAME=//p' "$deploy_dir/.env" | tail -n 1)"
+[[ -n "$compose_project" ]] || fail 'COMPOSE_PROJECT_NAME is empty in the deploy env file'
+
 [[ -n "$backup_dir" ]] || fail 'BACKUP_DIR is required'
 [[ "$backup_dir" == /* ]] || fail 'BACKUP_DIR must be an absolute path'
 mkdir -p -- "$backup_dir"
@@ -72,9 +75,7 @@ resolve_container() {
   project="$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}' "$candidate" 2>/dev/null)" \
     || fail 'source container labels cannot be read'
   [[ "$service" == "db" ]] || fail 'source container is not the compose db service'
-  if [[ "$project" != "deploy" && ! "$project" =~ ^heliolytics-d01-[a-z0-9][a-z0-9-]*$ ]]; then
-    fail 'source container project is neither deploy nor a heliolytics-d01-* sandbox'
-  fi
+  [[ "$project" == "$compose_project" ]] || fail "source container is not in project $compose_project"
   local mounted
   mounted="$(docker inspect --format \
     '{{range .Mounts}}{{if eq .Destination "/var/lib/postgresql/data"}}{{.Type}} {{.Name}}{{end}}{{end}}' \
@@ -88,12 +89,12 @@ if [[ -n "$source_container" ]]; then
   db_id="$(resolve_container "$source_container")"
 else
   db_id="$(docker ps \
-    --filter 'label=com.docker.compose.project=deploy' \
+    --filter "label=com.docker.compose.project=$compose_project" \
     --filter 'label=com.docker.compose.service=db' \
     --format '{{.ID}}')"
-  [[ -n "$db_id" ]] || fail 'no running database container found for project deploy'
+  [[ -n "$db_id" ]] || fail "no running database container found for project $compose_project"
   [[ "$(printf '%s\n' "$db_id" | wc -l | tr -d ' ')" == "1" ]] \
-    || fail 'more than one database container matches project deploy'
+    || fail "more than one database container matches project $compose_project"
   db_id="$(resolve_container "$db_id")"
 fi
 

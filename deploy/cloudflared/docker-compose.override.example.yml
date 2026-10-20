@@ -1,0 +1,8 @@
+# Optional. Copy to docker-compose.override.yml when the tunnel also routes
+# services that run on the host, then use http://host.docker.internal:<port>
+# as their origin in the Cloudflare dashboard. A host firewall must allow
+# INGRESS_SUBNET to reach those ports.
+services:
+  cloudflared:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"

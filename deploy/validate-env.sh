@@ -320,10 +320,10 @@ if [[ ! -f "$helper" ]]; then
 fi
 
 compose_config() {
-  # Profiles are enabled so the resolved output still proves the optional
-  # services stay behind them. Nothing is built or started here.
+  # The tools profile is enabled so the resolved output proves Adminer stays
+  # behind it. Nothing is built or started here.
   docker compose --project-name "$project" --env-file "$env_file" \
-    --profile tools --profile tunnel \
+    --profile tools \
     --file "$compose_file" config --format json
 }
 

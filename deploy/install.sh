@@ -1,35 +1,55 @@
 #!/usr/bin/env bash
-# Creates the private deploy/.env from the template and stops.
-# It never builds, pulls, starts or contacts anything, and it never generates secrets.
+# Creates deploy/.env and fills every empty secret. Existing values are never changed.
 set -euo pipefail
 umask 077
+# shellcheck source=lib.sh
+source "$(dirname -- "${BASH_SOURCE[0]}")/lib.sh"
 
-script_dir=
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-cd -- "$script_dir"
+(($# == 0)) || die "usage: $0"
+command -v openssl >/dev/null || die 'openssl is required'
+command -v docker >/dev/null || die 'docker is required'
 
-if [[ -f .env ]]; then
-  printf 'deploy/.env already exists; leaving its bytes unchanged.\n'
-  printf 'Next steps:\n'
-  printf '  1. Fill every empty value in deploy/.env; keep the password hash single-quoted.\n'
-  printf '  2. Run deploy/validate-env.sh with the canonical project, env and compose files.\n'
-  printf '  3. Build and start explicitly: docker compose --project-name deploy up -d --build\n'
-  exit 0
+if [[ ! -f "$env_file" ]]; then
+  cp -- "$deploy_dir/.env.example" "$env_file"
+  chmod 600 -- "$env_file"
+  printf 'created %s\n' "$env_file"
 fi
 
-if [[ ! -f .env.example ]]; then
-  printf 'deploy/.env.example is missing; restore it from the repository.\n' >&2
-  exit 1
+hex() {
+  openssl rand -hex 32
+}
+
+env_put POSTGRES_PASSWORD "$(hex)" fill
+env_put APP_DB_PASSWORD "$(hex)" fill
+env_put HELIOLYTICS_WEB_API_KEY "web.$(hex)" fill
+env_put HELIOLYTICS_PHONE_API_KEY "phone.$(hex)" fill
+env_put HELIOLYTICS_SESSION_SECRET "$(hex)" fill
+
+interactive=0
+[[ -t 0 && -t 1 ]] && interactive=1
+
+if grep -q '^HELIOLYTICS_WEB_PASSWORD_HASH=$' "$env_file"; then
+  if ((interactive)) && [[ -f "$web_dir/scripts/hash-password.mjs" ]]; then
+    printf 'Choose the web dashboard password.\n'
+    out_dir="$(mktemp -d)"
+    trap 'rm -rf "$out_dir"' EXIT
+    docker run --rm -it --network none --user "$(id -u):$(id -g)" \
+      -v "$web_dir:/web:ro" -v "$out_dir:/out" -w /web \
+      node:24.22.0-alpine3.24@sha256:44fce696f38ba8c987c4db89954051000bbd05ffd8d8659ba15ed4a8602e937f \
+      sh -c 'node scripts/hash-password.mjs >/out/hash'
+    hash="$(tr -d '\r\n' <"$out_dir/hash")"
+    env_put HELIOLYTICS_WEB_PASSWORD_HASH "'$hash'" fill
+  else
+    printf 'HELIOLYTICS_WEB_PASSWORD_HASH is empty; run deploy/install.sh in a terminal with the web checkout at %s\n' "$web_dir"
+  fi
 fi
 
-cp -- .env.example .env
-chmod 600 -- .env
+if grep -q '^CLOUDFLARE_TUNNEL_TOKEN=$' "$env_file" && ((interactive)); then
+  read -r -s -p 'Cloudflare tunnel token (Enter to skip): ' token
+  printf '\n'
+  [[ -z "$token" ]] || env_put CLOUDFLARE_TUNNEL_TOKEN "$token" fill
+fi
 
-printf 'Created deploy/.env mode 0600 from the template.\n'
-printf 'Every required value is still empty, so validation will fail until you fill it.\n'
-printf 'Next steps:\n'
-printf '  1. Generate secrets with openssl rand -hex 32 and the hash with npm run auth:hash-password.\n'
-printf '  2. Fill deploy/.env; keep HELIOLYTICS_WEB_PASSWORD_HASH single-quoted as one line.\n'
-printf '  3. Run deploy/validate-env.sh with the canonical project, env and compose files.\n'
-printf '  4. Build and start explicitly: docker compose --project-name deploy up -d --build\n'
-exit 0
+printf '%s is ready.\n' "$env_file"
+printf 'Configure the phone app with HELIOLYTICS_PHONE_API_KEY from that file.\n'
+printf 'Next: deploy/deploy-all.sh\n'

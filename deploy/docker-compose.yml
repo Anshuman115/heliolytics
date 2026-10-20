@@ -1,8 +1,6 @@
-# docker compose --project-name deploy --env-file deploy/.env \
-#   --file deploy/docker-compose.yml up -d --build
-
 services:
   db:
+    container_name: heliolytics-db
     image: timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f
     restart: unless-stopped
     stop_grace_period: 60s
@@ -61,6 +59,7 @@ services:
         max-file: "3"
 
   api:
+    container_name: heliolytics-api
     build:
       context: ..
       dockerfile: Dockerfile
@@ -113,6 +112,7 @@ services:
         max-file: "3"
 
   web:
+    container_name: heliolytics-web
     build:
       context: ../../heliolytics-web
       dockerfile: Dockerfile
@@ -169,6 +169,7 @@ services:
         max-file: "3"
 
   adminer:
+    container_name: heliolytics-adminer
     image: adminer:6.1.2-standalone@sha256:49a7d30e71de97fb18933ffe7d46cc2b343c49fd7a63a7791c8be2548eb65115
     profiles:
       - tools
@@ -193,32 +194,6 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  cloudflared:
-    image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
-    profiles:
-      - tunnel
-    restart: unless-stopped
-    stop_grace_period: 10s
-    command: ["tunnel", "--no-autoupdate", "run"]
-    environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
-    depends_on:
-      api:
-        condition: service_healthy
-      web:
-        condition: service_healthy
-    networks:
-      ingress:
-        ipv4_address: ${CLOUDFLARED_IP:-172.28.0.10}
-    mem_limit: 256m
-    cpus: 0.5
-    pids_limit: 128
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-
 networks:
   # Database traffic. The subnet is fixed so deploy/pg_hba.conf matches it.
   data:
@@ -228,6 +203,7 @@ networks:
         - subnet: ${DATA_SUBNET:-172.30.0.0/24}
   application:
     internal: true
+  # The tunnel connector joins this network from deploy/cloudflared.
   ingress:
     driver: bridge
     ipam:
@@ -238,5 +214,5 @@ networks:
     driver: bridge
 
 volumes:
-  # Keep this key: production data lives in deploy_pgdata.
+  # Reset and backup scripts find the database volume by this key.
   pgdata:

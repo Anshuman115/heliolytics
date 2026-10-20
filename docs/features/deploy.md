@@ -1,126 +1,109 @@
 # Deployment and operations
 
-One host, Docker Compose. Beta data is disposable: a clean deploy removes the
-database volume and recreates it from `schema.sql`.
+One host running Docker Compose. The backend checkout and the web checkout sit side
+by side:
+
+```text
+projects/
+  heliolytics/       this repository
+  heliolytics-web/   the web dashboard
+```
+
+## Quick start
+
+```sh
+cd projects/heliolytics
+deploy/install.sh          # creates deploy/.env and generates every secret
+deploy/deploy-all.sh       # builds and starts db, api and web
+deploy/deploy-cloudflare.sh   # optional: starts the Cloudflare tunnel connector
+```
+
+`install.sh` asks for the web dashboard password and, optionally, the Cloudflare
+tunnel token. It never overwrites a value that is already set, so it is safe to run
+again. Configure the phone app with `HELIOLYTICS_PHONE_API_KEY` from `deploy/.env`.
+
+## Scripts
+
+| Script | Does | Leaves alone |
+|---|---|---|
+| `deploy/install.sh` | Creates `deploy/.env` and fills empty secrets | existing values |
+| `deploy/deploy.sh` | Rebuilds and restarts `api` | database, web, tunnel, Adminer |
+| `deploy/deploy-all.sh` | Rebuilds and starts `db`, `api` and `web` | data, tunnel, Adminer |
+| `deploy/reset-db.sh` | Deletes the database volume, then rebuilds `db`, `api` and `web` | tunnel, Adminer |
+| `deploy/deploy-cloudflare.sh` | Starts or updates the tunnel connector | everything else |
+
+`deploy.sh` and `deploy-all.sh` refuse a checkout that is not on a clean `main`.
+They write the deployed commits and build time into `deploy/.env`, validate the
+configuration, and only then build. `reset-db.sh` asks you to type `DELETE`.
 
 ## Services
 
-Run every command from the backend checkout:
+| Service | Container | Image or build | Port |
+|---|---|---|---|
+| `db` | `heliolytics-db` | `timescale/timescaledb:2.30.2-pg16` | none |
+| `api` | `heliolytics-api` | `Dockerfile` at the repo root | `127.0.0.1:8080` |
+| `web` | `heliolytics-web` | `../heliolytics-web/Dockerfile` | `127.0.0.1:3000` |
+| `adminer` | `heliolytics-adminer` | `adminer:6.1.2-standalone`, `tools` profile | `127.0.0.1:8081` |
+| `cloudflared` | `cloudflared` | `cloudflare/cloudflared:2026.10.1`, own project | none |
+
+`db`, `api`, `web` and `adminer` belong to the Compose project named by
+`COMPOSE_PROJECT_NAME` in `deploy/.env` (default `heliolytics`). The database volume
+is `<project>_pgdata`. Start Adminer when you need it:
 
 ```sh
-cd ~/projects/heliolytics
-docker compose --project-name deploy --env-file deploy/.env \
-  --file deploy/docker-compose.yml <command>
+docker compose --project-name <project> --env-file deploy/.env \
+  --file deploy/docker-compose.yml --profile tools up -d adminer
 ```
-
-| Service | Image or build | Port | Profile |
-|---|---|---|---|
-| `db` | `timescale/timescaledb:2.30.2-pg16` | none | default |
-| `api` | `Dockerfile` at the repo root | `127.0.0.1:8080` | default |
-| `web` | sibling `heliolytics-web/Dockerfile` | `127.0.0.1:3000` | default |
-| `adminer` | `adminer:6.1.2-standalone` | `127.0.0.1:8081` | `tools` |
-| `cloudflared` | `cloudflare/cloudflared:2026.10.1` | none | `tunnel` |
-
-`db`, `api` and `web` start by default. `adminer` and `cloudflared` start only when
-their profile is named. The connector takes the static address `CLOUDFLARED_IP`.
 
 Networks:
 
 - `data` is internal and carries API to database traffic. `DATA_SUBNET` must match
   the host lines in `deploy/pg_hba.conf`.
 - `application` is internal and carries web to API traffic.
-- `ingress` is a bridge network with egress. `TRUSTED_PROXY_CIDRS` must contain the
-  connector address as a single host.
+- `ingress` is a bridge network with egress, named `<project>_ingress`. The tunnel
+  connector joins it at `CLOUDFLARED_IP`.
 - `tools` is a bridge network for the Adminer loopback port.
+
+## Cloudflare tunnel
+
+`deploy/cloudflared/docker-compose.yml` runs the connector as a separate Compose
+project named `cloudflared`. One tunnel can therefore serve other applications on
+the same host, and no Heliolytics script stops or recreates it.
+
+1. In Cloudflare Zero Trust, create a tunnel and copy its token into
+   `CLOUDFLARE_TUNNEL_TOKEN`.
+2. Add public hostnames with the origins `http://api:8080` and `http://web:3000`.
+3. Run `deploy/deploy-cloudflare.sh` after `deploy/deploy-all.sh` has created the
+   ingress network.
+
+To also route services that run directly on the host, copy
+`deploy/cloudflared/docker-compose.override.example.yml` to
+`deploy/cloudflared/docker-compose.override.yml`, use
+`http://host.docker.internal:<port>` as their origin, and allow `INGRESS_SUBNET`
+to reach those ports in the host firewall. The override file is not committed.
 
 ## Configuration
 
-`deploy/.env` is the only secret file. Keep it at mode 0600.
-
-```sh
-deploy/install.sh
-```
-
-The installer copies `deploy/.env.example` when `.env` is absent and stops. Fill
-every value; the template lists the generation command for each one. Keep
-`HELIOLYTICS_WEB_PASSWORD_HASH` single-quoted so Compose does not expand `$`.
-
-Validate before building:
-
-```sh
-deploy/validate-env.sh --project deploy \
-  --env-file "$PWD/deploy/.env" \
-  --compose-file "$PWD/deploy/docker-compose.yml"
-```
-
-The validator checks the raw file and the resolved Compose configuration. Required
-shapes:
+`deploy/.env` is the only secret file and stays at mode 0600. `deploy/.env.example`
+shows the command that generates each value. The deploy scripts run
+`deploy/validate-env.sh`, which checks the raw file and the resolved Compose
+configuration:
 
 | Variable | Rule |
 |---|---|
-| `HELIOLYTICS_COMMIT`, `HELIOLYTICS_WEB_COMMIT` | full lowercase 40-character SHA |
-| `HELIOLYTICS_BUILT_AT` | RFC3339 UTC |
+| `COMPOSE_PROJECT_NAME` | Compose project for `db`, `api`, `web` and `adminer` |
+| `HELIOLYTICS_COMMIT`, `HELIOLYTICS_WEB_COMMIT` | full lowercase 40-character SHA, written by the deploy scripts |
+| `HELIOLYTICS_BUILT_AT` | RFC3339 UTC, written by the deploy scripts |
 | `POSTGRES_PASSWORD`, `APP_DB_PASSWORD` | 64 lowercase hex, distinct |
 | `HELIOLYTICS_WEB_API_KEY` | `web.<64 lowercase hex>` |
 | `HELIOLYTICS_PHONE_API_KEY` | `phone.<64 lowercase hex>`, distinct |
 | `HELIOLYTICS_SESSION_SECRET` | 64 lowercase hex, distinct from both API secrets |
 | `HELIOLYTICS_WEB_PASSWORD_HASH` | one single-quoted `scrypt$N=32768$r=8$p=3$<salt>$<hash>` line |
-| `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` | `true` and the connector `/32` |
+| `TRUST_PROXY`, `TRUSTED_PROXY_CIDRS` | `true` and `<CLOUDFLARED_IP>/32` |
 | `COOKIE_SECURE` | `true` |
 
-## Clean deploy
-
-Both checkouts must be on `main`:
-
-```sh
-cd ~/projects/heliolytics && git pull --ff-only
-cd ../heliolytics-web && git pull --ff-only
-```
-
-Remove the stack and the database volume, then build everything:
-
-```sh
-cd ~/projects/heliolytics
-docker compose --project-name deploy --env-file deploy/.env \
-  --file deploy/docker-compose.yml --profile tunnel --profile tools down -v
-
-docker compose --project-name deploy --env-file deploy/.env \
-  --file deploy/docker-compose.yml --profile tunnel --profile tools up -d --build
-```
-
-`down -v` deletes `deploy_pgdata`. The next `up` runs `deploy/initdb/00_roles.sh` and
-`schema.sql` on a new volume. There are no migrations, no compatibility paths and no
-restore step.
-
-## Reset the database
-
-```sh
-deploy/reset-db.sh
-```
-
-Defaults: project `deploy`, volume `deploy_pgdata`, and the env and compose files in
-`deploy/`. The script validates them, asks for `DELETE`, removes the stack with its
-volume, and starts it again. The database initializes from scratch.
-
-## Update api and web
-
-```sh
-docker compose --project-name deploy --env-file deploy/.env \
-  --file deploy/docker-compose.yml up -d --build --no-deps api web
-```
-
-The database, tunnel and Adminer keep running. Use the clean deploy above when you
-also want a new database.
-
-## Web only
-
-```sh
-deploy/deploy-web.sh \
-  --web-commit "$(git -C ../heliolytics-web rev-parse HEAD)" \
-  --built-at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-```
-
-The helper refuses a dirty or non-`main` checkout.
+To change the web password, empty `HELIOLYTICS_WEB_PASSWORD_HASH`, run
+`deploy/install.sh`, then `deploy/deploy-all.sh`.
 
 ## Health and readiness
 
@@ -152,7 +135,7 @@ The role exists before `schema.sql` grants anything to it.
 Before the first request, every public application table is empty:
 
 ```sh
-docker exec deploy-db-1 sh -c \
+docker exec heliolytics-db sh -c \
   'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
   "SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY relname"'
 ```
@@ -212,8 +195,25 @@ them.
 
 ## Backups
 
-`deploy/backup-db.sh` and `deploy/systemd/` remain available for a host that holds
-data worth keeping. The beta host does not.
+`deploy/backup-db.sh` dumps the database of the project named in `deploy/.env`,
+copies the dump to `BACKUP_DESTINATION` over SSH and verifies its SHA-256. Copy
+`deploy/backup.env.example` to `/etc/heliolytics/backup.env` and edit the paths. The
+units in `deploy/systemd/` run it nightly; set `User`, `Group` and
+`WorkingDirectory` in the service to your deploy account first:
 
-Validation: documentation and example values only; no runtime behaviour was
-exercised.
+```sh
+sudo install -Dm700 deploy/backup-db.sh /usr/local/libexec/heliolytics-backup
+sudo install -Dm600 deploy/backup.env.example /etc/heliolytics/backup.env
+sudo install -m644 deploy/systemd/heliolytics-backup.service deploy/systemd/heliolytics-backup.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now heliolytics-backup.timer
+```
+
+## Tests
+
+`deploy/tests/deploy-ops-test.sh` runs on Linux with Docker. It exercises the
+installer, the validator, the script refusals, fresh initialization, role grants,
+a backup and a real restore, using only `heliolytics-d01-*` resources.
+
+Validation: `deploy/tests/deploy-ops-test.sh` passed (66 passed, 1 owner-pending SSH
+copy) on 2026-10-21.

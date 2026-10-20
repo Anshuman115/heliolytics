@@ -28,6 +28,7 @@ deploy/*.dump
 deploy/*.dump.sha256
 deploy/*.dump.info
 deploy/docker-compose.override.yml
+deploy/cloudflared/docker-compose.override.yml
 .d01-sandbox/
 
 # OS / IDE

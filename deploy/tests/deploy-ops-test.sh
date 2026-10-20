@@ -71,7 +71,6 @@ if ! command -v docker >/dev/null 2>&1; then
   printf 'docker is required\n' >&2
   exit 1
 fi
-real_docker="$(command -v docker)"
 
 hex_fill() {
   local char="$1" count="$2" out="" i
@@ -119,12 +118,17 @@ stage_deploy_tree() {
   cp -- "$deploy_dir/postgresql.conf" "$target/postgresql.conf"
   cp -- "$deploy_dir/pg_hba.conf" "$target/pg_hba.conf"
   cp -- "$deploy_dir/initdb/00_roles.sh" "$target/initdb/00_roles.sh"
+  cp -- "$deploy_dir/lib.sh" "$target/lib.sh"
   cp -- "$deploy_dir/install.sh" "$target/install.sh"
   cp -- "$deploy_dir/validate-env.sh" "$target/validate-env.sh"
   cp -- "$deploy_dir/validate-env.mjs" "$target/validate-env.mjs"
   cp -- "$deploy_dir/backup-db.sh" "$target/backup-db.sh"
   cp -- "$deploy_dir/reset-db.sh" "$target/reset-db.sh"
-  cp -- "$deploy_dir/deploy-web.sh" "$target/deploy-web.sh"
+  cp -- "$deploy_dir/deploy.sh" "$target/deploy.sh"
+  cp -- "$deploy_dir/deploy-all.sh" "$target/deploy-all.sh"
+  cp -- "$deploy_dir/deploy-cloudflare.sh" "$target/deploy-cloudflare.sh"
+  mkdir -p "$target/cloudflared"
+  cp -- "$deploy_dir/cloudflared/docker-compose.yml" "$target/cloudflared/docker-compose.yml"
 }
 
 sandbox_backend="$sandbox/backend"
@@ -143,13 +147,12 @@ hex64_d="$(hex_fill d 64)"
 hex64_e="$(hex_fill e 64)"
 sha_a="$(hex_fill 1 40)"
 sha_b="$(hex_fill 2 40)"
-sha_web="$(hex_fill 3 40)"
-sha_other="$(hex_fill 4 40)"
 hash_value="scrypt\$N=32768\$r=8\$p=3\$$(hex_fill f 32)\$$(hex_fill 9 64)"
 
 write_env() {
   local target="$1"
   {
+    printf 'COMPOSE_PROJECT_NAME=%s\n' "$project"
     printf 'HELIOLYTICS_COMMIT=%s\n' "$sha_a"
     printf 'HELIOLYTICS_WEB_COMMIT=%s\n' "$sha_b"
     printf 'HELIOLYTICS_BUILT_AT=2026-10-20T00:00:00Z\n'
@@ -184,19 +187,15 @@ chmod 600 -- "$sandbox_deploy/.env"
 
 install_dir="$work_dir/install"
 mkdir -p "$install_dir"
+cp -- "$deploy_dir/lib.sh" "$install_dir/lib.sh"
 cp -- "$deploy_dir/install.sh" "$install_dir/install.sh"
 cp -- "$deploy_dir/.env.example" "$install_dir/.env.example"
 mkdir -p "$work_dir/stub-bin"
 marker="$work_dir/docker-was-called"
 cat >"$work_dir/stub-bin/docker" <<'STUB'
 #!/bin/sh
-# Installer rows set DOCKER_MARKER to prove docker is never called.
-# Every other row forwards to the real client so preflight checks can run.
-if [ -n "${DOCKER_MARKER:-}" ]; then
-  : >"$DOCKER_MARKER"
-  exit 99
-fi
-exec "${REAL_DOCKER:?real docker path is not set}" "$@"
+: >"${DOCKER_MARKER:?}"
+exit 99
 STUB
 chmod +x "$work_dir/stub-bin/docker"
 
@@ -365,9 +364,6 @@ fake_deploy="$fake_backend/deploy"
 fake_web="$sandbox/fake-web"
 mkdir -p "$fake_deploy" "$fake_backend/.git" "$fake_web/.git"
 stage_deploy_tree "$fake_deploy"
-cp -- "$backend_dir/schema.sql" "$fake_backend/schema.sql"
-printf 'FROM scratch\n' >"$fake_backend/Dockerfile"
-printf 'FROM scratch\n' >"$fake_web/Dockerfile"
 cp -- "$valid_env" "$fake_deploy/.env"
 chmod 600 -- "$fake_deploy/.env"
 
@@ -377,51 +373,34 @@ args="$*"
 case "$args" in
   *"rev-parse --abbrev-ref HEAD"*) printf '%s\n' "${STUB_GIT_BRANCH:-main}" ;;
   *"status --porcelain"*) printf '%s' "${STUB_GIT_STATUS:-}" ;;
-  *"rev-parse HEAD"*) printf '%s\n' "${STUB_GIT_HEAD:-}" ;;
+  *"rev-parse HEAD"*) printf '%s\n' 3333333333333333333333333333333333333333 ;;
   *) exit 1 ;;
 esac
 STUB
 chmod +x "$work_dir/stub-bin/git"
 
-STUB_GIT_BRANCH=main
-STUB_GIT_STATUS=
-STUB_GIT_HEAD="$sha_web"
-
-web_deploy() {
-  PATH="$work_dir/stub-bin:$PATH" \
-    REAL_DOCKER="$real_docker" \
-    STUB_GIT_BRANCH="$STUB_GIT_BRANCH" \
-    STUB_GIT_STATUS="$STUB_GIT_STATUS" \
-    STUB_GIT_HEAD="$STUB_GIT_HEAD" \
-    "$fake_deploy/deploy-web.sh" \
-    --web-commit "$sha_web" --built-at 2026-10-20T00:00:00Z \
-    --project "$project" --web-dir "$fake_web" "$@"
+run_deploy() {
+  local script="$1" branch="$2" status="$3"
+  DOCKER_MARKER="$marker" PATH="$work_dir/stub-bin:$PATH" \
+    STUB_GIT_BRANCH="$branch" STUB_GIT_STATUS="$status" HELIOLYTICS_WEB_DIR="$fake_web" \
+    "$fake_deploy/$script"
 }
 
-STUB_GIT_BRANCH=v7
-expect_failure 'web helper refuses a v7 checkout' web_deploy --preflight-only
-STUB_GIT_BRANCH=main
-STUB_GIT_STATUS=' M app/page.tsx'
-expect_failure 'web helper refuses a dirty checkout' web_deploy --preflight-only
-STUB_GIT_STATUS=
-expect_failure 'web helper refuses a SHA mismatch' web_deploy --preflight-only --web-commit "$sha_other"
-expect_failure 'web helper refuses a missing build time' \
-  "$fake_deploy/deploy-web.sh" --web-commit "$sha_web" --project "$project" --web-dir "$fake_web"
+for script in deploy.sh deploy-all.sh; do
+  expect_failure "$script refuses extra arguments" "$fake_deploy/$script" --yes
+  expect_failure "$script refuses a v7 checkout" run_deploy "$script" v7 ''
+  expect_failure "$script refuses a dirty checkout" run_deploy "$script" main ' M app/page.tsx'
+done
 
-if web_deploy --preflight-only >"$work_dir/case.out" 2>&1; then
-  ok 'web helper passes preflight for a clean main checkout'
-else
-  not_ok 'web helper rejected a clean main checkout'
-  diagnose "$work_dir/case.out"
-fi
+expect_failure 'tunnel deploy refuses an empty token' "$fake_deploy/deploy-cloudflare.sh"
+printf 'CLOUDFLARE_TUNNEL_TOKEN=token\n' >>"$fake_deploy/.env"
+expect_failure 'tunnel deploy refuses a missing ingress network' "$fake_deploy/deploy-cloudflare.sh"
 
 # ------------------------------------------------------- D. reset guards
-expect_failure 'reset refuses an unknown option' \
+expect_failure 'reset refuses extra arguments' \
   "$sandbox_deploy/reset-db.sh" --yes
-expect_failure 'reset refuses a volume outside the project' \
-  bash -c "printf 'DELETE\n' | '$sandbox_deploy/reset-db.sh' --project '$project' --volume other_pgdata"
 expect_failure 'reset aborts on the wrong confirmation' \
-  bash -c "printf 'no\n' | '$sandbox_deploy/reset-db.sh' --project '$project' --volume '$volume'"
+  bash -c "printf 'no\n' | '$sandbox_deploy/reset-db.sh'"
 
 # ------------------------------------------------------ E. backup env guards
 
