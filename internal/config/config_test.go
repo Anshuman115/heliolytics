@@ -9,7 +9,8 @@ import (
 
 var configEnvs = []string{
 	"DATABASE_URL",
-	"HELIOLYTICS_API_KEYS",
+	"HELIOLYTICS_WEB_API_KEY",
+	"HELIOLYTICS_PHONE_API_KEY",
 	"ADDR",
 	"RATE_LIMIT_PER_MIN",
 	"RATE_LIMIT_PER_KEY_PER_MIN",
@@ -29,15 +30,12 @@ func clearEnv(t *testing.T) {
 	}
 }
 
-func validKeys() string {
-	return "phone." + strings.Repeat("11", 32) + ",web." + strings.Repeat("22", 32)
-}
-
 func loadWith(t *testing.T, overrides map[string]string) error {
 	t.Helper()
 	clearEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://app@127.0.0.1:5432/heliolytics")
-	t.Setenv("HELIOLYTICS_API_KEYS", validKeys())
+	t.Setenv("HELIOLYTICS_WEB_API_KEY", "web."+strings.Repeat("22", 32))
+	t.Setenv("HELIOLYTICS_PHONE_API_KEY", "phone."+strings.Repeat("11", 32))
 	for name, value := range overrides {
 		t.Setenv(name, value)
 	}
@@ -48,7 +46,8 @@ func loadWith(t *testing.T, overrides map[string]string) error {
 func TestLoadDefaults(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://app@127.0.0.1:5432/heliolytics")
-	t.Setenv("HELIOLYTICS_API_KEYS", validKeys())
+	t.Setenv("HELIOLYTICS_WEB_API_KEY", "web."+strings.Repeat("22", 32))
+	t.Setenv("HELIOLYTICS_PHONE_API_KEY", "phone."+strings.Repeat("11", 32))
 
 	cfg, err := Load()
 	if err != nil {
@@ -86,7 +85,8 @@ func TestLoadDefaults(t *testing.T) {
 func TestLoadOverrides(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://app@127.0.0.1:5432/heliolytics")
-	t.Setenv("HELIOLYTICS_API_KEYS", validKeys())
+	t.Setenv("HELIOLYTICS_WEB_API_KEY", "web."+strings.Repeat("22", 32))
+	t.Setenv("HELIOLYTICS_PHONE_API_KEY", "phone."+strings.Repeat("11", 32))
 	t.Setenv("ADDR", "127.0.0.1:9090")
 	t.Setenv("RATE_LIMIT_PER_MIN", "5")
 	t.Setenv("RATE_LIMIT_PER_KEY_PER_MIN", "7")
@@ -115,7 +115,8 @@ func TestLoadOverrides(t *testing.T) {
 
 func TestLoadRequiresBaseSettings(t *testing.T) {
 	clearEnv(t)
-	t.Setenv("HELIOLYTICS_API_KEYS", validKeys())
+	t.Setenv("HELIOLYTICS_WEB_API_KEY", "web."+strings.Repeat("22", 32))
+	t.Setenv("HELIOLYTICS_PHONE_API_KEY", "phone."+strings.Repeat("11", 32))
 	if _, err := Load(); err == nil {
 		t.Fatal("missing DATABASE_URL accepted")
 	}
@@ -123,7 +124,7 @@ func TestLoadRequiresBaseSettings(t *testing.T) {
 	clearEnv(t)
 	t.Setenv("DATABASE_URL", "postgres://app@127.0.0.1:5432/heliolytics")
 	if _, err := Load(); err == nil {
-		t.Fatal("missing HELIOLYTICS_API_KEYS accepted")
+		t.Fatal("missing API keys accepted")
 	}
 }
 
@@ -144,9 +145,9 @@ func TestLoadRejectsInvalidOverrides(t *testing.T) {
 		"bad CIDR":              {"TRUSTED_PROXY_CIDRS": "127.0.0.1"},
 		"empty CIDR entry":      {"TRUSTED_PROXY_CIDRS": "127.0.0.1/32,,"},
 		"empty address":         {"ADDR": ""},
-		"duplicate kid":         {"HELIOLYTICS_API_KEYS": "phone." + strings.Repeat("11", 32) + ",phone." + strings.Repeat("22", 32)},
-		"published example key": {"HELIOLYTICS_API_KEYS": "phone." + publishedSecret + ",web." + strings.Repeat("22", 32)},
-		"short secret":          {"HELIOLYTICS_API_KEYS": "phone." + strings.Repeat("11", 31) + ",web." + strings.Repeat("22", 32)},
+		"wrong prefix":          {"HELIOLYTICS_PHONE_API_KEY": "web." + strings.Repeat("11", 32)},
+		"published example key": {"HELIOLYTICS_PHONE_API_KEY": "phone." + publishedSecret},
+		"short secret":          {"HELIOLYTICS_PHONE_API_KEY": "phone." + strings.Repeat("11", 31)},
 	}
 	for name, overrides := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -160,7 +161,7 @@ func TestLoadRejectsInvalidOverrides(t *testing.T) {
 func TestLoadErrorsNeverEchoSecrets(t *testing.T) {
 	publishedSecret := "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"
 	err := loadWith(t, map[string]string{
-		"HELIOLYTICS_API_KEYS": "phone." + publishedSecret + ",web." + strings.Repeat("22", 32),
+		"HELIOLYTICS_PHONE_API_KEY": "phone." + publishedSecret,
 	})
 	if err == nil {
 		t.Fatal("published example key accepted")
@@ -168,7 +169,7 @@ func TestLoadErrorsNeverEchoSecrets(t *testing.T) {
 	if strings.Contains(err.Error(), publishedSecret) {
 		t.Fatalf("error echoed the secret: %v", err)
 	}
-	if !strings.Contains(err.Error(), "HELIOLYTICS_API_KEYS") {
+	if !strings.Contains(err.Error(), "HELIOLYTICS_PHONE_API_KEY") {
 		t.Fatalf("error does not name the variable: %v", err)
 	}
 }

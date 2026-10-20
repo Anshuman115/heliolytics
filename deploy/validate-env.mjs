@@ -249,7 +249,6 @@ function validate(config) {
     'HELIOLYTICS_SIGNING_SECRET',
     'HELIOLYTICS_SESSION_SECRET',
     'HELIOLYTICS_WEB_PASSWORD_HASH',
-    'HELIOLYTICS_API_KEY',
     'REPARSE_ENABLED',
     'REPARSE_SECRET',
   ]) {
@@ -261,15 +260,16 @@ function validate(config) {
   for (const cidr of cidrs) {
     if (!CIDR_SINGLE.test(cidr)) fail('compose.api.TRUSTED_PROXY_CIDRS', 'each entry must be a single host CIDR');
   }
-  const ring = env(api, 'HELIOLYTICS_API_KEYS').split(',');
-  const kids = [];
-  for (const entry of ring) {
-    const match = /^(phone|web)\.[0-9a-f]{64}$/.exec(entry);
-    if (!match) fail('compose.api.HELIOLYTICS_API_KEYS', 'each key must be <phone|web>.<64 lowercase hex>');
-    kids.push(match[1]);
+  const webKey = env(api, 'HELIOLYTICS_WEB_API_KEY');
+  const phoneKey = env(api, 'HELIOLYTICS_PHONE_API_KEY');
+  if (!/^web\.[0-9a-f]{64}$/.test(webKey)) {
+    fail('compose.api.HELIOLYTICS_WEB_API_KEY', 'must be web.<64 lowercase hex>');
   }
-  if (ring.length !== 2 || new Set(kids).size !== 2) {
-    fail('compose.api.HELIOLYTICS_API_KEYS', 'exactly one phone and one web key are required');
+  if (!/^phone\.[0-9a-f]{64}$/.test(phoneKey)) {
+    fail('compose.api.HELIOLYTICS_PHONE_API_KEY', 'must be phone.<64 lowercase hex>');
+  }
+  if (webKey.slice(4) === phoneKey.slice(6)) {
+    fail('compose.api.HELIOLYTICS_PHONE_API_KEY', 'phone and web secrets must differ');
   }
   checkPorts(api, 'api', 8080);
   checkHardening(api, 'api');
@@ -282,11 +282,18 @@ function validate(config) {
 
   if (String(web.user ?? '') !== '1000:1000') fail('compose.web.user', 'web must run as uid and gid 1000');
   if (hasEnv(web, 'DATABASE_URL')) fail('compose.web.environment', 'web must not receive a database URL');
-  if (!/^web\.[0-9a-f]{64}$/.test(env(web, 'HELIOLYTICS_API_KEY'))) {
-    fail('compose.web.HELIOLYTICS_API_KEY', 'web must receive its own web key');
+  if (hasEnv(web, 'HELIOLYTICS_PHONE_API_KEY') ||
+      Object.values(asObject(web.environment)).some((value) => typeof value === 'string' && value.includes(phoneKey))) {
+    fail('compose.web.environment', 'web must not receive the phone key');
+  }
+  if (env(web, 'HELIOLYTICS_WEB_API_KEY') !== webKey) {
+    fail('compose.web.HELIOLYTICS_WEB_API_KEY', 'must match the API web key');
   }
   if (!HEX64.test(env(web, 'HELIOLYTICS_SESSION_SECRET'))) {
     fail('compose.web.HELIOLYTICS_SESSION_SECRET', 'web session secret must be 64 lowercase hex');
+  }
+  if ([webKey.slice(4), phoneKey.slice(6)].includes(env(web, 'HELIOLYTICS_SESSION_SECRET'))) {
+    fail('compose.web.HELIOLYTICS_SESSION_SECRET', 'must differ from both API secrets');
   }
   const resolvedHash = unescapeDollars(env(web, 'HELIOLYTICS_WEB_PASSWORD_HASH'));
   if (!SCRYPT.test(resolvedHash)) {

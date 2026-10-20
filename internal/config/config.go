@@ -50,12 +50,16 @@ func Load() (Config, error) {
 	if cfg.DBURL, err = requiredEnv("DATABASE_URL"); err != nil {
 		return Config{}, err
 	}
-	keys, err := requiredEnv("HELIOLYTICS_API_KEYS")
+	web, err := requiredEnv("HELIOLYTICS_WEB_API_KEY")
 	if err != nil {
 		return Config{}, err
 	}
-	if cfg.Keys, err = auth.ParseKeySet(keys); err != nil {
-		return Config{}, fmt.Errorf("config: HELIOLYTICS_API_KEYS: %w", err)
+	phone, err := requiredEnv("HELIOLYTICS_PHONE_API_KEY")
+	if err != nil {
+		return Config{}, err
+	}
+	if cfg.Keys, err = auth.ParseKeys(web, phone); err != nil {
+		return Config{}, fmt.Errorf("config: %w", err)
 	}
 	if cfg.Addr, err = stringEnv("ADDR", defaultAddr); err != nil {
 		return Config{}, err
