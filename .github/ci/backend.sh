@@ -10,9 +10,10 @@ TMP="${RUNNER_TEMP:-/tmp}"
 step() { printf '\n##### %s\n' "$1"; }
 fail() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
 
+created=
 cleanup() {
   local rc=$?
-  if docker container inspect "$DB_CONTAINER" >/dev/null 2>&1; then
+  if [ -n "$created" ] && docker container inspect "$DB_CONTAINER" >/dev/null 2>&1; then
     docker rm -f -v "$DB_CONTAINER" >/dev/null 2>&1 || true
   fi
   exit "$rc"
@@ -85,6 +86,7 @@ if ! err=$(docker create --name "$DB_CONTAINER" \
   fi
   fail "docker create failed (see the daemon error above)"
 fi
+created=1
 
 docker cp schema.sql "$DB_CONTAINER:/docker-entrypoint-initdb.d/01_schema.sql" || fail "docker cp schema.sql failed"
 if ! err=$(docker start "$DB_CONTAINER" 2>&1); then
