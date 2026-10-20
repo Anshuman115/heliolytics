@@ -13,13 +13,15 @@ docker compose --project-name deploy --env-file deploy/.env \
   --file deploy/docker-compose.yml <command>
 ```
 
-| Service | Image or build | Port | Profile |
-|---|---|---|---|
-| `db` | `timescale/timescaledb:2.30.2-pg16` | none | default |
-| `api` | `Dockerfile` at the repo root | `127.0.0.1:8080` | default |
-| `web` | sibling `heliolytics-web/Dockerfile` | `127.0.0.1:3000` | default |
-| `adminer` | `adminer:6.1.2-standalone` | `127.0.0.1:8081` | `tools` |
-| `cloudflared` | `cloudflare/cloudflared:2026.10.1` | none | `tunnel` |
+| Service | Container | Image or build | Port | Profile |
+|---|---|---|---|---|
+| `db` | `heliolytics-db` | `timescale/timescaledb:2.30.2-pg16` | none | default |
+| `api` | `heliolytics-api` | `Dockerfile` at the repo root | `127.0.0.1:8080` | default |
+| `web` | `heliolytics-web` | sibling `heliolytics-web/Dockerfile` | `127.0.0.1:3000` | default |
+| `adminer` | `heliolytics-adminer` | `adminer:6.1.2-standalone` | `127.0.0.1:8081` | `tools` |
+| `cloudflared` | `heliolytics-cloudflared` | `cloudflare/cloudflared:2026.10.1` | none | `tunnel` |
+
+Container names are fixed. This stack does not scale services.
 
 `db`, `api` and `web` start by default. `adminer` and `cloudflared` start only when
 their profile is named. The connector takes the static address `CLOUDFLARED_IP`.
@@ -102,15 +104,23 @@ Defaults: project `deploy`, volume `deploy_pgdata`, and the env and compose file
 `deploy/`. The script validates them, asks for `DELETE`, removes the stack with its
 volume, and starts it again. The database initializes from scratch.
 
-## Update api and web
+## Deploy backend only
 
 ```sh
-docker compose --project-name deploy --env-file deploy/.env \
-  --file deploy/docker-compose.yml up -d --build --no-deps api web
+deploy/deploy.sh
 ```
 
-The database, tunnel and Adminer keep running. Use the clean deploy above when you
-also want a new database.
+Builds and recreates `heliolytics-api` from the backend `main` checkout and refreshes
+the commit metadata in `deploy/.env`.
+
+## Deploy backend and web
+
+```sh
+deploy/deploy-all.sh
+```
+
+Builds and recreates `heliolytics-api` and `heliolytics-web` from both `main`
+checkouts. The database, tunnel and Adminer keep running.
 
 ## Web only
 
@@ -152,7 +162,7 @@ The role exists before `schema.sql` grants anything to it.
 Before the first request, every public application table is empty:
 
 ```sh
-docker exec deploy-db-1 sh -c \
+docker exec heliolytics-db sh -c \
   'PGPASSWORD="$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc \
   "SELECT relname, n_live_tup FROM pg_stat_user_tables ORDER BY relname"'
 ```

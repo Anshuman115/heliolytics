@@ -3,6 +3,7 @@
 
 services:
   db:
+    container_name: heliolytics-db
     image: timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f
     restart: unless-stopped
     stop_grace_period: 60s
@@ -61,6 +62,7 @@ services:
         max-file: "3"
 
   api:
+    container_name: heliolytics-api
     build:
       context: ..
       dockerfile: Dockerfile
@@ -113,6 +115,7 @@ services:
         max-file: "3"
 
   web:
+    container_name: heliolytics-web
     build:
       context: ../../heliolytics-web
       dockerfile: Dockerfile
@@ -169,6 +172,7 @@ services:
         max-file: "3"
 
   adminer:
+    container_name: heliolytics-adminer
     image: adminer:6.1.2-standalone@sha256:49a7d30e71de97fb18933ffe7d46cc2b343c49fd7a63a7791c8be2548eb65115
     profiles:
       - tools
@@ -194,6 +198,7 @@ services:
         max-file: "3"
 
   cloudflared:
+    container_name: heliolytics-cloudflared
     image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
     profiles:
       - tunnel
