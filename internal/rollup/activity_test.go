@@ -2,77 +2,96 @@ package rollup
 
 import (
 	"testing"
+	"time"
 
+	"github.com/Anshuman115/heliolytics/internal/activity"
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
 func minuteRows(from, count int) []store.ActivityMinute {
 	out := make([]store.ActivityMinute, 0, count)
 	for i := range count {
-		out = append(out, store.ActivityMinute{At: at(1, from+i), Steps: 20})
+		out = append(out, store.ActivityMinute{At: at(1, from+i), Steps: 100})
 	}
 	return out
 }
 
-func TestContiguousBlocksSplitOnMissingMinute(t *testing.T) {
-	rows := append(minuteRows(0, 2), minuteRows(3, 2)...)
-	blocks := contiguousBlocks(rows, nil)
-	if len(blocks) != 2 {
-		t.Fatalf("blocks = %d, want 2", len(blocks))
-	}
-	if !blocks[0].Start.Equal(at(1, 0)) || !blocks[0].End.Equal(at(1, 2)) {
-		t.Fatalf("first block = %v-%v, want 01:00-01:02", blocks[0].Start, blocks[0].End)
-	}
-	if !blocks[1].Start.Equal(at(1, 3)) || !blocks[1].End.Equal(at(1, 5)) {
-		t.Fatalf("second block = %v-%v, want 01:03-01:05", blocks[1].Start, blocks[1].End)
-	}
-}
-
-func TestContiguousBlocksSplitOnWorkout(t *testing.T) {
-	rows := minuteRows(0, 10)
-	workouts := []store.WorkoutInterval{{Start: at(1, 4), End: at(1, 6)}}
-	blocks := contiguousBlocks(rows, workouts)
-	if len(blocks) != 2 {
-		t.Fatalf("blocks = %d, want 2", len(blocks))
-	}
-	if !blocks[0].End.Equal(at(1, 4)) {
-		t.Fatalf("first block ends %v, want 01:04", blocks[0].End)
-	}
-	if !blocks[1].Start.Equal(at(1, 6)) {
-		t.Fatalf("second block starts %v, want 01:06", blocks[1].Start)
-	}
-}
-
-func TestTrimBlocksExpandsToWholeObservedBlock(t *testing.T) {
-	rows := minuteRows(0, 6)
-	from, to, ok := trimBlocks(rows, nil, at(1, 2), at(1, 3))
-	if !ok {
-		t.Fatal("the seed range contains an observed minute")
-	}
-	if !from.Equal(at(1, 0)) || !to.Equal(at(1, 6)) {
-		t.Fatalf("trimmed window = %v-%v, want 01:00-01:06", from, to)
+func TestActivityBoundariesMatchDetectorResets(t *testing.T) {
+	for _, tc := range []struct {
+		name        string
+		rows        []store.ActivityMinute
+		workouts    []store.WorkoutInterval
+		left, right int
+		reset       bool
+	}{
+		{"missing", append(minuteRows(0, 2), minuteRows(3, 3)...), nil, 3, 2, true},
+		{"workout", minuteRows(0, 6), []store.WorkoutInterval{{Start: at(1, 2).Add(30 * time.Second), End: at(1, 4)}}, 4, 2, true},
+		{"movement", minuteRows(0, 6), nil, 0, 0, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			for _, backwards := range []bool{false, true} {
+				idle := 0
+				boundary, ok := activityChunkBoundary(tc.rows, tc.workouts, at(1, 0), at(1, 6), backwards, activity.DefaultParams(), &idle)
+				want := at(1, tc.right)
+				if backwards {
+					want = at(1, tc.left)
+				}
+				if ok != tc.reset || ok && !boundary.Equal(want) {
+					t.Fatalf("backwards %v: boundary %v/%v, want %v/%v", backwards, boundary, ok, want, tc.reset)
+				}
+			}
+		})
 	}
 }
 
-func TestTrimBlocksSpansEveryIntersectingBlock(t *testing.T) {
-	rows := append(minuteRows(0, 2), minuteRows(10, 2)...)
-	from, to, ok := trimBlocks(rows, nil, at(1, 1), at(1, 11))
-	if !ok {
-		t.Fatal("both blocks intersect the seed range")
-	}
-	if !from.Equal(at(1, 0)) || !to.Equal(at(1, 12)) {
-		t.Fatalf("trimmed window = %v-%v, want 01:00-01:12", from, to)
+func TestActivityBoundariesKeepShortIdleGapsBridgeable(t *testing.T) {
+	for _, gap := range []int{3, 4} {
+		rows := minuteRows(0, 8)
+		for i := 2; i < 2+gap; i++ {
+			rows[i].Steps = 0
+		}
+		for _, backwards := range []bool{false, true} {
+			idle := 0
+			boundary, ok := activityChunkBoundary(rows, nil, at(1, 0), at(1, 8), backwards, activity.DefaultParams(), &idle)
+			if gap == 3 {
+				if ok {
+					t.Fatalf("bridgeable gap became a boundary at %v", boundary)
+				}
+				continue
+			}
+			want := at(1, 6)
+			if backwards {
+				want = at(1, 2)
+			}
+			if !ok || !boundary.Equal(want) {
+				t.Fatalf("idle reset boundary = %v/%v, want %v", boundary, ok, want)
+			}
+		}
 	}
 }
 
-func TestTrimBlocksReportsNoObservedMinutes(t *testing.T) {
-	rows := minuteRows(0, 2)
-	if _, _, ok := trimBlocks(rows, nil, at(1, 30), at(1, 40)); ok {
-		t.Fatal("a seed range without observed minutes must report false")
+func TestActivityIdleResetCarriesAcrossChunkEdges(t *testing.T) {
+	rows := minuteRows(0, 4)
+	for i := range rows {
+		rows[i].Steps = 0
 	}
-	workouts := []store.WorkoutInterval{{Start: at(1, 0), End: at(1, 5)}}
-	if _, _, ok := trimBlocks(rows, workouts, at(1, 0), at(1, 5)); ok {
-		t.Fatal("workout minutes are barriers, not observations")
+	for _, backwards := range []bool{false, true} {
+		idle := 0
+		first, second := rows[:2], rows[2:]
+		firstFrom, firstTo, secondFrom, secondTo := at(1, 0), at(1, 2), at(1, 2), at(1, 4)
+		want := at(1, 4)
+		if backwards {
+			first, second = second, first
+			firstFrom, firstTo, secondFrom, secondTo = secondFrom, secondTo, firstFrom, firstTo
+			want = at(1, 0)
+		}
+		if boundary, ok := activityChunkBoundary(first, nil, firstFrom, firstTo, backwards, activity.DefaultParams(), &idle); ok {
+			t.Fatalf("two idle minutes became a reset at %v", boundary)
+		}
+		boundary, ok := activityChunkBoundary(second, nil, secondFrom, secondTo, backwards, activity.DefaultParams(), &idle)
+		if !ok || !boundary.Equal(want) {
+			t.Fatalf("chunk-spanning idle reset = %v/%v, want %v", boundary, ok, want)
+		}
 	}
 }
 

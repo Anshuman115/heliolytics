@@ -121,6 +121,7 @@ func replay(ctx context.Context, source *store.TxView, target *store.Store, ttx 
 			break
 		}
 		for _, session := range page {
+			session.Meta = session.Meta.Normalized()
 			blobs := make(map[string][]byte, len(session.Blobs))
 			raw := make([]store.RawBlob, 0, len(session.Blobs))
 			for _, blob := range session.Blobs {

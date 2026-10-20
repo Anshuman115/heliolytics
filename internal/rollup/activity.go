@@ -2,69 +2,77 @@ package rollup
 
 import (
 	"context"
-	"sort"
 	"time"
 
 	"github.com/Anshuman115/heliolytics/internal/activity"
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// Auto detection context limits. The window is grown until real barriers bound
-// it, never a fixed halo.
-const (
-	activityContextSpan  = 12 * time.Hour
-	activityContextTries = 3
-	autoWindowExpansions = 16
-)
+const activityContextSpan = 12 * time.Hour
 
-// replaceAuto recomputes every auto activity touched by the seed intervals and
-// replaces only interval-overlapping kind=auto rows.
+// replaceAuto closes the affected old-auto intervals and detector context before
+// replacing any rows. Query chunk edges are never detector boundaries.
 func replaceAuto(ctx context.Context, view *store.TxView, seeds []store.InstantInterval,
 	trigger AutoTrigger) (store.Mutation, error) {
 	from, to, ok := intervalBounds(seeds)
 	if !ok {
 		return store.Mutation{}, nil
 	}
-	var (
-		minutes  []store.ActivityMinute
-		workouts []store.WorkoutInterval
-	)
-	for i := range activityContextTries {
-		var err error
-		from, to, err = expandAutoBounds(ctx, view, from, to)
+	from = from.Truncate(time.Minute)
+	if !to.Equal(to.Truncate(time.Minute)) {
+		to = to.Truncate(time.Minute).Add(time.Minute)
+	}
+	params := activity.DefaultParams()
+	leftSafe, rightSafe := false, false
+	for {
+		closedFrom, closedTo, err := expandAutoBounds(ctx, view, from, to)
 		if err != nil {
 			return store.Mutation{}, err
 		}
-		contextSpan := activityContextSpan << i
-		minutes, err = view.ReadActivityMinutes(ctx, from.Add(-contextSpan), to.Add(contextSpan))
-		if err != nil {
-			return store.Mutation{}, err
-		}
-		workouts, err = view.ListWorkoutIntervals(ctx, from.Add(-contextSpan), to.Add(contextSpan))
-		if err != nil {
-			return store.Mutation{}, err
-		}
-		trimFrom, trimTo, found := trimBlocks(minutes, workouts, from, to)
-		if !found {
-			return view.ReplaceAutoActivities(ctx, from, to, nil, trigger.SessionID, trigger.ObservedAt)
-		}
-		stable := trimFrom.After(from.Add(-contextSpan)) && trimTo.Before(to.Add(contextSpan))
-		from, to = trimFrom, trimTo
-		if stable {
+		leftSafe = leftSafe && closedFrom.Equal(from)
+		rightSafe = rightSafe && closedTo.Equal(to)
+		from, to = closedFrom, closedTo
+		if leftSafe && rightSafe {
 			break
+		}
+		if !leftSafe {
+			from, err = findActivityBoundary(ctx, view, from, true, params)
+			if err != nil {
+				return store.Mutation{}, err
+			}
+			leftSafe = true
+		}
+		if !rightSafe {
+			to, err = findActivityBoundary(ctx, view, to, false, params)
+			if err != nil {
+				return store.Mutation{}, err
+			}
+			rightSafe = true
 		}
 	}
 
-	sort.Slice(minutes, func(i, j int) bool { return minutes[i].At.Before(minutes[j].At) })
-	window := between(minutes, func(m store.ActivityMinute) time.Time { return m.At }, from, to)
-	barriers := make([]activity.Interval, 0, len(workouts))
-	for _, w := range workouts {
-		if !w.End.After(from) || !w.Start.Before(to) {
-			continue
+	var minutes []activity.Minute
+	var barriers []activity.Interval
+	for start := from; start.Before(to); {
+		if err := ctx.Err(); err != nil {
+			return store.Mutation{}, err
 		}
-		barriers = append(barriers, activity.Interval{Start: w.Start, End: w.End})
+		end := minInstant(start.Add(activityContextSpan), to)
+		chunk, workouts, err := readActivityChunk(ctx, view, start, end)
+		if err != nil {
+			return store.Mutation{}, err
+		}
+		for _, m := range chunk {
+			minutes = append(minutes, activity.Minute{At: m.At, Steps: m.Steps, HR: m.HR})
+		}
+		for _, w := range workouts {
+			barriers = append(barriers, activity.Interval{
+				Start: maxInstant(w.Start, start), End: minInstant(w.End, end),
+			})
+		}
+		start = end
 	}
-	sessions := activity.DetectWithParams(detectorMinutes(window), barriers, activity.DefaultParams())
+	sessions := activity.DetectWithParams(minutes, barriers, params)
 	rows := make([]store.ActivityRow, 0, len(sessions))
 	for _, s := range sessions {
 		rows = append(rows, store.ActivityRow{
@@ -81,99 +89,117 @@ func replaceAuto(ctx context.Context, view *store.TxView, seeds []store.InstantI
 	return view.ReplaceAutoActivities(ctx, from, to, rows, trigger.SessionID, trigger.ObservedAt)
 }
 
-// detectorMinutes converts canonical step minutes for the detector. An absent
-// row stays absent, so a missing minute remains a hard barrier.
-func detectorMinutes(rows []store.ActivityMinute) []activity.Minute {
-	out := make([]activity.Minute, 0, len(rows))
-	for _, r := range rows {
-		out = append(out, activity.Minute{At: r.At, Steps: r.Steps, HR: r.HR})
-	}
-	return out
-}
-
-// expandAutoBounds widens the window until it contains every old auto row that
-// touches it, so no stale session survives on either edge.
+// expandAutoBounds includes every intersecting old auto interval, including
+// intervals reached only after context grows. Endpoint adjacency is not overlap.
 func expandAutoBounds(ctx context.Context, view *store.TxView, from, to time.Time) (time.Time, time.Time, error) {
-	for range autoWindowExpansions {
+	for {
+		if err := ctx.Err(); err != nil {
+			return from, to, err
+		}
 		autos, err := view.ListAutoActivitiesOverlapping(ctx, from, to)
 		if err != nil {
 			return from, to, err
 		}
-		grown := false
+		oldFrom, oldTo := from, to
 		for _, a := range autos {
-			if a.StartedAt.Before(from) {
-				from = a.StartedAt
-				grown = true
+			from = minInstant(from, a.StartedAt.Truncate(time.Minute))
+			end := a.EndedAt.Truncate(time.Minute)
+			if end.Before(a.EndedAt) {
+				end = end.Add(time.Minute)
 			}
-			if a.EndedAt.After(to) {
-				to = a.EndedAt
-				grown = true
-			}
+			to = maxInstant(to, end)
 		}
-		if !grown {
-			break
+		if from.Equal(oldFrom) && to.Equal(oldTo) {
+			return from, to, nil
 		}
 	}
-	return from, to, nil
 }
 
-// contiguousBlocks groups observed step minutes into maximal blocks. A missing
-// minute or a workout minute is a hard boundary.
-func contiguousBlocks(minutes []store.ActivityMinute, workouts []store.WorkoutInterval) []span {
-	out := make([]span, 0, 4)
-	var current span
-	open := false
-	for _, m := range minutes {
-		at := m.At.Truncate(time.Minute)
-		if inWorkout(workouts, at) {
-			if open {
-				out = append(out, current)
-				open = false
-			}
-			continue
-		}
-		if open && at.Equal(current.End) {
-			current.End = at.Add(time.Minute)
-			continue
-		}
-		if open {
-			out = append(out, current)
-		}
-		current = span{Start: at, End: at.Add(time.Minute)}
-		open = true
+func readActivityChunk(ctx context.Context, view *store.TxView, from, to time.Time) ([]store.ActivityMinute, []store.WorkoutInterval, error) {
+	minutes, err := view.ReadActivityMinutes(ctx, from, to)
+	if err != nil {
+		return nil, nil, err
 	}
-	if open {
-		out = append(out, current)
-	}
-	return out
+	workouts, err := view.ListWorkoutIntervals(ctx, from, to)
+	return minutes, workouts, err
 }
 
-// trimBlocks narrows the replacement window to the observed blocks that
-// intersect the seed range.
-func trimBlocks(minutes []store.ActivityMinute, workouts []store.WorkoutInterval,
-	from, to time.Time) (time.Time, time.Time, bool) {
-	var first, last time.Time
-	found := false
-	for _, b := range contiguousBlocks(minutes, workouts) {
-		if !b.End.After(from) || !b.Start.Before(to) {
-			continue
+func findActivityBoundary(ctx context.Context, view *store.TxView, edge time.Time,
+	backwards bool, params activity.Params) (time.Time, error) {
+	idle := 0
+	for {
+		if err := ctx.Err(); err != nil {
+			return edge, err
 		}
-		if !found || b.Start.Before(first) {
-			first = b.Start
+		from, to := edge, edge.Add(activityContextSpan)
+		if backwards {
+			from, to = edge.Add(-activityContextSpan), edge
 		}
-		if !found || b.End.After(last) {
-			last = b.End
+		minutes, workouts, err := readActivityChunk(ctx, view, from, to)
+		if err != nil {
+			return edge, err
 		}
-		found = true
+		if boundary, ok := activityChunkBoundary(minutes, workouts, from, to, backwards, params, &idle); ok {
+			return boundary, nil
+		}
+		edge = to
+		if backwards {
+			edge = from
+		}
 	}
-	return first, last, found
+}
+
+// activityChunkBoundary walks ordered observed minutes towards a reset. Idle
+// state carries across chunk edges so a bridgeable gap never becomes a barrier.
+func activityChunkBoundary(minutes []store.ActivityMinute, workouts []store.WorkoutInterval,
+	from, to time.Time, backwards bool, params activity.Params, idle *int) (time.Time, bool) {
+	at, index, step := from, 0, 1
+	if backwards {
+		at, index, step = to.Add(-time.Minute), len(minutes)-1, -1
+	}
+	for !at.Before(from) && at.Before(to) {
+		if index < 0 || index >= len(minutes) || !minutes[index].At.Equal(at) || inWorkout(workouts, at) {
+			if backwards {
+				return at.Add(time.Minute), true
+			}
+			return at, true
+		}
+		if minutes[index].Steps < params.CadenceMin {
+			*idle = *idle + 1
+			if *idle > params.GapMax {
+				if backwards {
+					return at, true
+				}
+				return at.Add(time.Minute), true
+			}
+		} else {
+			*idle = 0
+		}
+		at = at.Add(time.Duration(step) * time.Minute)
+		index += step
+	}
+	return time.Time{}, false
 }
 
 func inWorkout(workouts []store.WorkoutInterval, at time.Time) bool {
 	for _, w := range workouts {
-		if !at.Before(w.Start) && at.Before(w.End) {
+		if w.Start.Before(at.Add(time.Minute)) && w.End.After(at) {
 			return true
 		}
 	}
 	return false
+}
+
+func minInstant(a, b time.Time) time.Time {
+	if a.Before(b) {
+		return a
+	}
+	return b
+}
+
+func maxInstant(a, b time.Time) time.Time {
+	if a.After(b) {
+		return a
+	}
+	return b
 }

@@ -20,6 +20,7 @@ const statusPartial = "partial"
 // transaction. Structural input errors return before the first write.
 func Run(ctx context.Context, st *store.Store, meta store.SessionMeta,
 	catalog []byte, blobs map[string][]byte) (store.IngestResult, error) {
+	envelope := meta.Normalized()
 	var result store.IngestResult
 	err := st.WithTx(ctx, func(tx pgx.Tx) error {
 		if err := st.LockCanonical(ctx, tx); err != nil {
@@ -30,7 +31,7 @@ func Run(ctx context.Context, st *store.Store, meta store.SessionMeta,
 			return err
 		}
 		batch, err := parse.ParseBlobs(parsedCatalog, blobs,
-			parse.Window{StartedAt: meta.StartedAt, EndedAt: meta.EndedAt})
+			parse.Window{StartedAt: envelope.StartedAt, EndedAt: envelope.EndedAt})
 		if err != nil {
 			return err
 		}
@@ -44,6 +45,7 @@ func Run(ctx context.Context, st *store.Store, meta store.SessionMeta,
 		if err != nil {
 			return err
 		}
+		meta = envelope
 		mutation, err := applyBatch(ctx, st, tx, meta, batch, existing)
 		if err != nil {
 			return err

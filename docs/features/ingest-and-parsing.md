@@ -50,6 +50,16 @@ same `sessionId` with different bytes, catalog, envelope or type subset is 409
 `session_conflict` and the stored state is untouched; the phone then retries a
 per-type refetch under a new session id.
 
+Session envelope timestamps are truncated to UTC microseconds for persistence,
+retry comparison, observation ordering and replay. Raw payloads and catalog
+timestamps are not rewritten.
+
+Automatic activity recomputation includes every affected existing auto interval
+and grows context until missing minutes, workout-overlapping minutes or more than
+three consecutive below-cadence minutes reset detection. Reads use bounded chunks,
+but chunk edges never truncate activities. Only auto rows are replaced; recorded
+workouts and canonical samples are unchanged.
+
 ## Types
 
 | Code | Meaning | Parser file |
@@ -72,6 +82,10 @@ recorded nothing, while a zero is a measured zero and stays a row. `0x06` only
 enriches a `0x05` summary in the same upload; on its own it produces no workout.
 `0x26` is retained raw-only: it returns a warning, writes no SpO2 row and never
 advances SpO2 coverage. Real `0x25` rows are the only measured SpO2 source.
+
+A summary-only workout can displace a detailed winner. Summary uploads therefore
+refresh both workout coverage watermarks, including clearing detail coverage when
+no detailed winner remains. The response still lists only submitted types.
 
 ## Anchors and timestamps
 

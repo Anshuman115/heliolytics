@@ -21,6 +21,14 @@ type SessionMeta struct {
 	BatteryPct *int
 }
 
+// Normalized returns envelope instants at the precision used for observation
+// ordering and PostgreSQL persistence. Device measurement times are unchanged.
+func (m SessionMeta) Normalized() SessionMeta {
+	m.StartedAt = normInstant(m.StartedAt)
+	m.EndedAt = normInstant(m.EndedAt)
+	return m
+}
+
 // RawBlob is one submitted type's exact bytes; SHA256 is verified, never
 // trusted from the caller.
 type RawBlob struct {

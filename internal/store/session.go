@@ -21,6 +21,7 @@ func (s *Store) WriteSession(ctx context.Context, tx pgx.Tx, meta SessionMeta,
 	if err := validateSessionMeta(meta); err != nil {
 		return false, err
 	}
+	meta = meta.Normalized()
 	canonicalCatalog, err := canonicalJSON(catalog)
 	if err != nil {
 		return false, invalidRow("sync_sessions", "catalog is not a JSON value")

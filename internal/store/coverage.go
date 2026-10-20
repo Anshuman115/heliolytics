@@ -10,24 +10,39 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// RefreshTypeCoverage recomputes the exact canonical maximum for each accepted
-// measured type and deletes watermarks with no canonical rows left. Codes
-// outside the measured set, including raw-only 0x26, never contribute.
+// RefreshTypeCoverage recomputes exact canonical watermarks and removes empty
+// ones. Workout summaries also refresh detail coverage because a summary-only
+// winner can displace a detailed workout.
 func (s *Store) RefreshTypeCoverage(ctx context.Context, tx pgx.Tx, typeCodes []string) error {
 	q := db.New(tx)
+	refreshDetail := false
+	hasDetail := false
 	for _, code := range typeCodes {
+		if code == "0x05" {
+			refreshDetail = true
+		}
+		if code == "0x06" {
+			hasDetail = true
+		}
 		if !isMeasuredType(code) {
 			continue
 		}
-		at, err := maxCanonicalAt(ctx, q, code, pgtype.Text{})
-		if err != nil {
-			return err
-		}
-		if err := writeCoverage(ctx, q, code, at); err != nil {
+		if err := refreshCanonicalCoverage(ctx, q, code); err != nil {
 			return err
 		}
 	}
+	if refreshDetail && !hasDetail {
+		return refreshCanonicalCoverage(ctx, q, "0x06")
+	}
 	return nil
+}
+
+func refreshCanonicalCoverage(ctx context.Context, q *db.Queries, code string) error {
+	at, err := maxCanonicalAt(ctx, q, code, pgtype.Text{})
+	if err != nil {
+		return err
+	}
+	return writeCoverage(ctx, q, code, at)
 }
 
 // UpsertCoverage assigns one exact watermark, or deletes it when nil.
