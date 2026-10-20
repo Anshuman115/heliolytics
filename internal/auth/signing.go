@@ -19,7 +19,6 @@ import (
 const (
 	HeaderAuth       = "X-Heliolytics-Auth"
 	HeaderBodySHA256 = "X-Heliolytics-Content-SHA256"
-	Version          = "v2"
 	KidPhone         = "phone"
 	KidWeb           = "web"
 
@@ -55,9 +54,8 @@ type Header struct {
 	Signature []byte
 }
 
-// ParseHeader reads the exact v2 grammar
-// v2.<kid>.<ts>.<nonce>.<sig>. It rejects every other shape, including the
-// removed v1 form.
+// ParseHeader reads the exact header grammar
+// <kid>.<ts>.<nonce>.<sig>. It rejects every other shape.
 func ParseHeader(value string) (Header, error) {
 	if value == "" {
 		return Header{}, ErrMissingHeader
@@ -66,27 +64,27 @@ func ParseHeader(value string) (Header, error) {
 		return Header{}, ErrMalformedHeader
 	}
 	parts := strings.Split(value, ".")
-	if len(parts) != 5 || parts[0] != Version {
+	if len(parts) != 4 {
 		return Header{}, ErrMalformedHeader
 	}
-	if !kidPattern.MatchString(parts[1]) {
+	if !kidPattern.MatchString(parts[0]) {
 		return Header{}, ErrMalformedHeader
 	}
-	ts, err := parseSeconds(parts[2])
+	ts, err := parseSeconds(parts[1])
 	if err != nil {
 		return Header{}, ErrMalformedHeader
 	}
-	if !noncePattern.MatchString(parts[3]) {
+	if !noncePattern.MatchString(parts[2]) {
 		return Header{}, ErrMalformedHeader
 	}
-	if len(parts[4]) != hex.EncodedLen(sha256.Size) || !lowerHex.MatchString(parts[4]) {
+	if len(parts[3]) != hex.EncodedLen(sha256.Size) || !lowerHex.MatchString(parts[3]) {
 		return Header{}, ErrMalformedHeader
 	}
-	signature, err := hex.DecodeString(parts[4])
+	signature, err := hex.DecodeString(parts[3])
 	if err != nil {
 		return Header{}, ErrMalformedHeader
 	}
-	return Header{Kid: parts[1], Timestamp: ts, Nonce: parts[3], Signature: signature}, nil
+	return Header{Kid: parts[0], Timestamp: ts, Nonce: parts[2], Signature: signature}, nil
 }
 
 // parseSeconds reads a non-negative decimal timestamp without sign or
@@ -114,12 +112,11 @@ func WindowOK(now time.Time, ts int64) bool {
 	return ts >= nowSeconds-pastSkewSeconds && ts <= nowSeconds+futureSkewSeconds
 }
 
-// CanonicalText builds the C5 string to sign: nine newline-joined fields with
+// CanonicalText builds the C5 string to sign: eight newline-joined fields with
 // no trailing newline beyond the separator before an empty final field. The
 // method is upper-cased here so a caller cannot sign a lower-case verb.
 func CanonicalText(kid string, ts int64, nonce, method, escapedPath, rawQuery, declaredHash, contentType string) string {
 	return strings.Join([]string{
-		Version,
 		kid,
 		strconv.FormatInt(ts, 10),
 		nonce,
@@ -208,11 +205,8 @@ func (s KeySet) Empty() bool { return len(s.keys) == 0 }
 // burnedSecretDigests are SHA-256 digests of published or development secrets
 // that must never authenticate a running server. Only digests are stored.
 var burnedSecretDigests = map[string]struct{}{
-	// The public C5 fixture secret from internal/auth/testdata/signing-v2.json.
+	// The public test fixture secret from internal/auth/testdata/signing.json.
 	"630dcd2966c4336691125448bbb25b4ff412a49c732db2c8abc1b8581bd710dd": {},
-	// Development defaults from the removed v1 signing secret.
-	"b3cf5152a10b7a596ff461bfb6e04203341d08239fc80a56ce135f187ef29e6e": {},
-	"93ec5f0a32098f9e89c82e40979731bbe9cf5f391008333cd96ed586187d4d36": {},
 }
 
 // ParseKeySet reads HELIOLYTICS_API_KEYS. The grammar is exactly

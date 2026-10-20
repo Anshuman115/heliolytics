@@ -18,9 +18,9 @@ func TestMeasuredTypeCodesAreTheContractSet(t *testing.T) {
 	if isMeasuredType("0x26") {
 		t.Fatal("0x26 is raw-only and must not be a measured code")
 	}
-	for _, legacy := range []string{"0x39", "0x3A", "0x3B", "0x07"} {
-		if isMeasuredType(legacy) {
-			t.Fatalf("%s must not be a measured code", legacy)
+	for _, unmeasured := range []string{"0x39", "0x3A", "0x3B", "0x07"} {
+		if isMeasuredType(unmeasured) {
+			t.Fatalf("%s must not be a measured code", unmeasured)
 		}
 	}
 }

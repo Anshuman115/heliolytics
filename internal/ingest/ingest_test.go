@@ -135,7 +135,7 @@ func TestRunRejectsBadFramingAtomically(t *testing.T) {
 
 	// A catalog is validated against its own payload, so a genuine framing
 	// failure needs a catalog that describes the truncated 0x01 round.
-	catalog := []byte(`{"schemaVersion":1,"sessionId":"fixture-dumpp-2026-06-22",` +
+	catalog := []byte(`{"sessionId":"fixture-dumpp-2026-06-22",` +
 		`"chunked":[{"code":"0x01","status":"ok","roundStart":"2026-06-21T11:16:00.000"}],` +
 		`"unsolicited":[]}`)
 

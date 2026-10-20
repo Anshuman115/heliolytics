@@ -53,8 +53,8 @@ var fixtureCodes = []string{
 	"0x01", "0x05", "0x06", "0x0D", "0x13", "0x26", "0x2E", "0x38", "0x46", "0x48", "0x49",
 }
 
-// appTables is the schema v4 public application inventory, auth_nonces last so
-// callers can separate replay rows from data rows.
+// appTables is the public application inventory, auth_nonces last so callers
+// can separate replay rows from data rows.
 var appTables = []string{
 	"sync_sessions", "raw_blobs",
 	"heart_rate_samples", "step_samples", "temperature_samples", "hrv_samples",
@@ -166,7 +166,7 @@ func (s *stack) newRequest(t *testing.T, kid, method, path, query string,
 	return request
 }
 
-// sign applies the v2 header to one request and body.
+// sign applies the auth header to one request and body.
 func (s *stack) sign(t *testing.T, kid string, request *http.Request,
 	body []byte, nonce string, ts int64) {
 	t.Helper()
@@ -185,7 +185,7 @@ func (s *stack) sign(t *testing.T, kid string, request *http.Request,
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(canonical))
 	request.Header.Set(auth.HeaderAuth,
-		fmt.Sprintf("v2.%s.%d.%s.%s", kid, ts, nonce, hex.EncodeToString(mac.Sum(nil))))
+		fmt.Sprintf("%s.%d.%s.%s", kid, ts, nonce, hex.EncodeToString(mac.Sum(nil))))
 	request.Header.Set(auth.HeaderBodySHA256, hash)
 }
 
@@ -207,7 +207,7 @@ func (s *stack) upload(t *testing.T, kid string, session, catalog []byte,
 	blobs map[string][]byte) *httptest.ResponseRecorder {
 	t.Helper()
 	body, contentType := multipartBody(t, session, catalog, blobs)
-	return s.serve(s.newRequest(t, kid, http.MethodPost, "/api/v1/ingest", "", body, contentType))
+	return s.serve(s.newRequest(t, kid, http.MethodPost, "/api/ingest", "", body, contentType))
 }
 
 // uploadOK uploads and requires the C2 200.
@@ -469,9 +469,8 @@ func catalogPart(t *testing.T, entries ...catalogEntry) []byte {
 		RoundStart string `json:"roundStart,omitempty"`
 	}
 	payload := struct {
-		SchemaVersion int     `json:"schemaVersion"`
-		Chunked       []entry `json:"chunked"`
-	}{SchemaVersion: 1, Chunked: make([]entry, 0, len(entries))}
+		Chunked []entry `json:"chunked"`
+	}{Chunked: make([]entry, 0, len(entries))}
 	for _, item := range entries {
 		payload.Chunked = append(payload.Chunked, entry{
 			Code: item.Code, Status: "ok", RoundStart: item.RoundStart,

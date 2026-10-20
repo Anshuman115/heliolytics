@@ -151,7 +151,7 @@ func TestBulkDailyWritesKeepNullZeroAndNoOpSemantics(t *testing.T) {
 		return view.WriteReadiness(ctx, []ReadinessUpdate{{
 			DayKey:         Day(2026, time.October, 2),
 			Score:          new(70),
-			Components:     []byte(`{"version":1,"status":"scored"}`),
+			Components:     []byte(`{"status":"scored"}`),
 			TempDeviationC: nil,
 		}})
 	})

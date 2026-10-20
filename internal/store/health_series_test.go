@@ -47,7 +47,7 @@ func TestListDaysKeepsExplicitNullsAndDisplayBands(t *testing.T) {
 
 	if _, err := st.pool.Exec(ctx, `
 		UPDATE daily_metrics SET readiness = 70, pai_score = 0,
-		  readiness_components = '{"version":1,"status":"scored"}'::jsonb
+		  readiness_components = '{"status":"scored"}'::jsonb
 		WHERE day_key = $1`, day); err != nil {
 		t.Fatalf("update readiness: %v", err)
 	}

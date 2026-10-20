@@ -11,7 +11,7 @@ request came from a specific handset.
 Two headers carry the credential:
 
 ```text
-X-Heliolytics-Auth: v2.<kid>.<ts>.<nonce>.<mac>
+X-Heliolytics-Auth: <kid>.<ts>.<nonce>.<mac>
 X-Heliolytics-Content-SHA256: <sha256 of the exact body bytes>
 ```
 
@@ -28,10 +28,9 @@ Both headers must appear exactly once. A duplicate is rejected.
 
 ## Canonical text
 
-Nine fields joined by a single newline, in this order:
+Eight fields joined by a single newline, in this order:
 
 ```text
-v2
 <kid>
 <ts>
 <nonce>
@@ -47,7 +46,7 @@ last field, so an empty Content-Type leaves an empty final field. The raw query
 is signed verbatim: reordering parameters or adding one breaks the MAC. The
 Content-Type is signed with its boundary, so a multipart body must be hashed after
 it is finalized and must never be reserialized afterwards. `internal/auth/signing.go`
-builds and verifies this text, and `internal/auth/testdata/signing-v2.json` holds
+builds and verifies this text, and `internal/auth/testdata/signing.json` holds
 the five published vectors that the Go, TypeScript and Dart clients check against.
 
 ## Replay defense
@@ -131,9 +130,8 @@ reports null when a build supplied neither.
 | `TRUST_PROXY` | `false` | Exactly `true` or `false` |
 | `TRUSTED_PROXY_CIDRS` | none | Comma-separated CIDRs; required when `TRUST_PROXY=true` |
 
-Removed and never read: `HELIOLYTICS_SIGNING_SECRET`, `REPARSE_ENABLED`,
-`REPARSE_SECRET`. The API does not read any session secret; the web application
-owns its own.
+The API reads no session secret; the web application owns its own. There is no
+reparse configuration.
 
 ## Socket budgets
 

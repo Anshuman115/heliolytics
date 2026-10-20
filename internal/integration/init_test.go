@@ -9,9 +9,9 @@ import (
 	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-// TestFreshSchemaInitHasZeroApplicationRows proves the app-only cutover: a
-// fresh schema has no health or profile rows, web reads touch only nonces, and
-// the first phone upload creates exactly its own lineage.
+// TestFreshSchemaInitHasZeroApplicationRows proves a fresh schema has no
+// health or profile rows, web reads touch only nonces, and the first phone
+// upload creates exactly its own lineage.
 func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 	s := newStack(t)
 
@@ -22,7 +22,7 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 	}
 
 	// A signed web read may create its nonce and nothing else.
-	recorder := s.get(t, webKid, "/api/v1/metrics/coverage", "")
+	recorder := s.get(t, webKid, "/api/metrics/coverage", "")
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("coverage status %d: %s", recorder.Code, recorder.Body.String())
 	}
@@ -61,7 +61,7 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 
 	// A web write is refused before the body is read and consumes no nonce.
 	body := &failReader{}
-	request, err := http.NewRequest(http.MethodPut, "http://api.test/api/v1/profile", body)
+	request, err := http.NewRequest(http.MethodPut, "http://api.test/api/profile", body)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -96,7 +96,7 @@ func TestFreshSchemaInitHasZeroApplicationRows(t *testing.T) {
 
 	// A phone profile-only write stores the profile and no derived day rows.
 	profile := []byte(`{"name":null,"birthDate":"1990-05-01","sex":"male","heightCm":175.0,"weightKg":70.0}`)
-	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/v1/profile", "",
+	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 		profile, "application/json"))
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("profile status %d: %s", recorder.Code, recorder.Body.String())
@@ -171,14 +171,14 @@ func TestProfileWriteIsStrictAndReplaces(t *testing.T) {
 	s := newStack(t)
 
 	missing := []byte(`{"name":null,"birthDate":null,"sex":null,"heightCm":null}`)
-	recorder := s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/v1/profile", "",
+	recorder := s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 		missing, "application/json"))
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("partial profile status %d, want 400", recorder.Code)
 	}
 
 	invalid := []byte(`{"name":null,"birthDate":null,"sex":"other","heightCm":null,"weightKg":null}`)
-	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/v1/profile", "",
+	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 		invalid, "application/json"))
 	if recorder.Code != http.StatusUnprocessableEntity {
 		t.Fatalf("invalid profile status %d, want 422", recorder.Code)
@@ -188,14 +188,14 @@ func TestProfileWriteIsStrictAndReplaces(t *testing.T) {
 	}
 
 	complete := []byte(`{"name":"Owner","birthDate":"1990-05-01","sex":"female","heightCm":160.5,"weightKg":55.0}`)
-	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/v1/profile", "",
+	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 		complete, "application/json"))
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("valid profile status %d: %s", recorder.Code, recorder.Body.String())
 	}
 
 	cleared := []byte(`{"name":null,"birthDate":null,"sex":null,"heightCm":null,"weightKg":null}`)
-	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/v1/profile", "",
+	recorder = s.serve(s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 		cleared, "application/json"))
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("cleared profile status %d: %s", recorder.Code, recorder.Body.String())

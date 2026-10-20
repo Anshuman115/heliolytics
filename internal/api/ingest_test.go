@@ -64,7 +64,7 @@ func buildUpload(t *testing.T, parts []part) ([]byte, string) {
 const validSessionJSON = `{"sessionId":"session-1","startedAt":"2026-10-01T00:00:00Z",` +
 	`"endedAt":"2026-10-01T01:00:00Z","deviceMac":"02:00:00:00:00:01","batteryPercent":80}`
 
-const validCatalogJSON = `{"schemaVersion":2,"sessionId":"session-1","chunked":[]}`
+const validCatalogJSON = `{"sessionId":"session-1","chunked":[]}`
 
 // validUpload is the smallest accepted envelope: session, catalog and one
 // non-empty raw part.
@@ -86,7 +86,7 @@ func ingestMux(t *testing.T, keys auth.KeySet, nonces *fakeNonces, ingest *stubI
 // postIngest sends one signed multipart upload.
 func postIngest(t *testing.T, handler http.Handler, keys auth.KeySet, body []byte, contentType string) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/ingest", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/api/ingest", bytes.NewReader(body))
 	req.Header.Set("Content-Type", contentType)
 	signRequest(t, keys, "phone", req, body)
 	return serve(handler, req)

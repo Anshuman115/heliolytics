@@ -18,7 +18,7 @@ func TestRecoverAnswersJSON500BeforeHeaders(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sleep", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sleep", nil))
 
 	if recorder.Code != http.StatusInternalServerError {
 		t.Fatalf("status = %d", recorder.Code)
@@ -51,7 +51,7 @@ func TestRecoverKeepsCommittedStatusAndAborts(t *testing.T) {
 				t.Errorf("recovered %v, want http.ErrAbortHandler", recovered)
 			}
 		}()
-		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sleep", nil))
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sleep", nil))
 	}()
 
 	if recorder.Code != http.StatusOK {
@@ -74,7 +74,7 @@ func TestRecoverPreservesAbortHandler(t *testing.T) {
 				t.Errorf("recovered %v, want http.ErrAbortHandler", recovered)
 			}
 		}()
-		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sleep", nil))
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sleep", nil))
 	}()
 
 	if recorder.Body.Len() != 0 {

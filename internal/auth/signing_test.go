@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-// signingVector mirrors internal/auth/testdata/signing-v2.json.
+// signingVector mirrors internal/auth/testdata/signing.json.
 type signingVector struct {
 	ID            string `json:"id"`
 	Kid           string `json:"kid"`
@@ -32,7 +32,7 @@ type signingVector struct {
 
 func loadVectors(t *testing.T) []signingVector {
 	t.Helper()
-	raw, err := os.ReadFile("testdata/signing-v2.json")
+	raw, err := os.ReadFile("testdata/signing.json")
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
@@ -117,18 +117,18 @@ func TestSigningVectorsMatchFixture(t *testing.T) {
 func TestParseHeaderRejectsOtherShapes(t *testing.T) {
 	cases := map[string]string{
 		"empty":              "",
-		"v1 token":           "1760000000.00112233445566778899aabbccddeeff.deadbeef",
-		"three segments":     "v2.phone.1760000000.00112233445566778899aabbccddeeff",
-		"wrong version":      "v1.phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
-		"bad kid":            "v2.Phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
-		"signed timestamp":   "v2.phone.-1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
-		"overflow timestamp": "v2.phone.99999999999999999999999.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
-		"short nonce":        "v2.phone.1760000000.abcd." + strings.Repeat("a", 64),
-		"uppercase nonce":    "v2.phone.1760000000.00112233445566778899AABBCCDDEEFF." + strings.Repeat("a", 64),
-		"uppercase signature": "v2.phone.1760000000.00112233445566778899aabbccddeeff." +
+		"missing kid":        "1760000000.00112233445566778899aabbccddeeff.deadbeef",
+		"missing signature":  "phone.1760000000.00112233445566778899aabbccddeeff",
+		"unknown prefix":     "apikey.phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
+		"bad kid":            "Phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
+		"signed timestamp":   "phone.-1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
+		"overflow timestamp": "phone.99999999999999999999999.00112233445566778899aabbccddeeff." + strings.Repeat("a", 64),
+		"short nonce":        "phone.1760000000.abcd." + strings.Repeat("a", 64),
+		"uppercase nonce":    "phone.1760000000.00112233445566778899AABBCCDDEEFF." + strings.Repeat("a", 64),
+		"uppercase signature": "phone.1760000000.00112233445566778899aabbccddeeff." +
 			strings.Repeat("A", 64),
-		"short signature": "v2.phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 32),
-		"long header":     "v2.phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 600),
+		"short signature": "phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 32),
+		"long header":     "phone.1760000000.00112233445566778899aabbccddeeff." + strings.Repeat("a", 600),
 	}
 	for name, value := range cases {
 		t.Run(name, func(t *testing.T) {

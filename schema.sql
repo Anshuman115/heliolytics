@@ -1,4 +1,4 @@
--- Heliolytics schema v4. Fresh database only; there are no migrations.
+-- Heliolytics schema. Fresh database only; there are no migrations.
 -- Initialization creates schema, roles, extensions and grants only: no seed rows.
 
 CREATE EXTENSION IF NOT EXISTS timescaledb;

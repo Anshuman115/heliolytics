@@ -125,7 +125,7 @@ The compose healthchecks are stronger than liveness:
   two second timeout and accepts only `200 ok`.
 - `web` fetches its own `/login` route.
 
-None of them proves schema version, grants or ingest readiness. Empty database
+None of them proves the schema, grants or ingest readiness. Empty database
 initialization does that.
 
 ## Database initialization
@@ -327,7 +327,7 @@ Run this only after the downloaded backup has been restored and queried in the
 disposable rehearsal above. Afterwards the volume is gone and recovery depends on
 that tested backup.
 
-## Owner cutover order
+## Owner deploy order
 
 1. Record the running image references and IDs, the source PostgreSQL and TimescaleDB
    versions, and the database container's compose working-directory label.
@@ -360,9 +360,8 @@ wipe there is no rollback volume, only the tested off-host dump.
 
 ## Retention and schema state
 
-`schema.sql` is the only DDL. Migrations are removed, so an existing volume is never
-upgraded in place: production is created fresh and receives health data only from
-accepted app uploads.
+`schema.sql` is the only DDL, so an existing volume is never upgraded in place:
+production is created fresh and receives health data only from accepted app uploads.
 
 Raw uploads are retained without a limit until the owner approves a backup and pruning
 policy. No automatic raw retention or cascade delete exists.
@@ -411,7 +410,7 @@ privately.
 | OPS-8 | Record registry digests for every deployed reference and confirm arm64 on the host |
 | OPS-9 | Check effective CPU, memory, PID and log caps with `docker inspect` on the live host |
 | OPS-10 | Confirm nonroot read-only API and web, restricted database login and SCRAM on local and network paths |
-| OPS-11 | Start the stack explicitly after validation; confirm no reparse or legacy signing variables remain |
+| OPS-11 | Start the stack explicitly after validation; confirm no reparse routes or superseded signing variables remain |
 | OPS-12 | Migrate the Hermes connector, routes and firewall before replacing the product connector |
 | OPS-13 | Decide on burned-default handling and historical references; no purge is claimed without confirmation |
 | OPS-14 | Confirm the build context carries no canary secret and the final image has no extra binaries |

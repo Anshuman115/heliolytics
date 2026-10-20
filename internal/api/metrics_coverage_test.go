@@ -12,7 +12,7 @@ func TestCoverageCarriesEveryMeasuredType(t *testing.T) {
 	keys := testKeys()
 	mux := newMux(testStore(t), testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, newFakeNonces())
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/coverage", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics/coverage", nil)
 	signRequest(t, keys, "web", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {
@@ -61,7 +61,7 @@ func TestCoverageReportsStoredWatermark(t *testing.T) {
 	seed(t, st, `INSERT INTO coverage (type_code, data_through)
 		VALUES ('0x01', '2026-10-01T00:55:00Z')`)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/coverage", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics/coverage", nil)
 	signRequest(t, keys, "web", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {

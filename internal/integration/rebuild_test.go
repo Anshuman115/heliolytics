@@ -71,7 +71,7 @@ func seedSource(t *testing.T, source *stack) {
 	t.Helper()
 	source.uploadOK(t, realSession(t), realCatalog(t), realBlobs(t))
 	profile := []byte(`{"name":null,"birthDate":"1991-02-03","sex":"male","heightCm":176.0,"weightKg":70.0}`)
-	recorder := source.serve(source.newRequest(t, phoneKid, "PUT", "/api/v1/profile", "",
+	recorder := source.serve(source.newRequest(t, phoneKid, "PUT", "/api/profile", "",
 		profile, "application/json"))
 	if recorder.Code != 204 {
 		t.Fatalf("source profile status %d: %s", recorder.Code, recorder.Body.String())

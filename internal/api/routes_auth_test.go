@@ -59,7 +59,7 @@ func TestProtectedRouteRejectsMissingAuth(t *testing.T) {
 	nonces := newFakeNonces()
 	mux := newMux(offlineStore(t), testConfig(testKeys()), (&stubIngest{}).run,
 		(&stubProfile{}).update, nonces)
-	recorder := serve(mux, httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics", nil))
+	recorder := serve(mux, httptest.NewRequest(http.MethodGet, "/api/daily-metrics", nil))
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d", recorder.Code)
 	}
@@ -71,18 +71,18 @@ func TestProtectedRouteRejectsMissingAuth(t *testing.T) {
 	}
 }
 
-func TestLegacyTokenHeaderIsNotAccepted(t *testing.T) {
+func TestUnknownTokenHeaderIsNotAccepted(t *testing.T) {
 	keys := testKeys()
 	nonces := newFakeNonces()
 	mux := newMux(offlineStore(t), testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, nonces)
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/daily-metrics", nil)
 	req.Header.Set("X-Heliolytics-Token", "1760000000.00112233445566778899aabbccddeeff.deadbeef")
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d", recorder.Code)
 	}
 	if nonces.consumeCount() != 0 {
-		t.Fatal("legacy token consumed a nonce")
+		t.Fatal("unknown token consumed a nonce")
 	}
 }
 
@@ -102,46 +102,45 @@ func TestAuthHeaderFailuresDoNotReadBody(t *testing.T) {
 		"uppercase hash": func(req *http.Request) {
 			req.Header.Set(auth.HeaderBodySHA256, strings.ToUpper(req.Header.Get(auth.HeaderBodySHA256)))
 		},
-		"v1 version": func(req *http.Request) {
-			header := req.Header.Get(auth.HeaderAuth)
-			req.Header.Set(auth.HeaderAuth, "v1"+strings.TrimPrefix(header, "v2"))
+		"unknown prefix": func(req *http.Request) {
+			req.Header.Set(auth.HeaderAuth, "apikey."+req.Header.Get(auth.HeaderAuth))
 		},
 		"unknown kid": func(req *http.Request) {
 			parts := strings.Split(req.Header.Get(auth.HeaderAuth), ".")
-			parts[1] = "admin"
+			parts[0] = "admin"
 			req.Header.Set(auth.HeaderAuth, strings.Join(parts, "."))
 		},
 		"uppercase signature": func(req *http.Request) {
 			parts := strings.Split(req.Header.Get(auth.HeaderAuth), ".")
-			parts[4] = strings.ToUpper(parts[4])
+			parts[3] = strings.ToUpper(parts[3])
 			req.Header.Set(auth.HeaderAuth, strings.Join(parts, "."))
 		},
 		"short nonce": func(req *http.Request) {
 			parts := strings.Split(req.Header.Get(auth.HeaderAuth), ".")
-			parts[3] = "abcd"
+			parts[2] = "abcd"
 			req.Header.Set(auth.HeaderAuth, strings.Join(parts, "."))
 		},
 		"short signature": func(req *http.Request) {
 			parts := strings.Split(req.Header.Get(auth.HeaderAuth), ".")
-			parts[4] = parts[4][:32]
+			parts[3] = parts[3][:32]
 			req.Header.Set(auth.HeaderAuth, strings.Join(parts, "."))
 		},
 		"flipped signature": func(req *http.Request) {
 			parts := strings.Split(req.Header.Get(auth.HeaderAuth), ".")
-			signature := []byte(parts[4])
+			signature := []byte(parts[3])
 			if signature[0] == 'a' {
 				signature[0] = 'b'
 			} else {
 				signature[0] = 'a'
 			}
-			parts[4] = string(signature)
+			parts[3] = string(signature)
 			req.Header.Set(auth.HeaderAuth, strings.Join(parts, "."))
 		},
 	}
 	for name, mutate := range mutations {
 		t.Run(name, func(t *testing.T) {
 			reader := newCountingReader(body)
-			req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", reader)
+			req := httptest.NewRequest(http.MethodPut, "/api/profile", reader)
 			req.Header.Set("Content-Type", "application/json")
 			signRequest(t, keys, "phone", req, body)
 			mutate(req)
@@ -175,7 +174,7 @@ func TestTimestampOutsideWindowIsRejected(t *testing.T) {
 	}
 	for name, ts := range cases {
 		t.Run(name, func(t *testing.T) {
-			req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+			req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 			req.Header.Set("Content-Type", "application/json")
 			signRequestWithNonce(t, keys, "phone", req, body, randomNonce(t), ts)
 			recorder := serve(mux, req)
@@ -198,7 +197,7 @@ func TestTimestampWindowEdgesAreAccepted(t *testing.T) {
 	now := time.Now().Unix()
 
 	for _, ts := range []int64{now - 300, now + 60} {
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		signRequestWithNonce(t, keys, "phone", req, body, randomNonce(t), ts)
 		recorder := serve(mux, req)
@@ -217,7 +216,7 @@ func TestTamperedBodyIsRejectedWithoutNonce(t *testing.T) {
 	original := []byte(validProfileBody)
 	// A trailing space keeps the JSON valid while changing the signed bytes.
 	tampered := append(append([]byte(nil), original...), ' ')
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(tampered))
+	req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(tampered))
 	req.Header.Set("Content-Type", "application/json")
 	// Sign the original bytes so the declared hash no longer matches.
 	signRequest(t, keys, "phone", req, original)
@@ -230,7 +229,7 @@ func TestTamperedBodyIsRejectedWithoutNonce(t *testing.T) {
 		t.Fatal("tampered body reached the service or the nonce")
 	}
 
-	resigned := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(tampered))
+	resigned := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(tampered))
 	resigned.Header.Set("Content-Type", "application/json")
 	signRequest(t, keys, "phone", resigned, tampered)
 	if recorder := serve(mux, resigned); recorder.Code != http.StatusNoContent {
@@ -247,7 +246,7 @@ func TestNonceReplayIsRejected(t *testing.T) {
 	ts := time.Now().Unix()
 
 	build := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		signRequestWithNonce(t, keys, "phone", req, body, nonce, ts)
 		return req
@@ -272,7 +271,7 @@ func TestWebWriteIsForbiddenBeforeBodyRead(t *testing.T) {
 	body := []byte(validProfileBody)
 
 	reader := newCountingReader(body)
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", reader)
+	req := httptest.NewRequest(http.MethodPut, "/api/profile", reader)
 	req.Header.Set("Content-Type", "application/json")
 	signRequest(t, keys, "web", req, body)
 	recorder := serve(mux, req)
@@ -295,7 +294,7 @@ func TestBothKidsMayRead(t *testing.T) {
 	keys := testKeys()
 	mux := newMux(st, testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, newFakeNonces())
 	for _, kid := range []string{"phone", "web"} {
-		req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/coverage", nil)
+		req := httptest.NewRequest(http.MethodGet, "/api/metrics/coverage", nil)
 		signRequest(t, keys, kid, req, nil)
 		recorder := serve(mux, req)
 		if recorder.Code != http.StatusOK {
@@ -309,7 +308,7 @@ func TestGetWithBodyIsInvalidBody(t *testing.T) {
 	nonces := newFakeNonces()
 	mux := newMux(offlineStore(t), testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, nonces)
 	body := []byte("surprise")
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/coverage", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics/coverage", bytes.NewReader(body))
 	signRequest(t, keys, "phone", req, body)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusBadRequest {
@@ -332,7 +331,7 @@ func TestBodySlotsReturn503WhenFull(t *testing.T) {
 	mux := newMux(offlineStore(t), cfg, (&stubIngest{}).run, blocking.update, nonces)
 	body := []byte(validProfileBody)
 
-	first := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+	first := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 	first.Header.Set("Content-Type", "application/json")
 	signRequest(t, keys, "phone", first, body)
 
@@ -344,7 +343,7 @@ func TestBodySlotsReturn503WhenFull(t *testing.T) {
 		t.Fatal("first request never reached the handler")
 	}
 
-	second := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+	second := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 	second.Header.Set("Content-Type", "application/json")
 	signRequest(t, keys, "phone", second, body)
 	rejected := serve(mux, second)
@@ -380,7 +379,7 @@ func TestNonceStoreFailureIsInternal(t *testing.T) {
 	mux := newMux(offlineStore(t), testConfig(keys), (&stubIngest{}).run, profile.update, nonces)
 	body := []byte(validProfileBody)
 
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	signRequest(t, keys, "phone", req, body)
 	recorder := serve(mux, req)
@@ -406,7 +405,7 @@ func TestNonceIsSharedAcrossMuxInstances(t *testing.T) {
 	ts := time.Now().Unix()
 
 	build := func() *http.Request {
-		req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", bytes.NewReader(body))
+		req := httptest.NewRequest(http.MethodPut, "/api/profile", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		signRequestWithNonce(t, keys, "phone", req, body, nonce, ts)
 		return req

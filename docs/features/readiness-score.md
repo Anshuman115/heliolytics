@@ -6,8 +6,8 @@ reproduction of any vendor score.
 
 ## Output model
 
-Every canonical supported day gets one persisted explanation with
-`version: 1`, a status, the components in fixed order and the flags.
+Every canonical supported day gets one persisted explanation with a status, the
+components in fixed order and the flags.
 
 | Status | Meaning | Score |
 |---|---|---|
@@ -138,7 +138,7 @@ predictor.
 The weights, priors, thresholds, shrinkage, gain, bands and coverage floors are
 Heliolytics choices informed by published practice, not validated medicine.
 There is no published universal industry-standard readiness formula. Changing
-any of them requires a version bump and a fresh-target test replay.
+any of them requires a fresh-target test replay.
 
 The `on_wrist` temperature flag is a project proxy: a matching canonical `0x01`
 heart rate minute plus a plausible 30 to 40 C sample. The absence of heart rate

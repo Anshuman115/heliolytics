@@ -1,4 +1,4 @@
-// Package readiness computes the Heliolytics v1 daily readiness score from
+// Package readiness computes the Heliolytics daily readiness score from
 // nightly vitals and prior training load. It is pure math: no queries, no
 // clock, no store imports. The caller supplies normalized IST dates.
 package readiness
@@ -9,9 +9,6 @@ import (
 	"sort"
 	"time"
 )
-
-// Version is the algorithm version persisted with every explanation.
-const Version = 1
 
 // Component names in persistence order.
 const (
@@ -65,7 +62,6 @@ type Component struct {
 
 // Result is the complete persisted explanation plus the derived columns.
 type Result struct {
-	Version        int         `json:"version"`
 	Status         string      `json:"status"`
 	Score          *int        `json:"score"`
 	Raw            *float64    `json:"raw"`
@@ -78,11 +74,9 @@ type Result struct {
 // JSON renders the persisted component document.
 func (r Result) JSON() ([]byte, error) { return json.Marshal(r) }
 
-// Params is the immutable version 1 constant set. Changing any value requires
-// a version bump and a fresh-target replay, so the struct is never edited at
-// runtime.
+// Params is the immutable constant set. Changing any value requires a
+// fresh-target replay, so the struct is never edited at runtime.
 type Params struct {
-	Version          int
 	BaselineDays     int
 	RecencyDays      int
 	MinBaseline      int
@@ -118,11 +112,10 @@ type Params struct {
 	FloorSkinTemp float64
 }
 
-// DefaultParams returns the shipped version 1 constants. The weights, priors,
+// DefaultParams returns the shipped constants. The weights, priors,
 // floors, gain and thresholds are Heliolytics product choices.
 func DefaultParams() Params {
 	return Params{
-		Version:          Version,
 		BaselineDays:     60,
 		RecencyDays:      28,
 		MinBaseline:      3,
@@ -173,7 +166,6 @@ func Compute(day time.Time, nights map[time.Time]Night, p Params) Result {
 	target, _ := c.at(0)
 
 	res := Result{
-		Version:    p.Version,
 		Components: make([]Component, 0, 7),
 		Flags:      []string{},
 	}

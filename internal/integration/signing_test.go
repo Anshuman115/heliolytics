@@ -59,7 +59,7 @@ func (u tamperUpload) request(t *testing.T, s *stack, method, path, query string
 func TestSignedRequestTamperIsRejected(t *testing.T) {
 	s := newStack(t)
 	upload := newTamperUpload(t)
-	const path = "/api/v1/ingest"
+	const path = "/api/ingest"
 
 	cases := []struct {
 		name   string
@@ -104,12 +104,12 @@ func TestSignedRequestTamperIsRejected(t *testing.T) {
 			name: "changed path",
 			build: func(t *testing.T, u tamperUpload) *http.Request {
 				request, err := http.NewRequest(http.MethodGet,
-					"http://api.test/api/v1/metrics/coverage", nil)
+					"http://api.test/api/metrics/coverage", nil)
 				if err != nil {
 					t.Fatalf("new request: %v", err)
 				}
 				s.sign(t, phoneKid, request, nil, freshNonce(t), time.Now().Unix())
-				request.URL.Path = "/api/v1/metrics/series"
+				request.URL.Path = "/api/metrics/series"
 				request.URL.RawPath = ""
 				return request
 			},
@@ -191,7 +191,7 @@ func TestNonIdentityTransferEncodingRejected(t *testing.T) {
 		t.Fatalf("close multipart: %v", err)
 	}
 
-	request := upload.request(t, s, http.MethodPost, "/api/v1/ingest", "",
+	request := upload.request(t, s, http.MethodPost, "/api/ingest", "",
 		buffer.Bytes(), writer.FormDataContentType())
 	recorder := s.serve(request)
 	if recorder.Code != http.StatusBadRequest {

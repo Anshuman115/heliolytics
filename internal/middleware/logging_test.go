@@ -14,19 +14,19 @@ func TestRequestLogWritesOneAccessLine(t *testing.T) {
 	logger := log.New(&buffer, "", 0)
 	handler := RequestLog(logger)(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		outcome := OutcomeFrom(r)
-		outcome.SetRoute("/api/v1/sleep")
+		outcome.SetRoute("/api/sleep")
 		outcome.SetKid("web")
 		w.WriteHeader(http.StatusNoContent)
 	}))
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/sleep?from=2026-10-01", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/sleep?from=2026-10-01", nil))
 
 	line := buffer.String()
 	if strings.Count(line, "access ") != 1 {
 		t.Fatalf("access lines = %d, want 1: %q", strings.Count(line, "access "), line)
 	}
-	for _, want := range []string{"method=GET", "route=/api/v1/sleep", "status=204", "kid=web"} {
+	for _, want := range []string{"method=GET", "route=/api/sleep", "status=204", "kid=web"} {
 		if !strings.Contains(line, want) {
 			t.Fatalf("line %q missing %q", line, want)
 		}

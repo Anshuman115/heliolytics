@@ -2,7 +2,7 @@ package rollup
 
 import "github.com/Anshuman115/heliolytics/internal/store"
 
-// Night sensor sample floors. They are versioned product quality rules.
+// Night sensor sample floors. They are product quality rules.
 const (
 	hrvSamplesPerNight  = 60
 	respSamplesPerNight = 60

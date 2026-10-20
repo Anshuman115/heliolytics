@@ -35,7 +35,7 @@ method:
 
 ```go
 routes := map[string]map[string]routeEntry{
-    "/api/v1/daily-metrics": {
+    "/api/daily-metrics": {
         http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.days)},
     },
 }
@@ -43,13 +43,13 @@ routes := map[string]map[string]routeEntry{
 
 The router runs before authentication. An unknown path is a JSON 404 `not_found`;
 a known path with another method is a JSON 405 with an `Allow` header. There is no
-`ServeMux`, so `/api/v1/daily-metrics/` is not redirected to the real path.
+`ServeMux`, so `/api/daily-metrics/` is not redirected to the real path.
 
 The request looks like this:
 
 ```text
-GET /api/v1/daily-metrics?from=2026-09-01&to=2026-09-01
-X-Heliolytics-Auth: v2.phone.<ts>.<nonce>.<mac>
+GET /api/daily-metrics?from=2026-09-01&to=2026-09-01
+X-Heliolytics-Auth: phone.<ts>.<nonce>.<mac>
 X-Heliolytics-Content-SHA256: e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855
 ```
 
@@ -117,7 +117,7 @@ same as a request error, and the client should not merge the two.
 
 ## 6. A write uses a different path
 
-`POST /api/v1/ingest` reads a multipart envelope and calls the injected ingest
+`POST /api/ingest` reads a multipart envelope and calls the injected ingest
 callback, which is `ingest.Run`. Inside one transaction it locks the canonical
 rows, parses every submitted type, writes the session with its raw bytes, writes
 the typed rows, reconciles the sleep and workout candidates, refreshes coverage

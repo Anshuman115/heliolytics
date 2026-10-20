@@ -91,19 +91,19 @@ func newMux(st *store.Store, cfg config.Config, ingestFn IngestFunc, profileFn P
 		"/health":  {http.MethodGet: {handler: http.HandlerFunc(health)}},
 		"/version": {http.MethodGet: {handler: http.HandlerFunc(version.serve)}},
 
-		"/api/v1/daily-metrics": {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.days)}},
-		"/api/v1/sleep":         {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.sleep)}},
-		"/api/v1/activities":    {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.activities)}},
+		"/api/daily-metrics": {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.days)}},
+		"/api/sleep":         {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.sleep)}},
+		"/api/activities":    {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.activities)}},
 
-		"/api/v1/metrics/hr":          {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.hr)}},
-		"/api/v1/metrics/temperature": {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.temperature)}},
-		"/api/v1/metrics/series":      {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.series)}},
-		"/api/v1/metrics/coverage":    {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.coverage)}},
+		"/api/metrics/hr":          {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.hr)}},
+		"/api/metrics/temperature": {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.temperature)}},
+		"/api/metrics/series":      {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.series)}},
+		"/api/metrics/coverage":    {http.MethodGet: {protected: true, handler: http.HandlerFunc(metrics.coverage)}},
 
-		"/api/v1/profile": {
+		"/api/profile": {
 			http.MethodPut: {protected: true, maxBody: maxProfileBody, prepare: profile.prepare, handler: http.HandlerFunc(profile.put)},
 		},
-		"/api/v1/ingest": {
+		"/api/ingest": {
 			http.MethodPost: {protected: true, maxBody: maxIngestBody, prepare: ingest.prepare, handler: http.HandlerFunc(ingest.serve)},
 		},
 	}

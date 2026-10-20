@@ -116,7 +116,7 @@ func TestIPPolicyClientKey(t *testing.T) {
 		{"untrusted peer ignores CF", trusted, "198.51.100.4:1234", map[string]string{
 			"CF-Connecting-IP": "203.0.113.9",
 		}, "198.51.100.4", false},
-		{"mapped v4", direct, "[::ffff:192.0.2.7]:1234", nil, "192.0.2.7", false},
+		{"mapped ipv4", direct, "[::ffff:192.0.2.7]:1234", nil, "192.0.2.7", false},
 		{"ipv6", direct, "[2001:db8::1]:1234", nil, "2001:db8::1", false},
 		{"malformed peer", direct, "not-an-address", nil, invalidPeerKey, false},
 		{"zoned peer", direct, "[fe80::1%eth0]:1234", nil, invalidPeerKey, false},

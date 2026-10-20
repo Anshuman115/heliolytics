@@ -6,7 +6,7 @@ transaction.
 
 ## Request
 
-`POST /api/v1/ingest` is multipart with three kinds of part:
+`POST /api/ingest` is multipart with three kinds of part:
 
 - `session`: one JSON object with exactly `sessionId`, `startedAt`, `endedAt`,
   `deviceMac` and the optional `batteryPercent`. Timestamps are RFC3339 with an

@@ -30,8 +30,8 @@ type DatabaseIdentity struct {
 	Database         string
 }
 
-// v4Relations is the exact application relation inventory schema v4 creates.
-var v4Relations = []string{
+// schemaRelations is the exact application relation inventory the schema creates.
+var schemaRelations = []string{
 	"sync_sessions", "raw_blobs",
 	"heart_rate_samples", "step_samples", "temperature_samples", "hrv_samples",
 	"stress_samples", "resp_samples", "spo2_samples",
@@ -137,14 +137,14 @@ func (v *TxView) ReadReplaySessions(ctx context.Context, after *ReplayCursor, li
 	return out, nil
 }
 
-// IsFreshTarget verifies the actual v4 relation shape and that every
-// application table is empty before a rebuild mutates the target.
+// IsFreshTarget verifies the actual relation shape and that every application
+// table is empty before a rebuild mutates the target.
 func (v *TxView) IsFreshTarget(ctx context.Context) (bool, error) {
-	relations, err := v.q.CountRequiredRelations(ctx, v4Relations)
+	relations, err := v.q.CountRequiredRelations(ctx, schemaRelations)
 	if err != nil {
 		return false, err
 	}
-	if relations != int64(len(v4Relations)) {
+	if relations != int64(len(schemaRelations)) {
 		return false, nil
 	}
 	rows, err := v.q.AnyApplicationRows(ctx)

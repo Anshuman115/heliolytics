@@ -3,7 +3,7 @@
 The route table lives in `internal/api/routes.go`. The router resolves the exact
 escaped path, then the method, before any authentication or body work. It never
 redirects and never canonicalizes a slash or dot segment, so
-`GET /api/v1/daily-metrics/` is a 404.
+`GET /api/daily-metrics/` is a 404.
 
 Successful responses are JSON objects with named fields. Errors are JSON too:
 `{"error":{"code":"...","message":"..."}}`. The message comes from a fixed table,
@@ -15,24 +15,24 @@ never from the request or the database.
 |---|---|---|---|
 | `GET /health` | public | none | Text `ok`. It never touches the database |
 | `GET /version` | public | none | `commit` and `builtAt`, null when the build injected neither |
-| `GET /api/v1/daily-metrics` | signed | 366 days | `days`: one C3.3 row per stored IST day |
-| `GET /api/v1/sleep` | signed | 366 days | `days`: `dayKey`, `main`, `naps` |
-| `GET /api/v1/activities` | signed | 366 days | `activities`: workouts and derived auto activities |
-| `GET /api/v1/metrics/hr` | signed | 31 days | `days`: compact heart rate blocks |
-| `GET /api/v1/metrics/temperature` | signed | 31 days | `days`: compact temperature blocks |
-| `GET /api/v1/metrics/series` | signed | 31 days | `days`: compact vital blocks |
-| `GET /api/v1/metrics/coverage` | signed | no parameters | `hasData`, `lastIngestAt`, `dataThrough`, `types` |
-| `PUT /api/v1/profile` | `phone` only | none | 204 with an empty body |
-| `POST /api/v1/ingest` | `phone` only | none | The C2 per-type result |
+| `GET /api/daily-metrics` | signed | 366 days | `days`: one C3.3 row per stored IST day |
+| `GET /api/sleep` | signed | 366 days | `days`: `dayKey`, `main`, `naps` |
+| `GET /api/activities` | signed | 366 days | `activities`: workouts and derived auto activities |
+| `GET /api/metrics/hr` | signed | 31 days | `days`: compact heart rate blocks |
+| `GET /api/metrics/temperature` | signed | 31 days | `days`: compact temperature blocks |
+| `GET /api/metrics/series` | signed | 31 days | `days`: compact vital blocks |
+| `GET /api/metrics/coverage` | signed | no parameters | `hasData`, `lastIngestAt`, `dataThrough`, `types` |
+| `PUT /api/profile` | `phone` only | none | 204 with an empty body |
+| `POST /api/ingest` | `phone` only | none | The C2 per-type result |
 
 An unknown path returns 404 `not_found`. A known path with any other method,
 including `HEAD`, returns 405 `method_not_allowed` and lists the accepted methods
 in `Allow`.
 
-These routes are gone: workouts, activity sessions, HRV points, resting HR
-points, VO2 max, recovery, strain, daily health scores and reparse. Clients read
-the same values from the daily row, the sleep route, the activity route or the
-series route.
+No other route exists. Workout lists, activity sessions, HRV points, resting HR
+points, VO2 max, recovery, strain, daily health scores and reparse are not served;
+clients read the same values from the daily row, the sleep route, the activity
+route or the series route.
 
 ## Date ranges
 
@@ -71,7 +71,7 @@ the greatest canonical watermark.
 
 ## Writes
 
-`PUT /api/v1/profile` replaces the whole profile. All five keys are required and
+`PUT /api/profile` replaces the whole profile. All five keys are required and
 an explicit null clears that field: `name`, `birthDate`, `sex`, `heightCm`,
 `weightKg`. Values are bounded (birth date after 1900-01-01 and not after today,
 50..250 cm, 20..300 kg, sex `male` or `female`). A shape failure is 400
@@ -79,7 +79,7 @@ an explicit null clears that field: `name`, `birthDate`, `sex`, `heightCm`,
 only after the transaction commits, and a changed birth date or sex recomputes
 every stored load and readiness row in that same transaction.
 
-`POST /api/v1/ingest` accepts at most 16 MiB, 40 parts, and requires the `session`
+`POST /api/ingest` accepts at most 16 MiB, 40 parts, and requires the `session`
 and `catalog` parts plus one non-empty `0xNN_raw.bin` part. An unknown or
 duplicate part is 400. A structural type failure rejects the whole upload with 422
 and writes nothing. `0x26` returns `raw_only`.

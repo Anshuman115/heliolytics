@@ -74,7 +74,7 @@ func TestStackServesSignedRequestsOverTCP(t *testing.T) {
 	uploadBody, contentType := multipartBody(t, session,
 		catalogPart(t, catalogEntry{Code: "0x01", RoundStart: istWallClock(minute)}),
 		map[string][]byte{"0x01": activityMinute(88, 30)})
-	request := s.newRequestTo(t, server.URL, phoneKid, http.MethodPost, "/api/v1/ingest", "",
+	request := s.newRequestTo(t, server.URL, phoneKid, http.MethodPost, "/api/ingest", "",
 		uploadBody, contentType)
 	response, err := client.Do(request)
 	if err != nil {
@@ -89,7 +89,7 @@ func TestStackServesSignedRequestsOverTCP(t *testing.T) {
 	}
 
 	request = s.newRequestTo(t, server.URL, phoneKid, http.MethodGet,
-		"/api/v1/daily-metrics", "from=2026-09-24&to=2026-09-24", nil, "")
+		"/api/daily-metrics", "from=2026-09-24&to=2026-09-24", nil, "")
 	response, err = client.Do(request)
 	if err != nil {
 		t.Fatalf("daily metrics: %v", err)
@@ -115,7 +115,7 @@ func TestStackLivenessWithoutDatabase(t *testing.T) {
 	client := server.Client()
 
 	request := s.newRequestTo(t, server.URL, phoneKid, http.MethodGet,
-		"/api/v1/metrics/coverage", "", nil, "")
+		"/api/metrics/coverage", "", nil, "")
 	response, err := client.Do(request)
 	if err != nil {
 		t.Fatalf("coverage: %v", err)
@@ -297,7 +297,7 @@ func TestCompiledServerLifecycle(t *testing.T) {
 	uploadBody, contentType := multipartBody(t, session,
 		catalogPart(t, catalogEntry{Code: "0x01", RoundStart: istWallClock(minute)}),
 		map[string][]byte{"0x01": activityMinute(75, 40)})
-	request := signer.newRequestTo(t, base, phoneKid, http.MethodPost, "/api/v1/ingest", "",
+	request := signer.newRequestTo(t, base, phoneKid, http.MethodPost, "/api/ingest", "",
 		uploadBody, contentType)
 
 	writeClient := &http.Client{Timeout: 30 * time.Second}
@@ -314,7 +314,7 @@ func TestCompiledServerLifecycle(t *testing.T) {
 	}
 
 	request = signer.newRequestTo(t, base, phoneKid, http.MethodGet,
-		"/api/v1/daily-metrics", "from=2026-09-27&to=2026-09-27", nil, "")
+		"/api/daily-metrics", "from=2026-09-27&to=2026-09-27", nil, "")
 	response, err = writeClient.Do(request)
 	if err != nil {
 		t.Fatalf("daily metrics: %v", err)

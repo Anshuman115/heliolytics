@@ -43,7 +43,7 @@ does not own sync progress; the server does.
 | [Learn Go through this backend](docs/features/go-basics.md) | Language basics with examples from this code |
 | [Follow a Go request](docs/features/go-request-walkthrough.md) | Handler, query and JSON response path |
 | [Metrics API](docs/features/metrics-api.md) | Routes, parameters and client usage |
-| [Storage and schema](docs/features/storage-and-schema.md) | Tables, schema v4 and retention |
+| [Storage and schema](docs/features/storage-and-schema.md) | Tables, keys and retention |
 | [Ingest and parsing](docs/features/ingest-and-parsing.md) | Upload handling and per-type parsers |
 | [Authentication](docs/features/auth-and-security.md) | Signing, nonces, credential scopes and configuration |
 | [Readiness score](docs/features/readiness-score.md) | Inputs, weights and thresholds |

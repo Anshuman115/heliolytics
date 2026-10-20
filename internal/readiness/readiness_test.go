@@ -12,7 +12,7 @@ var day = time.Date(2026, 10, 20, 0, 0, 0, 0, time.UTC)
 
 func ptr(v float64) *float64 { return &v }
 
-// shrink is the version 1 spread formula, restated here so expectations never
+// shrink is the spread formula, restated here so expectations never
 // come from the production helper.
 func shrink(personal float64, n int, prior, floor float64) float64 {
 	variance := (float64(n)*personal*personal + 7*prior*prior) / (float64(n) + 7)

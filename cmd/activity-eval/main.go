@@ -16,9 +16,8 @@ import (
 )
 
 const (
-	algorithmVersion = "activity-v1"
-	timezoneNote     = "IST (UTC+05:30, no DST)"
-	stopConvention   = "stage stop is exclusive; stop earlier than start is next-day rollover"
+	timezoneNote   = "IST (UTC+05:30, no DST)"
+	stopConvention = "stage stop is exclusive; stop earlier than start is next-day rollover"
 
 	precisionTarget = 0.80
 	recallTarget    = 0.80
@@ -223,11 +222,10 @@ func selectParameters(export Export, sources Sources, development partition) (se
 
 	frozen := recordOfParams(best.params)
 	artifact := selectionArtifact{
-		Kind:             "activity-selection",
-		AlgorithmVersion: algorithmVersion,
-		Timezone:         timezoneNote,
-		StopConvention:   stopConvention,
-		SelectionRule:    selectionRule,
+		Kind:           "activity-selection",
+		Timezone:       timezoneNote,
+		StopConvention: stopConvention,
+		SelectionRule:  selectionRule,
 		Grid: gridRecord{
 			CadenceMin:  append([]int(nil), gridCadences...),
 			GapMax:      append([]int(nil), gridGaps...),
@@ -271,13 +269,12 @@ func evaluateSelection(export Export, sources Sources, selection selectionArtifa
 	gate := gateOf(holdoutScore)
 
 	report := evaluationArtifact{
-		Kind:             "activity-evaluation",
-		AlgorithmVersion: algorithmVersion,
-		Timezone:         timezoneNote,
-		StopConvention:   stopConvention,
-		Selection:        sourceRecord{Name: "selection", Path: selectionPath, SHA256: selectionHash},
-		Sources:          sourceRecords(sources, export.Hashes),
-		Parameters:       selection.Frozen,
+		Kind:           "activity-evaluation",
+		Timezone:       timezoneNote,
+		StopConvention: stopConvention,
+		Selection:      sourceRecord{Name: "selection", Path: selectionPath, SHA256: selectionHash},
+		Sources:        sourceRecords(sources, export.Hashes),
+		Parameters:     selection.Frozen,
 		Split: splitRecord{
 			Development: dateRangeRecord{From: formatDay(development.from), To: formatDay(development.to)},
 			Holdout:     dateRangeRecord{From: formatDay(holdout.from), To: formatDay(holdout.to)},
@@ -440,10 +437,6 @@ func loadSelection(path string) (selectionArtifact, string, error) {
 	if artifact.Kind != "activity-selection" {
 		return selectionArtifact{}, "", fmt.Errorf("%s: not a selection artifact", path)
 	}
-	if artifact.AlgorithmVersion != algorithmVersion {
-		return selectionArtifact{}, "", fmt.Errorf("%s: algorithm version %q does not match %q",
-			path, artifact.AlgorithmVersion, algorithmVersion)
-	}
 	if err := artifact.Frozen.validate(); err != nil {
 		return selectionArtifact{}, "", fmt.Errorf("%s: frozen parameters: %w", path, err)
 	}
@@ -470,8 +463,8 @@ func compareSources(recorded []sourceRecord, loaded map[string]string) error {
 }
 
 func frozenDigest(params paramsRecord) string {
-	payload := fmt.Sprintf("%s|cadenceMin=%d|gapMax=%d|durationMin=%d|runCadence=%d",
-		algorithmVersion, params.CadenceMin, params.GapMax, params.DurationMin, params.RunCadence)
+	payload := fmt.Sprintf("cadenceMin=%d|gapMax=%d|durationMin=%d|runCadence=%d",
+		params.CadenceMin, params.GapMax, params.DurationMin, params.RunCadence)
 	sum := sha256.Sum256([]byte(payload))
 	return hex.EncodeToString(sum[:])
 }
@@ -810,7 +803,6 @@ type gridRecord struct {
 
 type selectionArtifact struct {
 	Kind              string            `json:"kind"`
-	AlgorithmVersion  string            `json:"algorithmVersion"`
 	Timezone          string            `json:"timezone"`
 	StopConvention    string            `json:"stopConvention"`
 	SelectionRule     string            `json:"selectionRule"`
@@ -854,17 +846,16 @@ type targetRecord struct {
 }
 
 type evaluationArtifact struct {
-	Kind             string           `json:"kind"`
-	AlgorithmVersion string           `json:"algorithmVersion"`
-	Timezone         string           `json:"timezone"`
-	StopConvention   string           `json:"stopConvention"`
-	Selection        sourceRecord     `json:"selection"`
-	Sources          []sourceRecord   `json:"sources"`
-	Parameters       paramsRecord     `json:"parameters"`
-	Split            splitRecord      `json:"split"`
-	Partitions       []namedPartition `json:"partitions"`
-	Gate             gateRecord       `json:"gate"`
-	Limitations      []string         `json:"limitations"`
+	Kind           string           `json:"kind"`
+	Timezone       string           `json:"timezone"`
+	StopConvention string           `json:"stopConvention"`
+	Selection      sourceRecord     `json:"selection"`
+	Sources        []sourceRecord   `json:"sources"`
+	Parameters     paramsRecord     `json:"parameters"`
+	Split          splitRecord      `json:"split"`
+	Partitions     []namedPartition `json:"partitions"`
+	Gate           gateRecord       `json:"gate"`
+	Limitations    []string         `json:"limitations"`
 }
 
 type scoredCandidate struct {

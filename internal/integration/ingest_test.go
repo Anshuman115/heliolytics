@@ -517,7 +517,7 @@ func TestMalformedFramingRejectsWholeUpload(t *testing.T) {
 func TestNonceReplayRejectedOnceUnderConcurrency(t *testing.T) {
 	s := newStack(t)
 
-	signed, err := http.NewRequest(http.MethodGet, "http://api.test/api/v1/metrics/coverage", nil)
+	signed, err := http.NewRequest(http.MethodGet, "http://api.test/api/metrics/coverage", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -534,7 +534,7 @@ func TestNonceReplayRejectedOnceUnderConcurrency(t *testing.T) {
 		go func(index int) {
 			defer wait.Done()
 			replay, err := http.NewRequest(http.MethodGet,
-				"http://api.test/api/v1/metrics/coverage", nil)
+				"http://api.test/api/metrics/coverage", nil)
 			if err != nil {
 				codes[index] = -1
 				return
@@ -568,7 +568,7 @@ func TestNonceReplayRejectedOnceUnderConcurrency(t *testing.T) {
 	// A second mux over the same database is the multi-instance case: replay
 	// stays rejected because the nonce lives in the database.
 	second := newHandler(s.db, s.keys)
-	replay, err := http.NewRequest(http.MethodGet, "http://api.test/api/v1/metrics/coverage", nil)
+	replay, err := http.NewRequest(http.MethodGet, "http://api.test/api/metrics/coverage", nil)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -587,7 +587,7 @@ func TestWebWriteForbiddenBeforeBodyRead(t *testing.T) {
 	s := newStack(t)
 
 	body := &failReader{}
-	request, err := http.NewRequest(http.MethodPut, "http://api.test/api/v1/profile", body)
+	request, err := http.NewRequest(http.MethodPut, "http://api.test/api/profile", body)
 	if err != nil {
 		t.Fatalf("new request: %v", err)
 	}
@@ -639,12 +639,12 @@ func TestUnknownPathAndWrongMethod(t *testing.T) {
 		code   string
 		allow  string
 	}{
-		{"GET", "/api/v1/unknown", http.StatusNotFound, "not_found", ""},
-		{"GET", "/api/v1/daily-metrics/", http.StatusNotFound, "not_found", ""},
-		{"HEAD", "/api/v1/daily-metrics", http.StatusMethodNotAllowed, "method_not_allowed", "GET"},
+		{"GET", "/api/unknown", http.StatusNotFound, "not_found", ""},
+		{"GET", "/api/daily-metrics/", http.StatusNotFound, "not_found", ""},
+		{"HEAD", "/api/daily-metrics", http.StatusMethodNotAllowed, "method_not_allowed", "GET"},
 		{"POST", "/health", http.StatusMethodNotAllowed, "method_not_allowed", "GET"},
 		{"HEAD", "/health", http.StatusMethodNotAllowed, "method_not_allowed", "GET"},
-		{"GET", "/api/v1/profile", http.StatusMethodNotAllowed, "method_not_allowed", "PUT"},
+		{"GET", "/api/profile", http.StatusMethodNotAllowed, "method_not_allowed", "PUT"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.method+" "+tc.path, func(t *testing.T) {
@@ -911,7 +911,7 @@ func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 		serial.uploadOK(t, upload.session, upload.catalog, upload.blobs)
 	}
 	recorder := serial.serve(serial.newRequest(t, phoneKid, http.MethodPut,
-		"/api/v1/profile", "", profile, "application/json"))
+		"/api/profile", "", profile, "application/json"))
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("serial profile status %d: %s", recorder.Code, recorder.Body.String())
 	}
@@ -929,7 +929,7 @@ func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 			name:   "upload",
 			status: http.StatusOK,
 			build: func(t *testing.T, s *stack) *http.Request {
-				return s.newRequest(t, phoneKid, http.MethodPost, "/api/v1/ingest", "",
+				return s.newRequest(t, phoneKid, http.MethodPost, "/api/ingest", "",
 					item.body, item.content)
 			},
 		})
@@ -938,7 +938,7 @@ func TestConcurrentWritesMatchSerialExecution(t *testing.T) {
 		name:   "profile",
 		status: http.StatusNoContent,
 		build: func(t *testing.T, s *stack) *http.Request {
-			return s.newRequest(t, phoneKid, http.MethodPut, "/api/v1/profile", "",
+			return s.newRequest(t, phoneKid, http.MethodPut, "/api/profile", "",
 				profile, "application/json")
 		},
 	})

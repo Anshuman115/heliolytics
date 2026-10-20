@@ -9,7 +9,7 @@ import (
 )
 
 // Daily Banister TRIMP constants. The coverage floor and intensity threshold
-// are versioned project choices, not universal training-load rules.
+// are project choices, not universal training-load rules.
 const (
 	loadMinMinutes      = 720
 	loadMinIntensity    = 0.30

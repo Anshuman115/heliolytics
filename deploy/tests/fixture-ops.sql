@@ -11,7 +11,7 @@ VALUES (
   TIMESTAMPTZ '2026-06-01 00:00:00+05:30',
   TIMESTAMPTZ '2026-06-01 06:00:00+05:30',
   90,
-  '{"schemaVersion":1,"sessionId":"fixture-session-1","chunked":[],"unsolicited":[]}'::jsonb
+  '{"sessionId":"fixture-session-1","chunked":[],"unsolicited":[]}'::jsonb
 )
 ON CONFLICT (session_id) DO NOTHING;
 

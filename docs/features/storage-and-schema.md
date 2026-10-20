@@ -2,7 +2,7 @@
 
 PostgreSQL stores the data. TimescaleDB adds time partitioning to the seven sample tables. sqlc is the only source of SQL text: every statement lives in `sql/queries/*.sql` and generates `internal/store/db`.
 
-`schema.sql` is the entire schema, version 4. It runs once on an empty database and is not an in-place upgrade. There are no migrations, no compatibility views and no seed rows. Initialization creates extensions, tables, indexes, constraints, the ownership view, the identity helper and grants only.
+`schema.sql` is the entire schema. It runs once on an empty database and is not an in-place upgrade. There are no migrations, no compatibility views and no seed rows. Initialization creates extensions, tables, indexes, constraints, the ownership view, the identity helper and grants only.
 
 ## Tables
 
@@ -78,7 +78,7 @@ A watermark is a fetch-planning hint, not proof that every earlier minute exists
 
 `public.rebuild_database_identity()` is a fixed-search-path `SECURITY DEFINER` helper that returns `system_identifier`, the database OID and the database name. PUBLIC execute is revoked and the application role has no grant, so only the owner can read it.
 
-`Store.Identity` maps that row to `DatabaseIdentity`. A rebuild compares the identity of source and target before any mutation, so two DSNs that alias one database through loopback addresses or host names are still refused. Rebuild is test-only tooling: it is absent from the production image, and it writes only to an empty schema-v4 target.
+`Store.Identity` maps that row to `DatabaseIdentity`. A rebuild compares the identity of source and target before any mutation, so two DSNs that alias one database through loopback addresses or host names are still refused. Rebuild is test-only tooling: it is absent from the production image, and it writes only to an empty target with the current schema.
 
 ## Grants
 

@@ -136,7 +136,7 @@ func signRequestWithNonce(t *testing.T, keys auth.KeySet, kid string, req *http.
 		req.URL.EscapedPath(), req.URL.RawQuery, hash, req.Header.Get("Content-Type"))
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(canonical))
-	req.Header.Set(auth.HeaderAuth, fmt.Sprintf("v2.%s.%d.%s.%s", kid, ts, nonce, hex.EncodeToString(mac.Sum(nil))))
+	req.Header.Set(auth.HeaderAuth, fmt.Sprintf("%s.%d.%s.%s", kid, ts, nonce, hex.EncodeToString(mac.Sum(nil))))
 	req.Header.Set(auth.HeaderBodySHA256, hash)
 }
 

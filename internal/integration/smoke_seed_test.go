@@ -229,7 +229,7 @@ func (c *smokeClient) do(t *testing.T, method, path, query string,
 	mac := hmac.New(sha256.New, c.secret)
 	_, _ = mac.Write([]byte(canonical))
 	request.Header.Set(auth.HeaderAuth,
-		fmt.Sprintf("v2.phone.%d.%s.%s", ts, hex.EncodeToString(nonce),
+		fmt.Sprintf("phone.%d.%s.%s", ts, hex.EncodeToString(nonce),
 			hex.EncodeToString(mac.Sum(nil))))
 	request.Header.Set(auth.HeaderBodySHA256, hash)
 
@@ -297,7 +297,7 @@ func TestSeedLocalSmoke(t *testing.T) {
 
 	// A profile-only write stores the profile and no daily rows.
 	profile := []byte(`{"name":null,"birthDate":"1991-02-03","sex":"male","heightCm":176.0,"weightKg":70.0}`)
-	status, payload := client.do(t, http.MethodPut, "/api/v1/profile", "", profile, "application/json")
+	status, payload := client.do(t, http.MethodPut, "/api/profile", "", profile, "application/json")
 	if status != http.StatusNoContent {
 		t.Fatalf("profile status %d: %s", status, payload)
 	}
@@ -307,7 +307,7 @@ func TestSeedLocalSmoke(t *testing.T) {
 
 	// The immutable June corpus goes through real signed ingest.
 	uploadBody, contentType := multipartBody(t, realSession(t), realCatalog(t), realBlobs(t))
-	status, payload = client.do(t, http.MethodPost, "/api/v1/ingest", "", uploadBody, contentType)
+	status, payload = client.do(t, http.MethodPost, "/api/ingest", "", uploadBody, contentType)
 	if status != http.StatusOK {
 		t.Fatalf("June ingest status %d: %s", status, payload)
 	}
@@ -332,7 +332,7 @@ func TestSeedLocalSmoke(t *testing.T) {
 		t.Fatalf("0x01 rows = %d, want 4218", result.Types["0x01"].Rows)
 	}
 
-	status, payload = client.do(t, http.MethodGet, "/api/v1/daily-metrics",
+	status, payload = client.do(t, http.MethodGet, "/api/daily-metrics",
 		"from=2026-06-21&to=2026-06-22", nil, "")
 	if status != http.StatusOK {
 		t.Fatalf("daily metrics status %d: %s", status, payload)
@@ -368,12 +368,12 @@ func TestSeedLocalSmoke(t *testing.T) {
 	uploadBody, contentType = multipartBody(t, session,
 		catalogPart(t, catalogEntry{Code: "0x01", RoundStart: istWallClock(syntheticMinute)}),
 		map[string][]byte{"0x01": activity})
-	status, payload = client.do(t, http.MethodPost, "/api/v1/ingest", "", uploadBody, contentType)
+	status, payload = client.do(t, http.MethodPost, "/api/ingest", "", uploadBody, contentType)
 	if status != http.StatusOK {
 		t.Fatalf("synthetic ingest status %d: %s", status, payload)
 	}
 
-	status, payload = client.do(t, http.MethodGet, "/api/v1/daily-metrics",
+	status, payload = client.do(t, http.MethodGet, "/api/daily-metrics",
 		"from="+syntheticDay+"&to="+syntheticDay, nil, "")
 	if status != http.StatusOK {
 		t.Fatalf("synthetic daily status %d: %s", status, payload)
@@ -386,7 +386,7 @@ func TestSeedLocalSmoke(t *testing.T) {
 		t.Fatalf("synthetic day = %s", payload)
 	}
 
-	status, payload = client.do(t, http.MethodGet, "/api/v1/metrics/coverage", "", nil, "")
+	status, payload = client.do(t, http.MethodGet, "/api/metrics/coverage", "", nil, "")
 	if status != http.StatusOK {
 		t.Fatalf("coverage status %d: %s", status, payload)
 	}

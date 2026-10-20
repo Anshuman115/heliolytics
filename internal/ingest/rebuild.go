@@ -48,13 +48,13 @@ var (
 	rebuildSourceName   = regexp.MustCompile(`^heliolytics_rebuild_source_[0-9a-z]{1,32}$`)
 	rebuildTargetName   = regexp.MustCompile(`^heliolytics_rebuild_target(_[0-9a-z]{1,32})?$`)
 	loopbackHosts       = map[string]struct{}{"127.0.0.1": {}, "::1": {}}
-	errTargetNotFresh   = errors.New("rebuild target is not a fresh schema v4 database")
+	errTargetNotFresh   = errors.New("rebuild target is not a fresh database with the current schema")
 	errIdentityMismatch = errors.New("rebuild resource identity mismatch")
 )
 
-// RebuildAll replays a disposable test source into a different, empty, same-v4
-// disposable test target. It never populates production and has no server
-// caller.
+// RebuildAll replays a disposable test source into a different, empty,
+// same-schema disposable test target. It never populates production and has no
+// server caller.
 func RebuildAll(ctx context.Context, source, target *store.Store, scope RebuildTestScope,
 	log func(string)) error {
 	if err := scope.Source.validate("source"); err != nil {

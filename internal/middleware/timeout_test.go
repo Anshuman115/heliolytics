@@ -16,7 +16,7 @@ func TestTimeoutWritesRequestTimeout(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/daily-metrics", nil))
 
 	if recorder.Code != http.StatusServiceUnavailable {
 		t.Fatalf("status = %d, want 503", recorder.Code)
@@ -32,7 +32,7 @@ func TestTimeoutKeepsFastResponse(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/v1/profile", nil))
+	handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodPut, "/api/profile", nil))
 
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("status = %d", recorder.Code)
@@ -54,7 +54,7 @@ func TestTimeoutBlocksLateWrites(t *testing.T) {
 	})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics", nil).WithContext(ctx)
+	request := httptest.NewRequest(http.MethodGet, "/api/daily-metrics", nil).WithContext(ctx)
 
 	served := make(chan struct{})
 	go func() {
@@ -93,7 +93,7 @@ func TestTimeoutAnswersWhileWorkerRuns(t *testing.T) {
 	})
 
 	recorder := &signallingRecorder{ResponseRecorder: httptest.NewRecorder(), status: make(chan int, 1)}
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics", nil).WithContext(ctx)
+	request := httptest.NewRequest(http.MethodGet, "/api/daily-metrics", nil).WithContext(ctx)
 
 	served := make(chan struct{})
 	go func() {
@@ -149,7 +149,7 @@ func TestTimeoutKeepsCommittedStatus(t *testing.T) {
 	})
 
 	recorder := httptest.NewRecorder()
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics", nil).WithContext(ctx)
+	request := httptest.NewRequest(http.MethodGet, "/api/daily-metrics", nil).WithContext(ctx)
 
 	served := make(chan struct{})
 	go func() {

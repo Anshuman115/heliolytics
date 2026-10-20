@@ -151,7 +151,7 @@ source_commit="${HELIOLYTICS_COMMIT:-unknown}"
   printf 'image_ref=%s\n' "$image_ref"
   printf 'image_id=%s\n' "$image_id"
   printf 'source_commit=%s\n' "$source_commit"
-  printf 'schema=heliolytics-v4\n'
+  printf 'schema=heliolytics\n'
 } >"$info_path"
 
 for artifact in "$dump_path" "$sha_path" "$info_path"; do

@@ -50,7 +50,7 @@ func UpdateProfile(ctx context.Context, st *store.Store, profile *store.Profile)
 	})
 }
 
-// formulaChanged reports whether a v1 load input changed.
+// formulaChanged reports whether a load input changed.
 func formulaChanged(before, after store.Profile) bool {
 	return !sameDate(before.BirthDate, after.BirthDate) || !sameText(before.Sex, after.Sex)
 }

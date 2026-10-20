@@ -83,7 +83,7 @@ func TestReadReplaySessionsRejectsNonPositiveLimit(t *testing.T) {
 	}
 }
 
-func TestIsFreshTargetRequiresEmptyV4Database(t *testing.T) {
+func TestIsFreshTargetRequiresEmptyDatabase(t *testing.T) {
 	st := newTestStore(t)
 	ctx := context.Background()
 

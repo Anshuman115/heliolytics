@@ -25,9 +25,9 @@ func TestDailyMetricsKeepsNullsAndZeros(t *testing.T) {
 		VALUES ('2026-10-01', 0, NULL, 0, 0, 12.34, 0)`)
 	seed(t, st, `INSERT INTO daily_metrics
 		(day_key, readiness, readiness_components)
-		VALUES ('2026-10-02', 42, '{"version":1,"status":"scored","score":42,"raw":50,"baselineNights":20,"components":[],"flags":[]}'::jsonb)`)
+		VALUES ('2026-10-02', 42, '{"status":"scored","score":42,"raw":50,"baselineNights":20,"components":[],"flags":[]}'::jsonb)`)
 
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/daily-metrics?from=2026-10-01&to=2026-10-03", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/daily-metrics?from=2026-10-01&to=2026-10-03", nil)
 	signRequest(t, keys, "web", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {
@@ -102,7 +102,7 @@ func TestSleepChoosesLongestMainAndSeparatesNaps(t *testing.T) {
 
 	keys := testKeys()
 	mux := newMux(st, testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, newFakeNonces())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sleep?from=2026-10-01&to=2026-10-01", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/sleep?from=2026-10-01&to=2026-10-01", nil)
 	signRequest(t, keys, "phone", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {
@@ -158,7 +158,7 @@ func TestActivitiesAreOrderedAndKeepNulls(t *testing.T) {
 
 	keys := testKeys()
 	mux := newMux(st, testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, newFakeNonces())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/activities?from=2026-10-01&to=2026-10-01", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/activities?from=2026-10-01&to=2026-10-01", nil)
 	signRequest(t, keys, "web", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {
@@ -205,7 +205,7 @@ func TestSeriesHasStableLabelsAndEqualArrays(t *testing.T) {
 
 	keys := testKeys()
 	mux := newMux(st, testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, newFakeNonces())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/metrics/series?from=2026-10-01&to=2026-10-01", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/metrics/series?from=2026-10-01&to=2026-10-01", nil)
 	signRequest(t, keys, "web", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {
@@ -243,7 +243,7 @@ func TestSeriesHasStableLabelsAndEqualArrays(t *testing.T) {
 func TestSleepRouteEmptyDatabaseReturnsEmptyList(t *testing.T) {
 	keys := testKeys()
 	mux := newMux(testStore(t), testConfig(keys), (&stubIngest{}).run, (&stubProfile{}).update, newFakeNonces())
-	req := httptest.NewRequest(http.MethodGet, "/api/v1/sleep?from=2026-10-01&to=2026-10-01", nil)
+	req := httptest.NewRequest(http.MethodGet, "/api/sleep?from=2026-10-01&to=2026-10-01", nil)
 	signRequest(t, keys, "web", req, nil)
 	recorder := serve(mux, req)
 	if recorder.Code != http.StatusOK {

@@ -21,7 +21,7 @@ func profileMux(t *testing.T, keys auth.KeySet, nonces *fakeNonces, profile *stu
 // putProfile sends one signed profile replacement.
 func putProfile(t *testing.T, handler http.Handler, keys auth.KeySet, body []byte) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/profile", strings.NewReader(string(body)))
+	req := httptest.NewRequest(http.MethodPut, "/api/profile", strings.NewReader(string(body)))
 	req.Header.Set("Content-Type", "application/json")
 	signRequest(t, keys, "phone", req, body)
 	return serve(handler, req)

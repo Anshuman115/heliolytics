@@ -28,7 +28,7 @@ func TestParseCatalogRejectsMalformedJSON(t *testing.T) {
 }
 
 func TestParseCatalogIgnoresUnknownKeys(t *testing.T) {
-	raw := `{"schemaVersion":1,"sessionId":"fixture","unsolicited":[],
+	raw := `{"capturedAt":"2026-06-21T11:00:00.000","sessionId":"fixture","unsolicited":[],
 		"chunked":[{"code":"0x01","status":"ok","samples":3,"bytes":24,
 		"file":"0x01_raw.bin","errorByte":0,
 		"roundStart":"2026-06-21T11:16:00.000",

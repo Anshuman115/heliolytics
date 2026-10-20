@@ -37,7 +37,7 @@ func mustTx(t *testing.T, st *Store, fn func(pgx.Tx) error) {
 func seedSession(t *testing.T, st *Store, id string, startedAt, endedAt time.Time) {
 	t.Helper()
 	ctx := context.Background()
-	catalog := []byte(`{"schemaVersion":1,"sessionId":` + quoteJSON(id) + `}`)
+	catalog := []byte(`{"sessionId":` + quoteJSON(id) + `}`)
 	meta := SessionMeta{
 		ID:        id,
 		DeviceMAC: "02:00:00:00:00:01",
@@ -84,7 +84,7 @@ var applicationTables = []string{
 	"pai_scores", "daily_metrics", "coverage", "profile", "auth_nonces",
 }
 
-var legacyTables = []string{
+var absentTables = []string{
 	"raw_type_blobs", "rhr_samples", "raw_readiness", "raw_pai_scores",
 	"workouts", "activity_sessions", "profiles", "computed_readiness",
 	"health_samples", "migrations", "schema_migrations",
@@ -98,11 +98,11 @@ func TestFreshSchemaApplicationInventoryIsEmpty(t *testing.T) {
 			t.Fatalf("fresh schema: %s has %d rows, want 0", table, n)
 		}
 	}
-	for _, table := range legacyTables {
+	for _, table := range absentTables {
 		got := scalarString(t, st,
 			`SELECT coalesce(to_regclass('public.' || $1)::text, '')`, table)
 		if got != "" {
-			t.Fatalf("legacy relation %s still exists", table)
+			t.Fatalf("absent relation %s exists", table)
 		}
 	}
 	if got := scalarString(t, st,
@@ -300,7 +300,7 @@ func TestWriteSessionEnvelopeIsImmutable(t *testing.T) {
 		EndedAt:    ended,
 		BatteryPct: new(80),
 	}
-	catalog := `{"schemaVersion":1,"sessionId":"envelope-session","chunked":[]}`
+	catalog := `{"sessionId":"envelope-session","chunked":[]}`
 	blobs := []RawBlob{
 		{TypeCode: "0x01", Payload: []byte{1, 2, 3}},
 		{TypeCode: "0x2E", Payload: []byte{4, 5}},
@@ -320,7 +320,7 @@ func TestWriteSessionEnvelopeIsImmutable(t *testing.T) {
 	}
 
 	// Property order alone is not a conflict.
-	reordered := `{"chunked":[],"sessionId":"envelope-session","schemaVersion":1}`
+	reordered := `{"chunked":[],"sessionId":"envelope-session"}`
 	if _, err := writeSessionEnvelope(t, st, meta, reordered, blobs); err != nil {
 		t.Fatalf("reordered catalog was treated as a conflict: %v", err)
 	}
@@ -333,7 +333,7 @@ func TestWriteSessionEnvelopeIsImmutable(t *testing.T) {
 		t.Fatalf("changed payload err = %v, want ErrSessionConflict", err)
 	}
 	if _, err := writeSessionEnvelope(t, st, meta,
-		`{"schemaVersion":1,"sessionId":"envelope-session"}`, blobs); !errors.Is(err, ErrSessionConflict) {
+		`{"sessionId":"envelope-session"}`, blobs); !errors.Is(err, ErrSessionConflict) {
 		t.Fatalf("changed catalog err = %v, want ErrSessionConflict", err)
 	}
 	if _, err := writeSessionEnvelope(t, st, meta, catalog, blobs[:1]); !errors.Is(err, ErrSessionConflict) {

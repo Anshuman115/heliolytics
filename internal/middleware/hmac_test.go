@@ -60,7 +60,7 @@ func testKeySet() auth.KeySet {
 	return auth.NewKeySet(phone, web)
 }
 
-// signedRequest builds a v2-signed request for a test operator.
+// signedRequest builds a signed request for a test operator.
 func signedRequest(t *testing.T, keys auth.KeySet, kid, method, target, contentType string, body []byte) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(method, target, bytes.NewReader(body))
@@ -86,7 +86,7 @@ func signedRequest(t *testing.T, keys auth.KeySet, kid, method, target, contentT
 	canonical := auth.CanonicalText(kid, ts, nonce, method, req.URL.EscapedPath(), req.URL.RawQuery, hash, contentType)
 	mac := hmac.New(sha256.New, secret)
 	_, _ = mac.Write([]byte(canonical))
-	req.Header.Set(auth.HeaderAuth, fmt.Sprintf("v2.%s.%d.%s.%s", kid, ts, nonce, hex.EncodeToString(mac.Sum(nil))))
+	req.Header.Set(auth.HeaderAuth, fmt.Sprintf("%s.%d.%s.%s", kid, ts, nonce, hex.EncodeToString(mac.Sum(nil))))
 	req.Header.Set(auth.HeaderBodySHA256, hash)
 	return req
 }
@@ -132,7 +132,7 @@ func TestGuardPassesAuthenticatedRequest(t *testing.T) {
 	}))
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, signedRequest(t, keys, "phone", http.MethodPut, "/api/v1/profile", "application/json", body))
+	handler.ServeHTTP(recorder, signedRequest(t, keys, "phone", http.MethodPut, "/api/profile", "application/json", body))
 	if recorder.Code != http.StatusNoContent {
 		t.Fatalf("status = %d body = %s", recorder.Code, recorder.Body.String())
 	}
@@ -158,17 +158,17 @@ func TestGuardRejectsBadSignatureWithoutReadingBody(t *testing.T) {
 		t.Error("handler ran on a bad signature")
 	}))
 
-	req := signedRequest(t, keys, "phone", http.MethodPut, "/api/v1/profile", "application/json", []byte("{}"))
+	req := signedRequest(t, keys, "phone", http.MethodPut, "/api/profile", "application/json", []byte("{}"))
 	req.Body = io.NopCloser(unreadBody{t: t})
 	header := req.Header.Get(auth.HeaderAuth)
 	parts := strings.Split(header, ".")
-	signature := []byte(parts[4])
+	signature := []byte(parts[3])
 	if signature[0] == 'a' {
 		signature[0] = 'b'
 	} else {
 		signature[0] = 'a'
 	}
-	parts[4] = string(signature)
+	parts[3] = string(signature)
 	req.Header.Set(auth.HeaderAuth, strings.Join(parts, "."))
 
 	recorder := httptest.NewRecorder()
@@ -189,7 +189,7 @@ func TestGuardForbidsWebWritesBeforeBodyRead(t *testing.T) {
 		t.Error("handler ran for a web write")
 	}))
 
-	req := signedRequest(t, keys, "web", http.MethodPut, "/api/v1/profile", "application/json", []byte("{}"))
+	req := signedRequest(t, keys, "web", http.MethodPut, "/api/profile", "application/json", []byte("{}"))
 	req.Body = io.NopCloser(unreadBody{t: t})
 
 	recorder := httptest.NewRecorder()
@@ -222,7 +222,7 @@ func TestGuardPreAuthRateLimit(t *testing.T) {
 	}
 
 	recorder := httptest.NewRecorder()
-	handler.ServeHTTP(recorder, signedRequest(t, keys, "phone", http.MethodGet, "/api/v1/daily-metrics", "", nil))
+	handler.ServeHTTP(recorder, signedRequest(t, keys, "phone", http.MethodGet, "/api/daily-metrics", "", nil))
 	if recorder.Code != http.StatusTooManyRequests {
 		t.Fatalf("status = %d", recorder.Code)
 	}
@@ -247,7 +247,7 @@ func TestGuardTrustedPeerHeaderFailure(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	}))
 
-	req := signedRequest(t, keys, "phone", http.MethodGet, "/api/v1/daily-metrics", "", nil)
+	req := signedRequest(t, keys, "phone", http.MethodGet, "/api/daily-metrics", "", nil)
 	req.RemoteAddr = "127.0.0.1:5555"
 	recorder := httptest.NewRecorder()
 	handler.ServeHTTP(recorder, req)
@@ -258,7 +258,7 @@ func TestGuardTrustedPeerHeaderFailure(t *testing.T) {
 		t.Fatalf("code = %q", code)
 	}
 
-	withHeader := signedRequest(t, keys, "phone", http.MethodGet, "/api/v1/daily-metrics", "", nil)
+	withHeader := signedRequest(t, keys, "phone", http.MethodGet, "/api/daily-metrics", "", nil)
 	withHeader.RemoteAddr = "127.0.0.1:5555"
 	withHeader.Header.Set("CF-Connecting-IP", "198.51.100.7")
 	ok := httptest.NewRecorder()
@@ -285,7 +285,7 @@ func TestGuardBodySlotBusy(t *testing.T) {
 	body := []byte("{}")
 
 	first := httptest.NewRecorder()
-	go handler.ServeHTTP(first, signedRequest(t, keys, "phone", http.MethodPut, "/api/v1/profile", "application/json", body))
+	go handler.ServeHTTP(first, signedRequest(t, keys, "phone", http.MethodPut, "/api/profile", "application/json", body))
 	select {
 	case <-entered:
 	case <-time.After(5 * time.Second):
@@ -293,7 +293,7 @@ func TestGuardBodySlotBusy(t *testing.T) {
 	}
 
 	second := httptest.NewRecorder()
-	handler.ServeHTTP(second, signedRequest(t, keys, "phone", http.MethodPut, "/api/v1/profile", "application/json", body))
+	handler.ServeHTTP(second, signedRequest(t, keys, "phone", http.MethodPut, "/api/profile", "application/json", body))
 	if second.Code != http.StatusServiceUnavailable {
 		t.Fatalf("second status = %d", second.Code)
 	}
