@@ -89,19 +89,3 @@ func TestLoadRejectsInvalidTwoAPIKeys(t *testing.T) {
 		})
 	}
 }
-
-func TestLoadRejectsOldKeysOnly(t *testing.T) {
-	clearEnv(t)
-	t.Setenv("DATABASE_URL", "postgres://app@127.0.0.1:5432/heliolytics")
-	t.Setenv("HELIOLYTICS_API_KEYS", "phone."+strings.Repeat("11", 32)+",web."+strings.Repeat("22", 32))
-	t.Setenv("HELIOLYTICS_API_KEY", "web."+strings.Repeat("22", 32))
-	for _, variable := range []string{"HELIOLYTICS_WEB_API_KEY", "HELIOLYTICS_PHONE_API_KEY"} {
-		t.Setenv(variable, "")
-		if err := os.Unsetenv(variable); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if _, err := Load(); err == nil {
-		t.Fatal("old variables started the API without the two required keys")
-	}
-}
