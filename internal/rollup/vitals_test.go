@@ -1,103 +1,69 @@
 package rollup
 
 import (
-	"context"
 	"testing"
-	"time"
 
-	"github.com/heliolytics/api/internal/store"
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-func TestRecomputeDailyVitalsUsesSleepWindow(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	const day = "2026-06-27"
-
-	clean := func() {
-		st.Pool().Exec(ctx, `DELETE FROM hrv_samples WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM spo2_samples WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM resp_samples WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM sleep_sessions WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM daily_metrics WHERE day_key=$1::date`, day)
+func TestMeanNightHRVQualityBoundaries(t *testing.T) {
+	window := spanOf(at(1, 0), at(2, 0))
+	rows := make([]store.HRVSample, 0, 60)
+	for i := range 60 {
+		rows = append(rows, store.HRVSample{At: at(1, i), RMSSDMS: 40 + float64(i%3)})
 	}
-	clean()
-	t.Cleanup(clean)
-	st.Pool().Exec(ctx, `INSERT INTO daily_metrics (day_key) VALUES ($1::date)`, day)
-
-	sleepStart := time.Date(2026, 6, 26, 22, 0, 0, 0, time.UTC) // sleep window: 22:00 -> 06:00 next day
-	sleepEnd := sleepStart.Add(8 * time.Hour)
-	_, err := st.Pool().Exec(ctx, `
-		INSERT INTO sleep_sessions (started_at, day_key, score, total_mins, deep_mins, rem_mins, light_mins, wake_mins, is_nap, source_session_id)
-		VALUES ($1, $2::date, 80, 480, 100, 100, 280, 0, false, 'sess-sleep-1')`,
-		sleepStart, day)
-	if err != nil {
-		t.Fatalf("seed sleep: %v", err)
+	got := meanNightHRV(rows, window)
+	if got == nil {
+		t.Fatal("60 samples over 60 minutes must qualify")
 	}
-
-	inWindow := sleepStart.Add(2 * time.Hour)  // inside sleep window
-	outOfWindow := sleepEnd.Add(4 * time.Hour) // daytime, must be excluded
-
-	if err := st.UpsertHrvSamples(ctx, "sess-hrv", []store.SampleValue{
-		{DayKey: day, SampledAt: inWindow, Value: 50},
-		{DayKey: day, SampledAt: outOfWindow, Value: 999}, // must be excluded
-	}); err != nil {
-		t.Fatalf("seed hrv: %v", err)
+	sum := 0.0
+	for _, r := range rows {
+		sum += r.RMSSDMS
 	}
-
-	if err := RecomputeDailyVitals(ctx, st, []string{day}); err != nil {
-		t.Fatalf("recompute: %v", err)
+	if *got != sum/60 {
+		t.Fatalf("mean = %v, want the fractional %v", *got, sum/60)
 	}
-
-	var hrv *int
-	if err := st.Pool().QueryRow(ctx,
-		`SELECT hrv_rmssd FROM daily_metrics WHERE day_key=$1::date`, day).Scan(&hrv); err != nil {
-		t.Fatalf("read: %v", err)
+	if meanNightHRV(rows[:59], window) != nil {
+		t.Fatal("59 samples must stay NULL")
 	}
-	if hrv == nil || *hrv != 50 {
-		t.Fatalf("hrv_rmssd=%v, want 50 (daytime sample must be excluded)", hrv)
+	if meanNightHRV(rows, spanOf(at(1, 0), at(4, 20))) != nil {
+		t.Fatal("60 samples over 200 minutes must fail the coverage rule")
 	}
 }
 
-func TestRecomputeDailyVitalsUsesStageTimeline(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	const day = "2026-06-28"
-
-	clean := func() {
-		st.Pool().Exec(ctx, `DELETE FROM hrv_samples WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM sleep_sessions WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM daily_metrics WHERE day_key=$1::date`, day)
+func TestMeanNightRespBoundary(t *testing.T) {
+	rows := make([]store.RespSample, 0, 60)
+	for i := range 60 {
+		rows = append(rows, store.RespSample{At: at(1, i), BRMin: 13.5})
 	}
-	clean()
-	t.Cleanup(clean)
-	st.Pool().Exec(ctx, `INSERT INTO daily_metrics (day_key) VALUES ($1::date)`, day)
-
-	stageStart := time.Date(2026, 6, 27, 20, 30, 0, 0, time.UTC)
-	stageEnd := stageStart.Add(8 * time.Hour)
-	err := st.UpsertSleepSessions(ctx, "sess-stage-window", []store.SleepRow{{
-		DayKey: day, StartedAt: stageEnd.Add(30 * time.Minute), Score: 80,
-		TotalMins: 450, Stages: []store.SleepStagePoint{{
-			Start: stageStart, End: stageEnd, Type: 4,
-		}},
-	}})
-	if err != nil {
-		t.Fatalf("seed sleep: %v", err)
+	if got := meanNightResp(rows); got == nil || *got != 13.5 {
+		t.Fatalf("mean = %v, want 13.5", got)
 	}
-	if err := st.UpsertHrvSamples(ctx, "sess-stage-hrv", []store.SampleValue{{
-		DayKey: day, SampledAt: stageStart.Add(time.Hour), Value: 48,
-	}}); err != nil {
-		t.Fatalf("seed hrv: %v", err)
+	if meanNightResp(rows[:59]) != nil {
+		t.Fatal("59 samples must stay NULL")
+	}
+}
+
+func TestSpO2SummaryBelowThreeSamples(t *testing.T) {
+	two := []store.SpO2Sample{
+		{At: at(1, 0), Source: "0x25", Pct: 96},
+		{At: at(1, 1), Source: "0x25", Pct: 94},
+	}
+	avg, minPct, n := spo2Summary(two)
+	if avg != nil || minPct != nil {
+		t.Fatalf("two samples avg/min = %v/%v, want NULL", avg, minPct)
+	}
+	if n != 2 {
+		t.Fatalf("count = %d, want the actual 2", n)
 	}
 
-	if err := RecomputeDailyVitals(ctx, st, []string{day}); err != nil {
-		t.Fatalf("recompute: %v", err)
+	three := append(two, store.SpO2Sample{At: at(1, 2), Source: "0x25", Pct: 98})
+	avg, minPct, n = spo2Summary(three)
+	if avg == nil || *avg != 96 || minPct == nil || *minPct != 94 || n != 3 {
+		t.Fatalf("three samples = %v/%v/%d, want 96/94/3", avg, minPct, n)
 	}
-	var hrv *int
-	if err := st.Pool().QueryRow(ctx,
-		`SELECT hrv_rmssd FROM daily_metrics WHERE day_key=$1::date`, day).Scan(&hrv); err != nil {
-		t.Fatalf("read: %v", err)
-	}
-	if hrv == nil || *hrv != 48 {
-		t.Fatalf("hrv_rmssd=%v, want 48 from stage timeline", hrv)
+
+	if avg, minPct, n := spo2Summary(nil); avg != nil || minPct != nil || n != 0 {
+		t.Fatal("no samples must report a zero count and NULL statistics")
 	}
 }

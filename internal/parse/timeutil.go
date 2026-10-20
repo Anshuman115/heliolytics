@@ -2,13 +2,18 @@ package parse
 
 import "time"
 
-const minPlausibleSec = 1577836800 // 2020-01-01
-
-func IsPlausibleUnixSec(sec int64) bool {
-	max := time.Now().UTC().Unix() + 86400
-	return sec >= minPlausibleSec && sec <= max
-}
+const (
+	measuredWindowSlack = 30 * 24 * time.Hour
+	measuredWindowTail  = 5 * time.Minute
+	istTimezoneQuarter  = 22
+	minAnchorSec        = int64(1577836800) // 2020-01-01T00:00:00Z
+	maxAnchorSec        = int64(4102444800) // 2100-01-01T00:00:00Z
+)
 
 func EpochUTC(sec int64) time.Time {
 	return time.Unix(sec, 0).UTC()
+}
+
+func anchorPlausible(sec int64) bool {
+	return sec >= minAnchorSec && sec <= maxAnchorSec
 }

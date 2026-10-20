@@ -1,79 +1,155 @@
 # Authentication and security
 
-The API has no user login. It serves one owner and gates data requests with one shared signing secret. `/health` is public.
+The API has no user login. Two fixed credentials authenticate signed requests:
+`phone` may read and write, `web` may only read. `/health` and `/version` are
+public. This split keeps a server-side web process from holding a write
+credential. It is not role-based access control and it does not prove that a
+request came from a specific handset.
 
-## Token format
+## Signed request
 
-Header `X-Heliolytics-Token`, format `ts.nonce.sig`:
+Two headers carry the credential:
 
+```text
+X-Heliolytics-Auth: <kid>.<ts>.<nonce>.<mac>
+X-Heliolytics-Content-SHA256: <sha256 of the exact body bytes>
 ```
-ts    = unix seconds
-nonce = 16 random bytes, hex
-sig   = HMAC-SHA256(secret, "ts:nonce")
+
+- `kid` is `phone` or `web`.
+- `ts` is integer Unix seconds and is accepted when
+  `now-300 <= ts <= now+60`, both edges inclusive.
+- `nonce` is 16 random bytes written as 32 lowercase hex characters.
+- The body hash is the SHA-256 of the finalized body. An empty body hashes to
+  `e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855`.
+- `mac` is HMAC-SHA256 over the canonical text, keyed by that kid's 32-byte
+  secret, written as 64 lowercase hex characters.
+
+Both headers must appear exactly once. A duplicate is rejected.
+
+## Canonical text
+
+Eight fields joined by a single newline, in this order:
+
+```text
+<kid>
+<ts>
+<nonce>
+<METHOD>
+<escapedPath>
+<rawQuery>
+<declared body hash>
+<Content-Type>
 ```
 
-`internal/auth/signing.go` mints (`SignToken`) and verifies (`VerifyToken` / `VerifyTokenDetail`). `TokenVerifyResult` carries a `Reason` for log diagnosis without exposing the secret to the client. The HTTP response remains a bare 401.
-
-### Implementations
-
-| Repo | File |
-|---|---|
-| Go server | `internal/auth/signing.go` |
-| Flutter app | `lib/services/network/heliolytics_token.dart` |
-| Next.js web | `lib/api/signing.ts` |
-
-The three implementations must use the same format. All three must agree byte-for-byte on the `"ts:nonce"` string being signed.
+The method is upper-cased by the server. There is no trailing newline after the
+last field, so an empty Content-Type leaves an empty final field. The raw query
+is signed verbatim: reordering parameters or adding one breaks the MAC. The
+Content-Type is signed with its boundary, so a multipart body must be hashed after
+it is finalized and must never be reserialized afterwards. `internal/auth/signing.go`
+builds and verifies this text, and `internal/auth/testdata/signing.json` holds
+the five published vectors that the Go, TypeScript and Dart clients check against.
 
 ## Replay defense
 
-Verification allows at most two seconds of future clock skew. This covers whole-second client timestamps arriving just before the server clock reaches the same second. Larger future offsets are rejected. Tokens more than five minutes old are also rejected.
+Consumed nonces live in the `auth_nonces` table with key `(kid, nonce)` and an
+`expires_at` of `ts + 301`, the first second at which that timestamp can no longer
+authenticate. Consumption is one atomic insert that reuses a row only after it has
+expired, so exactly one concurrent request wins and every other one receives 401.
+The nonce is consumed last: a request that fails a signature, permission, body or
+structural check never records one.
 
-Replay defense has two layers:
+`cmd/server` deletes expired rows every ten minutes. That purge only bounds the
+table; replay rejection never depends on the ticker. Because the rows are in the
+database, a restart, a second instance or a second connection pool cannot restore
+replay eligibility.
 
-1. **Time window:** `TokenWindow = 5 * time.Minute`, with the bounded future tolerance above. A captured token expires quickly.
-2. **Nonce store:** `internal/auth/nonce_store.go` remembers nonces within the window and rejects reuse. The window bounds memory because older nonces are evicted.
+## Verification order
 
-The nonce store and rate limiter use process memory, not a shared database. They do not provide distributed replay or rate-limit enforcement across instances.
+`internal/middleware/hmac.go` runs one ordered pipeline:
 
-The server validates the timestamp and signature before recording the nonce. An invalid signature cannot consume a nonce that a later valid request uses. After a valid signature is accepted, the nonce is consumed atomically and any replay is rejected.
+1. Cheap header presence and shape.
+2. Per-client rate limit.
+3. MAC over the canonical text and the declared body hash.
+4. Permission: a `web` request that is not `GET` gets 403 `forbidden`, before the
+   body or the nonce is touched.
+5. Per-kid rate limit.
+6. Body slot, bounded read and digest check.
+7. Route preparation and nonce consumption.
+8. Handler.
 
-Signature comparison uses `crypto/subtle` constant-time equality, not `==`.
+Responses are JSON. A missing or malformed header, an unknown kid, a timestamp
+outside the window, a MAC mismatch or a body-hash mismatch is 401 `unauthorized`;
+the reason stays in the server log. A rate limit is 429 `rate_limited` with
+`Retry-After`. A body slot that is busy is 503 `server_busy` with `Retry-After: 1`.
+A body that stalls past the request deadline is 503 `request_timeout`, and a body
+above the route cap is 413 `payload_too_large`.
 
-## Rate limiting
+## Rate limits
 
-`internal/middleware/ratelimit.go`, `RATE_LIMIT_PER_MIN` (default 120).
+`RATE_LIMIT_PER_MIN` (default 120) applies to every request, before
+authentication, keyed by client identity. `RATE_LIMIT_PER_KEY_PER_MIN` (default
+600) applies per kid after the MAC verifies. Both are in-process token buckets
+with a bounded key table, so they protect one instance and are not a distributed
+limit.
 
-Client identity comes from the remote address unless `TRUST_PROXY=true`, in which case forwarded headers are honored. Without the flag behind a proxy, the server can rate-limit all clients as one address. With the flag and no trusted proxy, clients can spoof their identity through a header. Set it only when a trusted reverse proxy terminates traffic.
+Client identity is the immediate socket peer. `X-Forwarded-For` and `X-Real-IP`
+are never read. With `TRUST_PROXY=true` the server reads `CF-Connecting-IP`, and
+only when that peer address falls inside `TRUSTED_PROXY_CIDRS`. A trusted peer
+that sends a missing, duplicated or invalid forwarding header gets 400
+`invalid_proxy_header`. Set the flag only behind the trusted proxy.
 
-## Configuration
+## Body limits
 
-`internal/config/config.go` reads environment variables only. It does not read a config file.
+Ingest accepts at most 16 MiB and profile at most 64 KiB. At most
+`MAX_CONCURRENT_BODY_READS` uploads are read at once. Only a `phone` write reaches
+the read step at all.
 
-| Var | Default | Notes |
+## Credentials and configuration
+
+`HELIOLYTICS_API_KEYS` holds exactly `web.<64 lowercase hex>` and
+`phone.<64 lowercase hex>`, in either order, with two distinct secrets. An empty
+entry, an unknown kid, a repeated kid, a non-hex secret or the published example
+secret fails startup: the server stores digests of known published and
+development secrets and refuses them.
+
+`internal/config/config.go` reads the environment once and returns an error naming
+the variable. It never prints a value, never falls back on a malformed value and
+never terminates the process itself. Build metadata is not environment
+configuration: `commit` and `builtAt` come from linker flags, so `/version`
+reports null when a build supplied neither.
+
+| Variable | Default | Notes |
 |---|---|---|
-| `ADDR` | `:8080` | Listen address |
-| `HELIOLYTICS_SIGNING_SECRET` | *(empty)* | **Required.** Empty secret causes `SignToken` to return an error and verification to fail closed |
-| `DATABASE_URL` | *(empty)* | Postgres DSN |
-| `RATE_LIMIT_PER_MIN` | `120` | Per-client budget |
-| `REPARSE_ENABLED` | `false` | Must be literal `"true"` |
-| `REPARSE_SECRET` | *(empty)* | Separate secret for reparse |
-| `TRUST_PROXY` | `false` | Honor forwarded client IP |
+| `DATABASE_URL` | none | Required |
+| `HELIOLYTICS_API_KEYS` | none | Required, exact grammar above |
+| `ADDR` | `:8080` | Listen address; an explicit empty value is an error |
+| `RATE_LIMIT_PER_MIN` | `120` | Per-client token bucket |
+| `RATE_LIMIT_PER_KEY_PER_MIN` | `600` | Per-kid token bucket |
+| `REQUEST_TIMEOUT_SECONDS` | `90` | Integer 1..90, the handler deadline |
+| `MAX_CONCURRENT_BODY_READS` | `2` | Visitor slots for body reads |
+| `TRUST_PROXY` | `false` | Exactly `true` or `false` |
+| `TRUSTED_PROXY_CIDRS` | none | Comma-separated CIDRs; required when `TRUST_PROXY=true` |
 
-Secrets come from the environment. The repository ships placeholders only. Local-only deployment notes describe first-run setup.
+The API reads no session secret; the web application owns its own. There is no
+reparse configuration.
 
-## Reparse gate
+## Socket budgets
 
-`/api/v1/reparse` is disabled unless `REPARSE_ENABLED=true`. The code checks `X-Reparse-Secret` only when `REPARSE_SECRET` is non-empty. Configure an independent secret before enabling the route. The handler replays the latest stored session. It is not a full-history migration runner. The normal HMAC check still applies.
+`cmd/server` sets a 5 s read-header timeout, 95 s read and write timeouts, 60 s
+idle timeout and 16 KiB header limit. The request context timeout (1..90 s) stays
+inside the write deadline, which stays below the edge budget. Shutdown is
+signal-driven, waits for in-flight requests, stops the purge loop and then closes
+the pool.
 
 ## Key files
 
 | File | Role |
 |---|---|
-| `internal/auth/signing.go` | Mint and verify |
-| `internal/auth/nonce_store.go` | Replay rejection |
-| `internal/middleware/hmac.go` | Auth middleware |
-| `internal/middleware/ratelimit.go` | Rate limiter |
-| `internal/middleware/logging.go` | Request log |
-| `internal/config/config.go` | Environment config |
+| `internal/auth/signing.go` | Canonical text, header parsing, MAC verification, key set |
+| `internal/store/auth_nonces.go` | Atomic nonce consumption and expiry purge |
+| `internal/middleware/hmac.go` | Ordered guard pipeline |
+| `internal/middleware/ratelimit.go` | Client identity, token buckets, body slots |
+| `internal/middleware/timeout.go` | Handler deadline and 503 response |
+| `internal/config/config.go` | Environment configuration |
 
 Validation: not run for this revision.

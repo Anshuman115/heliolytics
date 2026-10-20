@@ -2,6 +2,7 @@ package store
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
@@ -12,19 +13,19 @@ type SleepStagePoint struct {
 }
 
 func encodeSleepStages(st []SleepStagePoint) ([]byte, error) {
-	if len(st) == 0 {
-		return nil, nil
+	if st == nil {
+		st = []SleepStagePoint{}
 	}
 	return json.Marshal(st)
 }
 
-func decodeSleepStages(raw []byte) []SleepStagePoint {
+func decodeSleepStages(raw []byte) ([]SleepStagePoint, error) {
 	if len(raw) == 0 {
-		return nil
+		return nil, fmt.Errorf("sleep session stages missing")
 	}
 	var out []SleepStagePoint
-	if json.Unmarshal(raw, &out) != nil {
-		return nil
+	if err := json.Unmarshal(raw, &out); err != nil {
+		return nil, fmt.Errorf("sleep session stages invalid: %w", err)
 	}
-	return out
+	return out, nil
 }

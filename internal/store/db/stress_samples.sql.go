@@ -11,48 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const latestStressOnDay = `-- name: LatestStressOnDay :one
-SELECT value FROM stress_samples
-WHERE day_key = $1
-ORDER BY sampled_at DESC
-LIMIT 1
-`
-
-func (q *Queries) LatestStressOnDay(ctx context.Context, dayKey pgtype.Date) (pgtype.Numeric, error) {
-	row := q.db.QueryRow(ctx, latestStressOnDay, dayKey)
-	var value pgtype.Numeric
-	err := row.Scan(&value)
-	return value, err
-}
-
-const listStressSamplesRange = `-- name: ListStressSamplesRange :many
-SELECT sampled_at, day_key, value
+const listStressSamples = `-- name: ListStressSamples :many
+SELECT sampled_at, stress, session_id, observed_at
 FROM stress_samples
-WHERE day_key >= $1 AND day_key <= $2
+WHERE sampled_at >= $1 AND sampled_at < $2
 ORDER BY sampled_at ASC
 `
 
-type ListStressSamplesRangeParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+type ListStressSamplesParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
 }
 
-type ListStressSamplesRangeRow struct {
-	SampledAt pgtype.Timestamptz `json:"sampled_at"`
-	DayKey    pgtype.Date        `json:"day_key"`
-	Value     pgtype.Numeric     `json:"value"`
+type ListStressSamplesRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Stress     int16              `json:"stress"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-func (q *Queries) ListStressSamplesRange(ctx context.Context, arg ListStressSamplesRangeParams) ([]ListStressSamplesRangeRow, error) {
-	rows, err := q.db.Query(ctx, listStressSamplesRange, arg.DayKey, arg.DayKey_2)
+func (q *Queries) ListStressSamples(ctx context.Context, arg ListStressSamplesParams) ([]ListStressSamplesRow, error) {
+	rows, err := q.db.Query(ctx, listStressSamples, arg.FromAt, arg.ToAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListStressSamplesRangeRow{}
+	items := []ListStressSamplesRow{}
 	for rows.Next() {
-		var i ListStressSamplesRangeRow
-		if err := rows.Scan(&i.SampledAt, &i.DayKey, &i.Value); err != nil {
+		var i ListStressSamplesRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.Stress,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -63,51 +55,115 @@ func (q *Queries) ListStressSamplesRange(ctx context.Context, arg ListStressSamp
 	return items, nil
 }
 
-const meanStressInWindow = `-- name: MeanStressInWindow :one
-SELECT AVG(value)::float8 AS avg_value, COUNT(*) AS n
+const listStressSamplesByKeys = `-- name: ListStressSamplesByKeys :many
+SELECT sampled_at, stress, session_id, observed_at
 FROM stress_samples
-WHERE sampled_at >= $1 AND sampled_at <= $2
+WHERE sampled_at = ANY($1::timestamptz[])
+ORDER BY sampled_at ASC
 `
 
-type MeanStressInWindowParams struct {
-	SampledAt   pgtype.Timestamptz `json:"sampled_at"`
-	SampledAt_2 pgtype.Timestamptz `json:"sampled_at_2"`
+type ListStressSamplesByKeysRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Stress     int16              `json:"stress"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-type MeanStressInWindowRow struct {
-	AvgValue float64 `json:"avg_value"`
-	N        int64   `json:"n"`
+func (q *Queries) ListStressSamplesByKeys(ctx context.Context, keys []pgtype.Timestamptz) ([]ListStressSamplesByKeysRow, error) {
+	rows, err := q.db.Query(ctx, listStressSamplesByKeys, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListStressSamplesByKeysRow{}
+	for rows.Next() {
+		var i ListStressSamplesByKeysRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.Stress,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) MeanStressInWindow(ctx context.Context, arg MeanStressInWindowParams) (MeanStressInWindowRow, error) {
-	row := q.db.QueryRow(ctx, meanStressInWindow, arg.SampledAt, arg.SampledAt_2)
-	var i MeanStressInWindowRow
-	err := row.Scan(&i.AvgValue, &i.N)
-	return i, err
+const maxStressSampleAt = `-- name: MaxStressSampleAt :one
+SELECT sampled_at FROM stress_samples
+WHERE ($1::text IS NULL OR session_id = $1::text)
+ORDER BY sampled_at DESC
+LIMIT 1
+`
+
+func (q *Queries) MaxStressSampleAt(ctx context.Context, sessionID pgtype.Text) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, maxStressSampleAt, sessionID)
+	var sampled_at pgtype.Timestamptz
+	err := row.Scan(&sampled_at)
+	return sampled_at, err
 }
 
-const upsertStressSample = `-- name: UpsertStressSample :exec
-INSERT INTO stress_samples (sampled_at, day_key, value, source_session_id)
-VALUES ($1, $2, $3, $4)
+const stressDayBounds = `-- name: StressDayBounds :many
+(SELECT day_key FROM stress_samples ORDER BY sampled_at ASC LIMIT 1)
+UNION ALL
+(SELECT day_key FROM stress_samples ORDER BY sampled_at DESC LIMIT 1)
+`
+
+func (q *Queries) StressDayBounds(ctx context.Context) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, stressDayBounds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Date{}
+	for rows.Next() {
+		var day_key pgtype.Date
+		if err := rows.Scan(&day_key); err != nil {
+			return nil, err
+		}
+		items = append(items, day_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertStressSamples = `-- name: UpsertStressSamples :exec
+INSERT INTO stress_samples (sampled_at, stress, session_id, observed_at)
+SELECT v.sampled_at, v.stress, v.session_id, v.observed_at
+FROM ROWS FROM (
+  unnest($1::timestamptz[]),
+  unnest($2::smallint[]),
+  unnest($3::text[]),
+  unnest($4::timestamptz[])
+) AS v(sampled_at, stress, session_id, observed_at)
 ON CONFLICT (sampled_at) DO UPDATE SET
-  value = EXCLUDED.value,
-  day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id
+  stress = EXCLUDED.stress,
+  session_id = EXCLUDED.session_id,
+  observed_at = EXCLUDED.observed_at
+WHERE (EXCLUDED.observed_at, EXCLUDED.session_id COLLATE "C")
+      >= (stress_samples.observed_at, stress_samples.session_id COLLATE "C")
 `
 
-type UpsertStressSampleParams struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+type UpsertStressSamplesParams struct {
+	SampledAt  []pgtype.Timestamptz `json:"sampled_at"`
+	Stress     []int16              `json:"stress"`
+	SessionID  []string             `json:"session_id"`
+	ObservedAt []pgtype.Timestamptz `json:"observed_at"`
 }
 
-func (q *Queries) UpsertStressSample(ctx context.Context, arg UpsertStressSampleParams) error {
-	_, err := q.db.Exec(ctx, upsertStressSample,
+func (q *Queries) UpsertStressSamples(ctx context.Context, arg UpsertStressSamplesParams) error {
+	_, err := q.db.Exec(ctx, upsertStressSamples,
 		arg.SampledAt,
-		arg.DayKey,
-		arg.Value,
-		arg.SourceSessionID,
+		arg.Stress,
+		arg.SessionID,
+		arg.ObservedAt,
 	)
 	return err
 }

@@ -1,0 +1,36 @@
+# Never send history, private data, secrets or local notes to the build context.
+.git
+.github
+.gitignore
+.DS_Store
+.claude
+.superpowers
+_learnspace
+lessons
+docs
+deploy
+scripts
+sql
+sqlc.yaml
+README.md
+LICENSE
+PLAN.md
+TODO.md
+CLAUDE.md
+AGENTS.md
+
+# Env files, backup bundles and staging directories.
+**/.env
+**/.env.*
+**/*.env
+**/backup.env
+**/*.dump
+**/*.dump.sha256
+**/*.dump.info
+**/*.tar
+**/*.tar.gz
+**/*.zip
+
+# Private exports and raw captures are local evidence only.
+RawData
+raw-data

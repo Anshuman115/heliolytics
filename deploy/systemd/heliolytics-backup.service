@@ -1,0 +1,19 @@
+[Unit]
+Description=Heliolytics whole-database backup
+Documentation=file:///home/deploy/projects/heliolytics/docs/features/deploy.md
+Requires=docker.service
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=deploy
+Group=deploy
+WorkingDirectory=/home/deploy/projects/heliolytics
+EnvironmentFile=/etc/heliolytics/backup.env
+ExecStart=/usr/local/libexec/heliolytics-backup
+UMask=0077
+TimeoutStartSec=3600
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7

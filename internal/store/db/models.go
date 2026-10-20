@@ -8,173 +8,215 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-type ActivitySession struct {
-	ID              int64              `json:"id"`
-	StartedAt       pgtype.Timestamptz `json:"started_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	SportType       int32              `json:"sport_type"`
-	SportName       pgtype.Text        `json:"sport_name"`
-	DurationSec     int32              `json:"duration_sec"`
-	Calories        pgtype.Int4        `json:"calories"`
-	AvgHr           pgtype.Int4        `json:"avg_hr"`
-	MaxHr           pgtype.Int4        `json:"max_hr"`
-	SourceSessionID string             `json:"source_session_id"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+type Activity struct {
+	StartedAt  pgtype.Timestamptz `json:"started_at"`
+	Kind       string             `json:"kind"`
+	EndedAt    pgtype.Timestamptz `json:"ended_at"`
+	SportType  int16              `json:"sport_type"`
+	SportName  string             `json:"sport_name"`
+	Calories   pgtype.Int2        `json:"calories"`
+	AvgHr      pgtype.Int2        `json:"avg_hr"`
+	MaxHr      pgtype.Int2        `json:"max_hr"`
+	MinHr      pgtype.Int2        `json:"min_hr"`
+	Steps      pgtype.Int4        `json:"steps"`
+	HasDetail  bool               `json:"has_detail"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	SessionID  string             `json:"session_id"`
+	DayKey     pgtype.Date        `json:"day_key"`
+}
+
+type AuthNonce struct {
+	Kid       string             `json:"kid"`
+	Nonce     string             `json:"nonce"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+type CanonicalDayKey struct {
+	DayKey pgtype.Date `json:"day_key"`
+}
+
+type Coverage struct {
+	TypeCode    string             `json:"type_code"`
+	DataThrough pgtype.Timestamptz `json:"data_through"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
 type DailyMetric struct {
-	DayKey               pgtype.Date        `json:"day_key"`
-	Steps                int32              `json:"steps"`
-	PaiScore             pgtype.Int4        `json:"pai_score"`
-	Readiness            pgtype.Int4        `json:"readiness"`
-	ComputedReadiness    pgtype.Int4        `json:"computed_readiness"`
-	Spo2Avg              pgtype.Int4        `json:"spo2_avg"`
-	HrvRmssd             pgtype.Int4        `json:"hrv_rmssd"`
-	RestingHr            pgtype.Int4        `json:"resting_hr"`
-	RespRateAvg          pgtype.Int4        `json:"resp_rate_avg"`
-	StressAvg            pgtype.Int4        `json:"stress_avg"`
-	SleepScore           pgtype.Int4        `json:"sleep_score"`
-	SleepMins            pgtype.Int4        `json:"sleep_mins"`
-	SleepDeepMins        pgtype.Int4        `json:"sleep_deep_mins"`
-	SleepRemMins         pgtype.Int4        `json:"sleep_rem_mins"`
-	SleepLightMins       pgtype.Int4        `json:"sleep_light_mins"`
-	TempAvgC             pgtype.Numeric     `json:"temp_avg_c"`
-	NapCount             int32              `json:"nap_count"`
-	WorkoutCount         int32              `json:"workout_count"`
-	ActivitySessionCount int32              `json:"activity_session_count"`
-	CaloriesTotal        pgtype.Int4        `json:"calories_total"`
-	AvgHr                pgtype.Int4        `json:"avg_hr"`
-	SourceSessionID      pgtype.Text        `json:"source_session_id"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
+	DayKey              pgtype.Date        `json:"day_key"`
+	Steps               pgtype.Int4        `json:"steps"`
+	AvgHr               pgtype.Float4      `json:"avg_hr"`
+	RestingHr           pgtype.Float4      `json:"resting_hr"`
+	HrvRmssdMs          pgtype.Float4      `json:"hrv_rmssd_ms"`
+	RespRate            pgtype.Float4      `json:"resp_rate"`
+	Spo2Avg             pgtype.Float4      `json:"spo2_avg"`
+	Spo2Min             pgtype.Int2        `json:"spo2_min"`
+	Spo2SleepAvg        pgtype.Float4      `json:"spo2_sleep_avg"`
+	Spo2SleepMin        pgtype.Int2        `json:"spo2_sleep_min"`
+	Spo2N               int32              `json:"spo2_n"`
+	StressAvg           pgtype.Float4      `json:"stress_avg"`
+	SkinTempNightC      pgtype.Float4      `json:"skin_temp_night_c"`
+	SkinTempDevC        pgtype.Float4      `json:"skin_temp_dev_c"`
+	SleepScore          pgtype.Int2        `json:"sleep_score"`
+	SleepMins           pgtype.Int2        `json:"sleep_mins"`
+	SleepDeepMins       pgtype.Int2        `json:"sleep_deep_mins"`
+	SleepRemMins        pgtype.Int2        `json:"sleep_rem_mins"`
+	SleepLightMins      pgtype.Int2        `json:"sleep_light_mins"`
+	SleepWakeMins       pgtype.Int2        `json:"sleep_wake_mins"`
+	TimeInBedMins       pgtype.Int2        `json:"time_in_bed_mins"`
+	SleepEfficiencyPct  pgtype.Int2        `json:"sleep_efficiency_pct"`
+	NapCount            int16              `json:"nap_count"`
+	WorkoutCount        int16              `json:"workout_count"`
+	AutoActivityCount   int16              `json:"auto_activity_count"`
+	WorkoutCalories     pgtype.Int4        `json:"workout_calories"`
+	Trimp               pgtype.Float4      `json:"trimp"`
+	PaiScore            pgtype.Int2        `json:"pai_score"`
+	Readiness           pgtype.Int2        `json:"readiness"`
+	ReadinessComponents []byte             `json:"readiness_components"`
+	UpdatedAt           pgtype.Timestamptz `json:"updated_at"`
 }
 
 type HeartRateSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Bpm             int16              `json:"bpm"`
-	SourceSessionID string             `json:"source_session_id"`
-	SourceType      string             `json:"source_type"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Source     string             `json:"source"`
+	Bpm        int16              `json:"bpm"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }
 
 type HrvSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	RmssdMs    float32            `json:"rmssd_ms"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
+}
+
+type PaiScore struct {
+	DayKey     pgtype.Date        `json:"day_key"`
+	Score      int16              `json:"score"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	SessionID  string             `json:"session_id"`
 }
 
 type Profile struct {
-	ID        int64              `json:"id"`
+	Singleton bool               `json:"singleton"`
 	Name      pgtype.Text        `json:"name"`
-	Age       pgtype.Int4        `json:"age"`
+	BirthDate pgtype.Date        `json:"birth_date"`
+	Sex       pgtype.Text        `json:"sex"`
 	HeightCm  pgtype.Numeric     `json:"height_cm"`
 	WeightKg  pgtype.Numeric     `json:"weight_kg"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-type RawPaiScore struct {
-	DayKey          pgtype.Date        `json:"day_key"`
-	Score           int32              `json:"score"`
-	SourceSessionID string             `json:"source_session_id"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-}
-
-type RawReadiness struct {
-	DayKey          pgtype.Date        `json:"day_key"`
-	Score           int32              `json:"score"`
-	SourceSessionID string             `json:"source_session_id"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
-}
-
-type RawTypeBlob struct {
+type RawBlob struct {
 	SessionID string `json:"session_id"`
 	TypeCode  string `json:"type_code"`
-	ByteLen   int32  `json:"byte_len"`
+	Sha256    []byte `json:"sha256"`
 	Payload   []byte `json:"payload"`
 }
 
 type RespSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	BrMin      float32            `json:"br_min"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }
 
-type RhrSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
+type SleepObservation struct {
+	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	EndedAt         pgtype.Timestamptz `json:"ended_at"`
 	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+	IsNap           bool               `json:"is_nap"`
+	Score           pgtype.Int2        `json:"score"`
+	TotalMins       int16              `json:"total_mins"`
+	DeepMins        int16              `json:"deep_mins"`
+	RemMins         int16              `json:"rem_mins"`
+	LightMins       int16              `json:"light_mins"`
+	WakeMins        int16              `json:"wake_mins"`
+	Stages          []byte             `json:"stages"`
+	StagesTruncated bool               `json:"stages_truncated"`
+	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
+	SessionID       string             `json:"session_id"`
 }
 
 type SleepSession struct {
-	ID              int64              `json:"id"`
 	StartedAt       pgtype.Timestamptz `json:"started_at"`
+	EndedAt         pgtype.Timestamptz `json:"ended_at"`
 	DayKey          pgtype.Date        `json:"day_key"`
-	Score           int32              `json:"score"`
-	TotalMins       int32              `json:"total_mins"`
-	DeepMins        int32              `json:"deep_mins"`
-	RemMins         int32              `json:"rem_mins"`
-	LightMins       int32              `json:"light_mins"`
-	WakeMins        int32              `json:"wake_mins"`
 	IsNap           bool               `json:"is_nap"`
-	StagesJson      []byte             `json:"stages_json"`
-	SourceSessionID string             `json:"source_session_id"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+	Score           pgtype.Int2        `json:"score"`
+	TotalMins       int16              `json:"total_mins"`
+	DeepMins        int16              `json:"deep_mins"`
+	RemMins         int16              `json:"rem_mins"`
+	LightMins       int16              `json:"light_mins"`
+	WakeMins        int16              `json:"wake_mins"`
+	Stages          []byte             `json:"stages"`
+	StagesTruncated bool               `json:"stages_truncated"`
+	ObservedAt      pgtype.Timestamptz `json:"observed_at"`
+	SessionID       string             `json:"session_id"`
 }
 
 type Spo2Sample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
-	SourceType      string             `json:"source_type"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Source     string             `json:"source"`
+	Pct        int16              `json:"pct"`
+	Mode       string             `json:"mode"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }
 
 type StepSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Steps           int16              `json:"steps"`
-	SourceSessionID string             `json:"source_session_id"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Steps      int16              `json:"steps"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }
 
 type StressSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Stress     int16              `json:"stress"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }
 
 type SyncSession struct {
-	SessionID   string             `json:"session_id"`
-	DeviceMac   pgtype.Text        `json:"device_mac"`
-	StartedAt   pgtype.Timestamptz `json:"started_at"`
-	EndedAt     pgtype.Timestamptz `json:"ended_at"`
-	BatteryPct  pgtype.Int4        `json:"battery_pct"`
-	CatalogJson []byte             `json:"catalog_json"`
-	IngestedAt  pgtype.Timestamptz `json:"ingested_at"`
+	SessionID  string             `json:"session_id"`
+	DeviceMac  string             `json:"device_mac"`
+	StartedAt  pgtype.Timestamptz `json:"started_at"`
+	EndedAt    pgtype.Timestamptz `json:"ended_at"`
+	BatteryPct pgtype.Int2        `json:"battery_pct"`
+	Catalog    []byte             `json:"catalog"`
+	ReceivedAt pgtype.Timestamptz `json:"received_at"`
 }
 
 type TemperatureSample struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Celsius         pgtype.Numeric     `json:"celsius"`
-	SourceSessionID string             `json:"source_session_id"`
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	Celsius    pgtype.Numeric     `json:"celsius"`
+	OnWrist    bool               `json:"on_wrist"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }
 
-type Workout struct {
-	ID              int64              `json:"id"`
-	StartedAt       pgtype.Timestamptz `json:"started_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	SportType       int32              `json:"sport_type"`
-	SportName       pgtype.Text        `json:"sport_name"`
-	DurationSec     int32              `json:"duration_sec"`
-	Calories        pgtype.Int4        `json:"calories"`
-	AvgHr           pgtype.Int4        `json:"avg_hr"`
-	MaxHr           pgtype.Int4        `json:"max_hr"`
-	HasSummary      bool               `json:"has_summary"`
-	HasDetail       bool               `json:"has_detail"`
-	SourceSessionID string             `json:"source_session_id"`
-	UpdatedAt       pgtype.Timestamptz `json:"updated_at"`
+type WorkoutObservation struct {
+	StartedAt  pgtype.Timestamptz `json:"started_at"`
+	Kind       string             `json:"kind"`
+	EndedAt    pgtype.Timestamptz `json:"ended_at"`
+	SportType  int16              `json:"sport_type"`
+	SportName  string             `json:"sport_name"`
+	Calories   pgtype.Int2        `json:"calories"`
+	AvgHr      pgtype.Int2        `json:"avg_hr"`
+	MaxHr      pgtype.Int2        `json:"max_hr"`
+	MinHr      pgtype.Int2        `json:"min_hr"`
+	Steps      pgtype.Int4        `json:"steps"`
+	HasDetail  bool               `json:"has_detail"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
+	SessionID  string             `json:"session_id"`
+	DayKey     pgtype.Date        `json:"day_key"`
 }

@@ -1,52 +1,36 @@
 package rollup
 
 import (
-	"context"
 	"testing"
-	"time"
+
+	"github.com/Anshuman115/heliolytics/internal/store"
 )
 
-func TestRecomputeDailyWorkoutCounts(t *testing.T) {
-	st := testStore(t)
-	ctx := context.Background()
-	const day = "2026-06-30"
-
-	clean := func() {
-		st.Pool().Exec(ctx, `DELETE FROM workouts WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM activity_sessions WHERE day_key=$1::date`, day)
-		st.Pool().Exec(ctx, `DELETE FROM daily_metrics WHERE day_key=$1::date`, day)
+func TestActivityCountsSeparateAutoAndKeepNullCalories(t *testing.T) {
+	rows := []store.ActivityRow{
+		{StartedAt: at(8, 0), Kind: "workout", Calories: new(300)},
+		{StartedAt: at(18, 0), Kind: "workout", Calories: new(366)},
+		{StartedAt: at(12, 0), Kind: "auto"},
 	}
-	clean()
-	t.Cleanup(clean)
-	st.Pool().Exec(ctx, `INSERT INTO daily_metrics (day_key) VALUES ($1::date)`, day)
-
-	base := time.Date(2026, 6, 30, 8, 0, 0, 0, time.UTC)
-	st.Pool().Exec(ctx, `
-		INSERT INTO workouts (started_at, day_key, sport_type, duration_sec, calories, source_session_id) VALUES
-		($1, $2::date, 1, 1800, 300, 'sess-w1'), ($3, $2::date, 1, 1200, 200, 'sess-w2')`,
-		base, day, base.Add(2*time.Hour))
-	st.Pool().Exec(ctx, `
-		INSERT INTO activity_sessions (started_at, day_key, sport_type, duration_sec, source_session_id) VALUES
-		($1, $2::date, 2, 600, 'sess-a1')`,
-		base.Add(4*time.Hour), day)
-
-	if err := RecomputeDailyWorkoutCounts(ctx, st, []string{day}); err != nil {
-		t.Fatalf("recompute: %v", err)
+	workouts, autos, calories := activityCounts(rows)
+	if workouts != 2 || autos != 1 {
+		t.Fatalf("counts = %d/%d, want 2/1", workouts, autos)
+	}
+	if calories == nil || *calories != 666 {
+		t.Fatalf("calories = %v, want 666", calories)
 	}
 
-	var workoutCount, activityCount, caloriesTotal int
-	if err := st.Pool().QueryRow(ctx,
-		`SELECT workout_count, activity_session_count, calories_total FROM daily_metrics WHERE day_key=$1::date`, day).
-		Scan(&workoutCount, &activityCount, &caloriesTotal); err != nil {
-		t.Fatalf("read: %v", err)
+	noCalories := []store.ActivityRow{{StartedAt: at(8, 0), Kind: "workout", Calories: nil}}
+	if _, _, got := activityCounts(noCalories); got != nil {
+		t.Fatalf("unreported calories = %v, want NULL", got)
 	}
-	if workoutCount != 2 {
-		t.Fatalf("workout_count=%d, want 2", workoutCount)
+
+	zero := []store.ActivityRow{{StartedAt: at(8, 0), Kind: "workout", Calories: new(0)}}
+	if _, _, got := activityCounts(zero); got == nil || *got != 0 {
+		t.Fatalf("reported zero = %v, want 0", got)
 	}
-	if activityCount != 1 {
-		t.Fatalf("activity_session_count=%d, want 1", activityCount)
-	}
-	if caloriesTotal != 500 {
-		t.Fatalf("calories_total=%d, want 500 (sum of 300+200)", caloriesTotal)
+
+	if workouts, autos, calories := activityCounts(nil); workouts != 0 || autos != 0 || calories != nil {
+		t.Fatal("a day without activities has no counts and NULL calories")
 	}
 }

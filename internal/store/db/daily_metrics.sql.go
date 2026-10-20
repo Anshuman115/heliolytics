@@ -11,80 +11,64 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const listDays = `-- name: ListDays :many
-SELECT day_key, steps, pai_score,
-       COALESCE(readiness, computed_readiness) AS readiness, spo2_avg, hrv_rmssd,
-       resting_hr, resp_rate_avg, stress_avg, sleep_score, sleep_mins,
-       sleep_deep_mins, sleep_rem_mins, sleep_light_mins, temp_avg_c,
-       nap_count, workout_count, activity_session_count, calories_total, avg_hr,
-       source_session_id, updated_at
+const listDailyMetrics = `-- name: ListDailyMetrics :many
+SELECT day_key, steps, avg_hr, resting_hr, hrv_rmssd_ms, resp_rate, spo2_avg,
+       spo2_min, spo2_sleep_avg, spo2_sleep_min, spo2_n, stress_avg,
+       skin_temp_night_c, skin_temp_dev_c, sleep_score, sleep_mins,
+       sleep_deep_mins, sleep_rem_mins, sleep_light_mins, sleep_wake_mins,
+       time_in_bed_mins, sleep_efficiency_pct, nap_count, workout_count,
+       auto_activity_count, workout_calories, trimp, pai_score, readiness,
+       readiness_components, updated_at
 FROM daily_metrics
 WHERE day_key >= $1 AND day_key <= $2
-ORDER BY day_key DESC
+ORDER BY day_key ASC
 `
 
-type ListDaysParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+type ListDailyMetricsParams struct {
+	FromDay pgtype.Date `json:"from_day"`
+	ToDay   pgtype.Date `json:"to_day"`
 }
 
-type ListDaysRow struct {
-	DayKey               pgtype.Date        `json:"day_key"`
-	Steps                int32              `json:"steps"`
-	PaiScore             pgtype.Int4        `json:"pai_score"`
-	Readiness            pgtype.Int4        `json:"readiness"`
-	Spo2Avg              pgtype.Int4        `json:"spo2_avg"`
-	HrvRmssd             pgtype.Int4        `json:"hrv_rmssd"`
-	RestingHr            pgtype.Int4        `json:"resting_hr"`
-	RespRateAvg          pgtype.Int4        `json:"resp_rate_avg"`
-	StressAvg            pgtype.Int4        `json:"stress_avg"`
-	SleepScore           pgtype.Int4        `json:"sleep_score"`
-	SleepMins            pgtype.Int4        `json:"sleep_mins"`
-	SleepDeepMins        pgtype.Int4        `json:"sleep_deep_mins"`
-	SleepRemMins         pgtype.Int4        `json:"sleep_rem_mins"`
-	SleepLightMins       pgtype.Int4        `json:"sleep_light_mins"`
-	TempAvgC             pgtype.Numeric     `json:"temp_avg_c"`
-	NapCount             int32              `json:"nap_count"`
-	WorkoutCount         int32              `json:"workout_count"`
-	ActivitySessionCount int32              `json:"activity_session_count"`
-	CaloriesTotal        pgtype.Int4        `json:"calories_total"`
-	AvgHr                pgtype.Int4        `json:"avg_hr"`
-	SourceSessionID      pgtype.Text        `json:"source_session_id"`
-	UpdatedAt            pgtype.Timestamptz `json:"updated_at"`
-}
-
-// readiness prefers the device's 0x39 score, falling back to our computed one.
-func (q *Queries) ListDays(ctx context.Context, arg ListDaysParams) ([]ListDaysRow, error) {
-	rows, err := q.db.Query(ctx, listDays, arg.DayKey, arg.DayKey_2)
+func (q *Queries) ListDailyMetrics(ctx context.Context, arg ListDailyMetricsParams) ([]DailyMetric, error) {
+	rows, err := q.db.Query(ctx, listDailyMetrics, arg.FromDay, arg.ToDay)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListDaysRow{}
+	items := []DailyMetric{}
 	for rows.Next() {
-		var i ListDaysRow
+		var i DailyMetric
 		if err := rows.Scan(
 			&i.DayKey,
 			&i.Steps,
-			&i.PaiScore,
-			&i.Readiness,
-			&i.Spo2Avg,
-			&i.HrvRmssd,
+			&i.AvgHr,
 			&i.RestingHr,
-			&i.RespRateAvg,
+			&i.HrvRmssdMs,
+			&i.RespRate,
+			&i.Spo2Avg,
+			&i.Spo2Min,
+			&i.Spo2SleepAvg,
+			&i.Spo2SleepMin,
+			&i.Spo2N,
 			&i.StressAvg,
+			&i.SkinTempNightC,
+			&i.SkinTempDevC,
 			&i.SleepScore,
 			&i.SleepMins,
 			&i.SleepDeepMins,
 			&i.SleepRemMins,
 			&i.SleepLightMins,
-			&i.TempAvgC,
+			&i.SleepWakeMins,
+			&i.TimeInBedMins,
+			&i.SleepEfficiencyPct,
 			&i.NapCount,
 			&i.WorkoutCount,
-			&i.ActivitySessionCount,
-			&i.CaloriesTotal,
-			&i.AvgHr,
-			&i.SourceSessionID,
+			&i.AutoActivityCount,
+			&i.WorkoutCalories,
+			&i.Trimp,
+			&i.PaiScore,
+			&i.Readiness,
+			&i.ReadinessComponents,
 			&i.UpdatedAt,
 		); err != nil {
 			return nil, err

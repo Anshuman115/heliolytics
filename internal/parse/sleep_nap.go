@@ -1,102 +1,141 @@
 package parse
 
-import "encoding/binary"
+import (
+	"encoding/binary"
+	"sort"
+	"time"
+)
 
-func isSleepStage(ty int) bool {
-	return ty == 4 || ty == 5 || ty == 7 || ty == 8
+const (
+	sleepNapTableOff = 0x18
+	sleepNapTableEnd = 0x54
+	sleepNapStageOff = 0x155
+)
+
+func knownSleepStage(stageType int) bool {
+	return stageType == 4 || stageType == 5 || stageType == 7 || stageType == 8
 }
 
-func parseNightStages(raw []byte, off, count int, base int64) []SleepStage {
-	var out []SleepStage
-	limit := count
-	if limit > 51 {
-		limit = 51
-	}
-	for i := 0; i < limit && off+5*i+5 <= sleepRecordSize; i++ {
-		s := int(binary.LittleEndian.Uint16(raw[off+5*i:]))
-		e := int(binary.LittleEndian.Uint16(raw[off+5*i+2:]))
-		ty := int(raw[off+5*i+4])
-		if s == 0 && e == 0 {
-			break
-		}
-		if !isSleepStage(ty) {
-			continue
-		}
-		out = append(out, SleepStage{
-			Start: EpochUTC(base + int64(s*60)),
-			End:   EpochUTC(base + int64(e*60)),
-			Type:  ty,
-		})
-	}
-	return out
-}
-
-func sumStageMins(st []SleepStage, ty int) int {
+func stageMinutes(stages []SleepStage, stageType int) int {
 	total := 0
-	for _, g := range st {
-		if g.Type == ty {
-			total += int(g.End.Sub(g.Start).Minutes()) + 1
+	for _, stage := range stages {
+		if stage.Type == stageType {
+			total += int(stage.End.Sub(stage.Start) / time.Minute)
 		}
 	}
 	return total
 }
 
-func parseNaps(raw []byte, base int64) []SleepRecord {
-	var out []SleepRecord
-	type window struct{ start, end int }
-	var wins []window
-	for p := 0x18; p+6 <= 0x54; p += 6 {
-		ns := int(binary.LittleEndian.Uint16(raw[p:]))
-		ne := int(binary.LittleEndian.Uint16(raw[p+2:]))
-		nd := int(binary.LittleEndian.Uint16(raw[p+4:]))
-		if ns == 0 && nd == 0 {
+type sleepNapWindow struct {
+	start time.Time
+	end   time.Time
+}
+
+// napSleepRows builds one row per nap table entry. The table end minute is
+// inclusive, so the half-open window ends one minute later.
+func napSleepRows(record []byte, base int64, window Window) ([]SleepRow, int) {
+	windows := napWindows(record, base)
+	if len(windows) == 0 {
+		return nil, 0
+	}
+	pool, poolOmitted := napStages(record, base)
+	claimed := make([]bool, len(pool))
+	var out []SleepRow
+	dropped := 0
+	for _, nap := range windows {
+		if !nap.end.After(nap.start) || !window.containsInterval(nap.start, nap.end) {
+			dropped++
+			continue
+		}
+		var stages []SleepStage
+		omitted := poolOmitted
+		for i, stage := range pool {
+			if claimed[i] || stage.Start.Before(nap.start) || !stage.Start.Before(nap.end) {
+				continue
+			}
+			claimed[i] = true
+			if stage.End.After(nap.end) {
+				omitted = true
+				continue
+			}
+			stages = append(stages, stage)
+		}
+		if len(stages) == 0 {
+			dropped++
+			continue
+		}
+		sort.Slice(stages, func(i, j int) bool { return stages[i].Start.Before(stages[j].Start) })
+		ordered := stages[:0]
+		var lastEnd time.Time
+		for _, stage := range stages {
+			if !lastEnd.IsZero() && stage.Start.Before(lastEnd) {
+				omitted = true
+				continue
+			}
+			ordered = append(ordered, stage)
+			lastEnd = stage.End
+		}
+		stages = ordered
+		light := stageMinutes(stages, 4)
+		deep := stageMinutes(stages, 5)
+		rem := stageMinutes(stages, 8)
+		wake := stageMinutes(stages, 7)
+		out = append(out, SleepRow{
+			StartedAt: nap.start, EndedAt: nap.end,
+			DayKey: IstDayKey(nap.start.Unix()), IsNap: true,
+			TotalMins: light + deep + rem,
+			DeepMins:  deep, REMMins: rem, LightMins: light, WakeMins: wake,
+			Stages: stages,
+			StagesTruncated: omitted ||
+				stages[0].Start.After(nap.start) || stages[len(stages)-1].End.Before(nap.end),
+		})
+	}
+	return out, dropped
+}
+
+func napWindows(record []byte, base int64) []sleepNapWindow {
+	var out []sleepNapWindow
+	for offset := sleepNapTableOff; offset+6 <= sleepNapTableEnd; offset += 6 {
+		start := int(binary.LittleEndian.Uint16(record[offset:]))
+		end := int(binary.LittleEndian.Uint16(record[offset+2:]))
+		minutes := int(binary.LittleEndian.Uint16(record[offset+4:]))
+		if start == 0 && minutes == 0 {
 			break
 		}
-		if nd > 0 && ne > ns {
-			wins = append(wins, window{ns, ne})
-		}
-	}
-	if len(wins) == 0 {
-		return nil
-	}
-	type seg struct{ s, e, ty int }
-	var segs []seg
-	for i := 0; i < 49 && 0x155+5*i+5 <= sleepRecordSize; i++ {
-		q := 0x155 + 5*i
-		s := int(binary.LittleEndian.Uint16(raw[q:]))
-		e := int(binary.LittleEndian.Uint16(raw[q+2:]))
-		ty := int(raw[q+4])
-		if s == 0 && e == 0 {
+		if minutes == 0 || end < start {
 			continue
 		}
-		if isSleepStage(ty) {
-			segs = append(segs, seg{s, e, ty})
-		}
-	}
-	for _, w := range wins {
-		var st []SleepStage
-		for _, g := range segs {
-			if g.s >= w.start && g.s <= w.end {
-				st = append(st, SleepStage{
-					Start: EpochUTC(base + int64(g.s*60)),
-					End:   EpochUTC(base + int64(g.e*60)),
-					Type:  g.ty,
-				})
-			}
-		}
-		if len(st) == 0 {
-			continue
-		}
-		sec := base + int64(w.start*60)
-		rem := sumStageMins(st, 8)
-		light := sumStageMins(st, 4)
-		deep := sumStageMins(st, 5)
-		wake := sumStageMins(st, 7)
-		out = append(out, SleepRecord{
-			DayKey: IstDayKey(sec), StartedAt: EpochUTC(sec), IsNap: true,
-			Stages: st, RemMin: rem, LightMin: light,
-			DeepMin: deep, WakeMin: wake, TotalMin: rem + light + deep,
+		out = append(out, sleepNapWindow{
+			start: EpochUTC(base + int64(start)*60),
+			end:   EpochUTC(base + int64(end+1)*60),
 		})
 	}
 	return out
+}
+
+func napStages(record []byte, base int64) ([]SleepStage, bool) {
+	// The nap timeline ends where the device summary totals begin; reading
+	// further turns those totals bytes into a phantom stage.
+	limit := (sleepTotalsOff - sleepNapStageOff) / 5
+	var out []SleepStage
+	omitted := false
+	for i := range limit {
+		offset := sleepNapStageOff + 5*i
+		start := int(binary.LittleEndian.Uint16(record[offset:]))
+		end := int(binary.LittleEndian.Uint16(record[offset+2:]))
+		stageType := int(record[offset+4])
+		if start == 0 && end == 0 {
+			continue
+		}
+		if !knownSleepStage(stageType) || end < start {
+			omitted = true
+			continue
+		}
+		out = append(out, SleepStage{
+			Start: EpochUTC(base + int64(start)*60),
+			End:   EpochUTC(base + int64(end+1)*60),
+			Type:  stageType,
+		})
+	}
+	return out, omitted
 }

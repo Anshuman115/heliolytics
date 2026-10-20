@@ -1,180 +1,510 @@
-// Package readiness computes a daily recovery/readiness score (0–100) from
-// nightly vitals, using the baseline-deviation method standard in HRV-guided
-// training and consumer wearables.
-//
-// Design (evidence-informed):
-//   - HRV uses ln(RMSSD) (RMSSD is log-normal). Baseline = 7-day rolling mean,
-//     spread = 60-day SD (Plews 2012/2013; HRV4Training/Altini).
-//   - Baseline is the PRIOR days only (the target day is never folded into its
-//     own mean/SD). Each metric -> sub-score = clamp(50 ± 25·z, 0, 100): ±2 SD
-//     spans the range; the ~0.5 SD "smallest worthwhile change" ≈ a 12-pt move.
-//   - Weights (HRV-dominant): HRV .50, RHR .25, sleep .15, resp .10.
-//     Missing optional components are dropped and remaining weights renormalized.
-//   - Cold start: <3 valid HRV nights -> no score ("building baseline"). Each
-//     metric uses a population-prior SD until it has fullSDDays of its own
-//     baseline, then its personal trailing SD.
+// Package readiness computes daily readiness from nightly vitals and prior load.
 package readiness
 
-import "math"
-
-const (
-	MinDays    = 3  // below this many valid HRV nights: building baseline
-	fullSDDays = 14 // below this: use population-prior SDs, not personal (provisional)
-	meanWindow = 7
-	sdWindow   = 60
-
-	priorSDH = 0.18 // ln(RMSSD)
-	priorSDR = 4.0  // bpm
-	priorSDF = 1.0  // br/min
-	floorSDH = 0.08
-	floorSDR = 1.5
-	floorSDF = 0.5
-
-	wHRV   = 0.50
-	wRHR   = 0.25
-	wSleep = 0.15
-	wResp  = 0.10
+import (
+	"encoding/json"
+	"math"
+	"sort"
+	"time"
 )
 
-// DayVitals holds one day's nightly aggregates; nil = not available.
-type DayVitals struct {
-	RMSSD      *float64 // nightly mean RMSSD, ms
-	RHR        *float64 // bpm
-	Resp       *float64 // breaths/min
-	SleepScore *float64 // 0–100
+const (
+	NameHRV        = "hrv"
+	NameHRVBalance = "hrv_balance"
+	NameSleepingHR = "sleeping_hr"
+	NameSleep      = "sleep"
+	NameSkinTemp   = "skin_temp"
+	NameRespRate   = "resp_rate"
+	NameLoad       = "load"
+)
+
+const (
+	StatusScored      = "scored"
+	StatusCalibrating = "calibrating"
+	StatusNoBaseline  = "no_baseline"
+	StatusNoData      = "no_data"
+)
+
+type Night struct {
+	HRV        *float64
+	SleepingHR *float64
+	RespRate   *float64
+	SkinTempC  *float64
+	SleepScore *float64
+	TRIMP      *float64
 }
 
-// Component is one weighted input to the recovery score, exposed so the API
-// can show a breakdown instead of just the final number.
 type Component struct {
-	Name     string  `json:"name"`
-	Value    float64 `json:"value"`
-	Weight   float64 `json:"weight"`
-	Subscore float64 `json:"subscore"`
+	Name       string   `json:"name"`
+	Value      *float64 `json:"value"`
+	X          *float64 `json:"x"`
+	Center     *float64 `json:"center"`
+	SD         *float64 `json:"sd"`
+	SDPersonal *float64 `json:"sdPersonal"`
+	N          *int     `json:"n"`
+	Z          *float64 `json:"z"`
+	Sub        *float64 `json:"sub"`
+	Weight     *float64 `json:"weight"`
+	Points     *float64 `json:"points"`
+	Nights     *int     `json:"nights"`
+	Chronic    *float64 `json:"chronic"`
+	Ratio      *float64 `json:"ratio"`
+	Dev        *float64 `json:"dev"`
 }
 
-// Compute returns the 0–100 recovery score for the LAST day in history
-// (ordered oldest→newest), plus each component that went into it. ok=false
-// means there isn't enough baseline yet (components is nil in that case).
-func Compute(history []DayVitals) (score int, components []Component, ok bool) {
-	if len(history) == 0 {
-		return 0, nil, false
-	}
-	target := history[len(history)-1]
-	if target.RMSSD == nil || *target.RMSSD <= 0 {
-		return 0, nil, false
-	}
-
-	// Baseline is built from the PRIOR days only — never fold the target day into
-	// its own mean/SD, or its z-score is biased toward zero (score muted), worst
-	// when data is thin.
-	prior := history[:len(history)-1]
-	lnPrior := collect(prior, lnRMSSD)
-	if len(lnPrior)+1 < MinDays { // prior + today valid HRV nights
-		return 0, nil, false
-	}
-
-	comps := []Component{
-		// HRV (required) — higher is better.
-		{Name: "hrv", Value: *target.RMSSD, Weight: wHRV,
-			Subscore: subscore(math.Log(*target.RMSSD), lnPrior, priorSDH, floorSDH, +1)},
-	}
-
-	// RHR — lower is better. Each metric decides prior-vs-personal SD from its
-	// own baseline length, not HRV's.
-	if rhr := collect(prior, getRHR); target.RHR != nil && len(rhr) >= MinDays-1 {
-		comps = append(comps, Component{Name: "rhr", Value: *target.RHR, Weight: wRHR,
-			Subscore: subscore(*target.RHR, rhr, priorSDR, floorSDR, -1)})
-	}
-
-	// Respiratory rate — higher is worse.
-	if resp := collect(prior, getResp); target.Resp != nil && len(resp) >= MinDays-1 {
-		comps = append(comps, Component{Name: "resp", Value: *target.Resp, Weight: wResp,
-			Subscore: subscore(*target.Resp, resp, priorSDF, floorSDF, -1)})
-	}
-
-	// Sleep: device 0–100 score used directly.
-	if target.SleepScore != nil {
-		comps = append(comps, Component{Name: "sleep", Value: *target.SleepScore, Weight: wSleep,
-			Subscore: clamp(*target.SleepScore, 0, 100)})
-	}
-
-	var sum, wsum float64
-	for _, c := range comps {
-		sum += c.Subscore * c.Weight
-		wsum += c.Weight
-	}
-	return int(math.Round(clamp(sum/wsum, 0, 100))), comps, true
+type Result struct {
+	Status         string      `json:"status"`
+	Score          *int        `json:"score"`
+	Raw            *float64    `json:"raw"`
+	BaselineNights int         `json:"baselineNights"`
+	Components     []Component `json:"components"`
+	Flags          []string    `json:"flags"`
+	TempDeviationC *float64    `json:"-"`
 }
 
-func collect(h []DayVitals, get func(DayVitals) *float64) []float64 {
-	out := make([]float64, 0, len(h))
-	for _, d := range h {
-		if v := get(d); v != nil {
-			out = append(out, *v)
+func (r Result) JSON() ([]byte, error) { return json.Marshal(r) }
+
+type Params struct {
+	BaselineDays     int
+	RecencyDays      int
+	MinBaseline      int
+	MinRecent        int
+	ShrinkNights     float64
+	MinScoredNights  int
+	BalanceDays      int
+	BalanceMinNights int
+	ChronicDays      int
+	ChronicMinDays   int
+	AcuteDays        int
+	LoadFloor        float64
+	LoadSpikeRatio   float64
+	LowCoverage      float64
+	TempFlagZ        float64
+
+	WeightHRV        float64
+	WeightHRVBalance float64
+	WeightSleepingHR float64
+	WeightSleep      float64
+	WeightSkinTemp   float64
+	WeightRespRate   float64
+	WeightLoad       float64
+
+	PriorHRV      float64
+	PriorSleepHR  float64
+	PriorRespRate float64
+	PriorSkinTemp float64
+
+	FloorHRV      float64
+	FloorSleepHR  float64
+	FloorRespRate float64
+	FloorSkinTemp float64
+}
+
+func DefaultParams() Params {
+	return Params{
+		BaselineDays:     60,
+		RecencyDays:      28,
+		MinBaseline:      3,
+		MinRecent:        3,
+		ShrinkNights:     7,
+		MinScoredNights:  14,
+		BalanceDays:      6,
+		BalanceMinNights: 3,
+		ChronicDays:      28,
+		ChronicMinDays:   14,
+		AcuteDays:        7,
+		LoadFloor:        10,
+		LoadSpikeRatio:   1.5,
+		LowCoverage:      0.70,
+		TempFlagZ:        2,
+
+		WeightHRV:        0.30,
+		WeightHRVBalance: 0.15,
+		WeightSleepingHR: 0.20,
+		WeightSleep:      0.15,
+		WeightSkinTemp:   0.10,
+		WeightRespRate:   0.05,
+		WeightLoad:       0.05,
+
+		PriorHRV:      0.10,
+		PriorSleepHR:  2.5,
+		PriorRespRate: 0.5,
+		PriorSkinTemp: 0.35,
+
+		FloorHRV:      0.05,
+		FloorSleepHR:  1.0,
+		FloorRespRate: 0.25,
+		FloorSkinTemp: 0.15,
+	}
+}
+
+func Compute(day time.Time, nights map[time.Time]Night, p Params) Result {
+	c := &calc{
+		p:      p,
+		day:    dateOnly(day),
+		nights: make(map[int]Night, len(nights)),
+	}
+	for k, v := range nights {
+		c.nights[dateKey(k)] = v
+	}
+	target, _ := c.at(0)
+
+	res := Result{
+		Components: make([]Component, 0, 7),
+		Flags:      []string{},
+	}
+	var missing, stale []string
+	scored := make([]bool, 7)
+
+	hrvComp, hrvMissing, hrvStale := c.hrvComponent(target)
+	res.Components = append(res.Components, hrvComp)
+	missing = appendMissing(missing, NameHRV, hrvMissing)
+	stale = appendBaseline(stale, NameHRV, hrvStale)
+	scored[0] = hrvComp.Sub != nil
+	res.BaselineNights = c.hrvN
+
+	balComp, balMissing, balStale := c.balanceComponent(target)
+	res.Components = append(res.Components, balComp)
+	missing = appendMissing(missing, NameHRVBalance, balMissing)
+	stale = appendBaseline(stale, NameHRVBalance, balStale)
+	scored[1] = balComp.Sub != nil
+
+	comp, miss, st := c.baselineComponent(NameSleepingHR, target.SleepingHR,
+		func(n Night) *float64 { return finitePtr(n.SleepingHR) },
+		p.PriorSleepHR, p.FloorSleepHR, -1)
+	res.Components = append(res.Components, comp)
+	missing = appendMissing(missing, NameSleepingHR, miss)
+	stale = appendBaseline(stale, NameSleepingHR, st)
+	scored[2] = comp.Sub != nil
+
+	comp, miss = c.sleepComponent(target)
+	res.Components = append(res.Components, comp)
+	missing = appendMissing(missing, NameSleep, miss)
+	scored[3] = comp.Sub != nil
+
+	tempComp, tempMissing, tempStale, tempZ := c.temperatureComponent(target)
+	res.Components = append(res.Components, tempComp)
+	missing = appendMissing(missing, NameSkinTemp, tempMissing)
+	stale = appendBaseline(stale, NameSkinTemp, tempStale)
+	scored[4] = tempComp.Sub != nil
+	res.TempDeviationC = tempComp.Dev
+
+	comp, miss, st = c.baselineComponent(NameRespRate, target.RespRate,
+		func(n Night) *float64 { return finitePtr(n.RespRate) },
+		p.PriorRespRate, p.FloorRespRate, -1)
+	res.Components = append(res.Components, comp)
+	missing = appendMissing(missing, NameRespRate, miss)
+	stale = appendBaseline(stale, NameRespRate, st)
+	scored[5] = comp.Sub != nil
+
+	loadComp, loadMissing, loadStale, spike := c.loadComponent(target)
+	res.Components = append(res.Components, loadComp)
+	missing = appendMissing(missing, NameLoad, loadMissing)
+	stale = appendBaseline(stale, NameLoad, loadStale)
+	scored[6] = loadComp.Sub != nil
+
+	weights := [7]float64{
+		p.WeightHRV, p.WeightHRVBalance, p.WeightSleepingHR, p.WeightSleep,
+		p.WeightSkinTemp, p.WeightRespRate, p.WeightLoad,
+	}
+	var raw, baseWeight float64
+	for i := range res.Components {
+		if !scored[i] {
+			continue
 		}
+		baseWeight += weights[i]
+	}
+	if baseWeight > 0 {
+		for i := range res.Components {
+			if !scored[i] {
+				continue
+			}
+			weight := weights[i] / baseWeight
+			points := weight * *res.Components[i].Sub
+			res.Components[i].Weight = new(weight)
+			res.Components[i].Points = new(points)
+			raw += points
+		}
+	}
+
+	switch {
+	case hrvMissing:
+		res.Status = StatusNoData
+	case hrvStale:
+		res.Status = StatusNoBaseline
+	case c.hrvN < p.MinScoredNights:
+		res.Status = StatusCalibrating
+	default:
+		res.Status = StatusScored
+	}
+	if res.Status == StatusScored {
+		res.Score = new(int(math.Round(raw)))
+		res.Raw = new(raw)
+	}
+
+	res.Flags = append(res.Flags, missing...)
+	res.Flags = append(res.Flags, stale...)
+	if tempZ != nil {
+		switch {
+		case *tempZ >= p.TempFlagZ:
+			res.Flags = append(res.Flags, "temp_high")
+		case *tempZ <= -p.TempFlagZ:
+			res.Flags = append(res.Flags, "temp_low")
+		}
+	}
+	if spike {
+		res.Flags = append(res.Flags, "load_spike")
+	}
+	if baseWeight < p.LowCoverage {
+		res.Flags = append(res.Flags, "low_coverage")
+	}
+	return res
+}
+
+type calc struct {
+	p      Params
+	day    time.Time
+	nights map[int]Night
+
+	hrvCenter float64
+	hrvSD     float64
+	hrvN      int
+	hrvOK     bool
+}
+
+func (c *calc) at(offset int) (Night, bool) {
+	n, ok := c.nights[dateKey(c.day.AddDate(0, 0, offset))]
+	return n, ok
+}
+
+func (c *calc) values(from, to int, get func(Night) *float64,
+	transform func(float64) float64) []float64 {
+	out := make([]float64, 0, 8)
+	for off := from; off >= to; off-- {
+		n, ok := c.at(off)
+		if !ok {
+			continue
+		}
+		v := get(n)
+		if v == nil {
+			continue
+		}
+		out = append(out, transform(*v))
 	}
 	return out
 }
 
-func meanLastN(xs []float64, n int) float64 {
-	w := lastN(xs, n)
-	if len(w) == 0 {
-		return 0
+func (c *calc) baseline(get func(Night) *float64, transform func(float64) float64,
+	prior, floor float64) (center, sd, personal float64, n int, ok bool) {
+	all := c.values(-1, -c.p.BaselineDays, get, transform)
+	recent := c.values(-1, -c.p.RecencyDays, get, transform)
+	n = len(all)
+	if len(all) < c.p.MinBaseline || len(recent) < c.p.MinRecent {
+		return 0, 0, 0, n, false
 	}
-	var s float64
-	for _, v := range w {
-		s += v
+	center = median(all)
+	deviations := make([]float64, len(all))
+	for i, v := range all {
+		deviations[i] = math.Abs(v - center)
 	}
-	return s / float64(len(w))
+	personal = 1.4826 * median(deviations)
+	variance := (float64(len(all))*personal*personal + c.p.ShrinkNights*prior*prior) /
+		(float64(len(all)) + c.p.ShrinkNights)
+	sd = math.Sqrt(variance)
+	if sd < floor {
+		sd = floor
+	}
+	return center, sd, personal, n, true
 }
 
-// stdLastN is the sample standard deviation of the last n values.
-func stdLastN(xs []float64, n int) float64 {
-	w := lastN(xs, n)
-	if len(w) < 2 {
-		return 0
+func (c *calc) hrvComponent(target Night) (Component, bool, bool) {
+	comp := Component{Name: NameHRV}
+	v := finitePtr(target.HRV)
+	if v == nil || *v <= 0 {
+		return comp, true, false
 	}
-	m := meanLastN(w, len(w))
-	var ss float64
-	for _, v := range w {
-		ss += (v - m) * (v - m)
+	x := math.Log(*v)
+	comp.Value = new(*v)
+	comp.X = new(x)
+	center, sd, personal, n, ok := c.baseline(hrvValue, math.Log, c.p.PriorHRV, c.p.FloorHRV)
+	c.hrvN = n
+	if !ok {
+		comp.N = new(n)
+		return comp, false, true
 	}
-	return math.Sqrt(ss / float64(len(w)-1))
+	c.hrvCenter, c.hrvSD, c.hrvOK = center, sd, true
+	z := (x - center) / sd
+	comp.Center = new(center)
+	comp.SD = new(sd)
+	comp.SDPersonal = new(personal)
+	comp.N = new(n)
+	comp.Z = new(z)
+	comp.Sub = new(clamp(50+25*z, 0, 100))
+	return comp, false, false
 }
 
-func lastN(xs []float64, n int) []float64 {
-	if len(xs) <= n {
-		return xs
+func (c *calc) balanceComponent(target Night) (Component, bool, bool) {
+	comp := Component{Name: NameHRVBalance}
+	if finitePtr(target.HRV) == nil || *target.HRV <= 0 {
+		return comp, true, false
 	}
-	return xs[len(xs)-n:]
+	if !c.hrvOK {
+		return comp, false, true
+	}
+	logs := c.values(0, -c.p.BalanceDays, hrvValue, math.Log)
+	if len(logs) < c.p.BalanceMinNights {
+		return comp, true, false
+	}
+	value := mean(logs)
+	z := (value - c.hrvCenter) / (0.5 * c.hrvSD)
+	nights := len(logs)
+	comp.Value = new(value)
+	comp.X = new(value)
+	comp.Center = new(c.hrvCenter)
+	comp.SD = new(c.hrvSD)
+	comp.Nights = &nights
+	comp.Z = new(z)
+	comp.Sub = new(clamp(50+25*z, 0, 100))
+	return comp, false, false
 }
 
-// subscore maps today's value against its personal baseline (prior days only)
-// to 0–100. It uses the population-prior SD until this metric has fullSDDays of
-// baseline, then its own personal SD (floored to avoid a hypersensitive
-// baseline). sign=+1 for higher-is-better, -1 for higher-is-worse.
-func subscore(x float64, prior []float64, priorSD, floor, sign float64) float64 {
-	var sd float64
-	if len(prior) < fullSDDays {
-		sd = priorSD
-	} else {
-		sd = math.Max(stdLastN(prior, sdWindow), floor)
+func (c *calc) baselineComponent(name string, value *float64,
+	get func(Night) *float64, prior, floor float64, direction float64) (Component, bool, bool) {
+	comp := Component{Name: name}
+	v := finitePtr(value)
+	if v == nil {
+		return comp, true, false
 	}
-	z := (x - meanLastN(prior, meanWindow)) / sd
-	return clamp(50+sign*25*z, 0, 100)
+	comp.Value = new(*v)
+	comp.X = new(*v)
+	center, sd, personal, n, ok := c.baseline(get, identity, prior, floor)
+	if !ok {
+		comp.N = new(n)
+		return comp, false, true
+	}
+	z := (*v - center) / sd
+	comp.Center = new(center)
+	comp.SD = new(sd)
+	comp.SDPersonal = new(personal)
+	comp.N = new(n)
+	comp.Z = new(z)
+	comp.Sub = new(clamp(50+25*direction*z, 0, 100))
+	return comp, false, false
 }
 
-func lnRMSSD(d DayVitals) *float64 {
-	if d.RMSSD == nil || *d.RMSSD <= 0 {
+func (c *calc) sleepComponent(target Night) (Component, bool) {
+	comp := Component{Name: NameSleep}
+	v := finitePtr(target.SleepScore)
+	if v == nil {
+		return comp, true
+	}
+	comp.Value = new(*v)
+	comp.X = new(*v)
+	comp.Sub = new(clamp(*v, 0, 100))
+	return comp, false
+}
+
+func (c *calc) temperatureComponent(target Night) (Component, bool, bool, *float64) {
+	comp := Component{Name: NameSkinTemp}
+	v := finitePtr(target.SkinTempC)
+	if v == nil {
+		return comp, true, false, nil
+	}
+	comp.Value = new(*v)
+	comp.X = new(*v)
+	center, sd, personal, n, ok := c.baseline(
+		func(n Night) *float64 { return finitePtr(n.SkinTempC) }, identity,
+		c.p.PriorSkinTemp, c.p.FloorSkinTemp)
+	if !ok {
+		comp.N = new(n)
+		return comp, false, true, nil
+	}
+	dev := *v - center
+	z := dev / sd
+	penalty := math.Max(0, math.Abs(z)-1)
+	comp.Center = new(center)
+	comp.SD = new(sd)
+	comp.SDPersonal = new(personal)
+	comp.N = new(n)
+	comp.Z = new(z)
+	comp.Dev = new(dev)
+	comp.Sub = new(clamp(50-25*penalty, 0, 50))
+	return comp, false, false, comp.Z
+}
+
+func (c *calc) loadComponent(target Night) (Component, bool, bool, bool) {
+	comp := Component{Name: NameLoad}
+	prior, ok := c.at(-1)
+	if !ok {
+		return comp, true, false, false
+	}
+	value := finitePtr(prior.TRIMP)
+	if value == nil {
+		return comp, true, false, false
+	}
+	comp.Value = new(*value)
+	comp.X = new(*value)
+	chronic := c.values(-1, -c.p.ChronicDays, trimpValue, identity)
+	if len(chronic) < c.p.ChronicMinDays {
+		n := len(chronic)
+		comp.N = &n
+		return comp, false, true, false
+	}
+	center := mean(chronic)
+	ratio := *value / math.Max(center, c.p.LoadFloor)
+	n := len(chronic)
+	comp.Chronic = new(center)
+	comp.Ratio = new(ratio)
+	comp.N = &n
+	comp.Sub = new(clamp(50-25*(ratio-1), 0, 75))
+
+	acute := c.values(-1, -c.p.AcuteDays, trimpValue, identity)
+	spike := false
+	if len(acute) == c.p.AcuteDays {
+		spike = mean(acute)/math.Max(center, c.p.LoadFloor) >= c.p.LoadSpikeRatio
+	}
+	return comp, false, false, spike
+}
+
+func hrvValue(n Night) *float64 {
+	v := finitePtr(n.HRV)
+	if v == nil || *v <= 0 {
 		return nil
 	}
-	v := math.Log(*d.RMSSD)
-	return &v
+	return v
 }
 
-func getRHR(d DayVitals) *float64  { return d.RHR }
-func getResp(d DayVitals) *float64 { return d.Resp }
+func trimpValue(n Night) *float64 { return finitePtr(n.TRIMP) }
+
+func appendMissing(flags []string, name string, present bool) []string {
+	if !present {
+		return flags
+	}
+	return append(flags, "missing:"+name)
+}
+
+func appendBaseline(flags []string, name string, present bool) []string {
+	if !present {
+		return flags
+	}
+	return append(flags, "baseline_stale:"+name)
+}
+
+func dateOnly(t time.Time) time.Time {
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, t.Location())
+}
+
+func dateKey(t time.Time) int { return t.Year()*10000 + int(t.Month())*100 + t.Day() }
+
+func finitePtr(v *float64) *float64 {
+	if v == nil || math.IsNaN(*v) || math.IsInf(*v, 0) {
+		return nil
+	}
+	value := *v
+	return &value
+}
+
+func identity(v float64) float64 { return v }
 
 func clamp(v, lo, hi float64) float64 {
 	if v < lo {
@@ -184,4 +514,28 @@ func clamp(v, lo, hi float64) float64 {
 		return hi
 	}
 	return v
+}
+
+func mean(xs []float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	var sum float64
+	for _, v := range xs {
+		sum += v
+	}
+	return sum / float64(len(xs))
+}
+
+func median(xs []float64) float64 {
+	if len(xs) == 0 {
+		return 0
+	}
+	sorted := append([]float64(nil), xs...)
+	sort.Float64s(sorted)
+	n := len(sorted)
+	if n%2 == 1 {
+		return sorted[n/2]
+	}
+	return (sorted[n/2-1] + sorted[n/2]) / 2
 }

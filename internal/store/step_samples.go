@@ -4,47 +4,106 @@ import (
 	"context"
 	"time"
 
+	"github.com/Anshuman115/heliolytics/internal/store/db"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-// StepSample is one per-minute step count keyed by its absolute timestamp.
-type StepSample struct {
-	DayKey    string
-	SampledAt time.Time
-	Steps     int
+func (s *Store) WriteSteps(ctx context.Context, tx pgx.Tx, rows []StepSample,
+	sessionID string, observedAt time.Time) (Mutation, error) {
+	const table = "step_samples"
+	b := newMutation()
+	if err := validateSessionRef(sessionID, table); err != nil {
+		return Mutation{}, err
+	}
+	if err := validateObservedAt(observedAt, table); err != nil {
+		return Mutation{}, err
+	}
+	observedAt = normInstant(observedAt)
+
+	normalized := make([]StepSample, 0, len(rows))
+	for _, r := range rows {
+		if r.Steps < 0 || r.Steps > 400 {
+			return Mutation{}, invalidRow(table, "steps out of range")
+		}
+		if err := validateInstant(r.At, table); err != nil {
+			return Mutation{}, err
+		}
+		r.At = normInstant(r.At)
+		normalized = append(normalized, r)
+	}
+	normalized, err := dedupeSamples(table, normalized,
+		func(r StepSample) sampleKey { return keyOf(r.At, "") },
+		func(r StepSample) any { return r.Steps })
+	if err != nil {
+		return Mutation{}, err
+	}
+	if len(normalized) == 0 {
+		return b.result(), nil
+	}
+
+	q := db.New(tx)
+	for start := 0; start < len(normalized); start += sampleBatchSize {
+		chunk := normalized[start:min(start+sampleBatchSize, len(normalized))]
+		keys := make([]pgtype.Timestamptz, 0, len(chunk))
+		for _, r := range chunk {
+			keys = append(keys, tsAt(r.At))
+		}
+		stored, err := q.ListStepSamplesByKeys(ctx, keys)
+		if err != nil {
+			return Mutation{}, err
+		}
+		type storedRow struct {
+			steps     int
+			observed  time.Time
+			sessionID string
+		}
+		prev := make(map[sampleKey]storedRow, len(stored))
+		for _, r := range stored {
+			prev[keyOf(r.SampledAt.Time, "")] = storedRow{
+				steps:     int(r.Steps),
+				observed:  r.ObservedAt.Time,
+				sessionID: r.SessionID,
+			}
+		}
+
+		params := db.UpsertStepSamplesParams{
+			SampledAt:  make([]pgtype.Timestamptz, 0, len(chunk)),
+			Steps:      make([]int16, 0, len(chunk)),
+			SessionID:  make([]string, 0, len(chunk)),
+			ObservedAt: make([]pgtype.Timestamptz, 0, len(chunk)),
+		}
+		for _, r := range chunk {
+			old, exists := prev[keyOf(r.At, "")]
+			if exists && !tupleGE(observedAt, sessionID, old.observed, old.sessionID) {
+				continue
+			}
+			if !exists || old.steps != r.Steps {
+				b.addPoint(r.At)
+			}
+			params.SampledAt = append(params.SampledAt, tsAt(r.At))
+			params.Steps = append(params.Steps, int16(r.Steps))
+			params.SessionID = append(params.SessionID, sessionID)
+			params.ObservedAt = append(params.ObservedAt, tsAt(observedAt))
+		}
+		if len(params.SampledAt) == 0 {
+			continue
+		}
+		if err := q.UpsertStepSamples(ctx, params); err != nil {
+			return Mutation{}, err
+		}
+	}
+	return b.result(), nil
 }
 
-// UpsertStepSamples writes per-minute steps idempotently, keyed by the minute
-// timestamp. A re-synced overlap window overwrites the same rows instead of
-// adding, which is what makes daily totals immune to the sync overlap.
-const upsertStepSampleSQL = `
-	INSERT INTO step_samples (sampled_at, day_key, steps, source_session_id)
-	VALUES ($1, $2::date, $3, $4)
-	ON CONFLICT (sampled_at) DO UPDATE SET
-		steps = EXCLUDED.steps,
-		day_key = EXCLUDED.day_key,
-		source_session_id = EXCLUDED.source_session_id`
-
-func (s *Store) UpsertStepSamples(ctx context.Context, sid string, pts []StepSample) error {
-	if sid == "" {
-		return errRequired("step_samples.source_session_id")
+func listSteps(ctx context.Context, q *db.Queries, from, to time.Time) ([]StepSample, error) {
+	rows, err := q.ListStepSamples(ctx, db.ListStepSamplesParams{FromAt: tsAt(from), ToAt: tsAt(to)})
+	if err != nil {
+		return nil, err
 	}
-	rows := make([]queuedRow, 0, len(pts))
-	for _, p := range pts {
-		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Steps, sid})
+	out := make([]StepSample, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, StepSample{At: r.SampledAt.Time, Steps: int(r.Steps)})
 	}
-	return s.execBatch(ctx, upsertStepSampleSQL, rows)
-}
-
-// UpsertStepSamplesTx is UpsertStepSamples run against an already-open
-// transaction, for use inside Store.WithTx.
-func (s *Store) UpsertStepSamplesTx(ctx context.Context, tx pgx.Tx, sid string, pts []StepSample) error {
-	if sid == "" {
-		return errRequired("step_samples.source_session_id")
-	}
-	rows := make([]queuedRow, 0, len(pts))
-	for _, p := range pts {
-		rows = append(rows, queuedRow{p.SampledAt.UTC(), p.DayKey, p.Steps, sid})
-	}
-	return execBatchTx(ctx, tx, upsertStepSampleSQL, rows)
+	return out, nil
 }

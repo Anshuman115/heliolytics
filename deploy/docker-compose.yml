@@ -1,84 +1,241 @@
+# docker compose --project-name deploy --env-file deploy/.env \
+#   --file deploy/docker-compose.yml up -d --build
+
 services:
-  adminer:
-    image: adminer
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8081:8080"
-    depends_on:
-      - db
   db:
-    image: timescale/timescaledb:latest-pg16
+    image: timescale/timescaledb:2.30.2-pg16@sha256:6f139d56042989bd35f50ba5986e492cd32e35cc6778c50be2659add298dc09f
     restart: unless-stopped
+    stop_grace_period: 60s
+    # The image entrypoint initializes as root, then runs postgres unprivileged.
+    command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     environment:
       POSTGRES_USER: heliolytics
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
       POSTGRES_DB: heliolytics
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?set APP_DB_PASSWORD}
+      # Skip the image's host-wide timescaledb-tune hook; deploy/postgresql.conf is authoritative.
+      NO_TS_TUNE: "true"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      - ../schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+      - type: bind
+        source: ./initdb/00_roles.sh
+        target: /docker-entrypoint-initdb.d/00_roles.sh
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ../schema.sql
+        target: /docker-entrypoint-initdb.d/01_schema.sql
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./postgresql.conf
+        target: /etc/postgresql/postgresql.conf
+        read_only: true
+        bind:
+          create_host_path: false
+      - type: bind
+        source: ./pg_hba.conf
+        target: /etc/postgresql/pg_hba.conf
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U heliolytics"]
-      interval: 5s
+      test:
+        - CMD-SHELL
+        - PGPASSWORD="$$POSTGRES_PASSWORD" psql -h 127.0.0.1 -U "$$POSTGRES_USER" -d "$$POSTGRES_DB" -Atqc 'SELECT 1' >/dev/null
+      interval: 10s
       timeout: 5s
+      start_period: 30s
       retries: 10
+    networks:
+      - data
+    mem_limit: 2g
+    cpus: 1.5
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
-    build: ..
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${HELIOLYTICS_COMMIT:-}
+        BUILD_TIME: ${HELIOLYTICS_BUILT_AT:-}
+    image: ${API_IMAGE:-heliolytics-api:deploy}
     restart: unless-stopped
+    stop_grace_period: 30s
     depends_on:
       db:
         condition: service_healthy
     environment:
-      HELIOLYTICS_SIGNING_SECRET: ${HELIOLYTICS_SIGNING_SECRET}
-      DATABASE_URL: postgres://heliolytics:${POSTGRES_PASSWORD}@db:5432/heliolytics?sslmode=disable
-      ADDR: :8080
-      RATE_LIMIT_PER_MIN: "120"
-      TRUST_PROXY: "true"
-      REPARSE_ENABLED: ${REPARSE_ENABLED:-false}
-      REPARSE_SECRET: ${REPARSE_SECRET:-}
+      DATABASE_URL: "postgres://heliolytics_app:${APP_DB_PASSWORD:?set APP_DB_PASSWORD}@db:5432/heliolytics?sslmode=disable"
+      HELIOLYTICS_API_KEYS: ${HELIOLYTICS_API_KEYS:?set HELIOLYTICS_API_KEYS}
+      ADDR: ":8080"
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      TRUSTED_PROXY_CIDRS: ${TRUSTED_PROXY_CIDRS:?set TRUSTED_PROXY_CIDRS}
+      RATE_LIMIT_PER_MIN: ${RATE_LIMIT_PER_MIN:-120}
+      RATE_LIMIT_PER_KEY_PER_MIN: ${RATE_LIMIT_PER_KEY_PER_MIN:-600}
+      REQUEST_TIMEOUT_SECONDS: ${REQUEST_TIMEOUT_SECONDS:-90}
+      MAX_CONCURRENT_BODY_READS: ${MAX_CONCURRENT_BODY_READS:-2}
     ports:
       - "127.0.0.1:${API_PORT:-8080}:8080"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
-      interval: 10s
+      test: ["CMD", "/usr/local/bin/api", "-healthcheck"]
+      interval: 15s
       timeout: 5s
+      start_period: 20s
       retries: 5
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=16m
+    networks:
+      - data
+      - application
+      - ingress
+    mem_limit: 512m
+    cpus: 1
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   web:
-    build: ../../heliolytics-web
+    build:
+      context: ../../heliolytics-web
+      dockerfile: Dockerfile
+      args:
+        GIT_SHA: ${HELIOLYTICS_WEB_COMMIT:-}
+        BUILD_TIME: ${HELIOLYTICS_BUILT_AT:-}
+    image: ${WEB_IMAGE:-heliolytics-web:deploy}
     restart: unless-stopped
+    stop_grace_period: 30s
     depends_on:
       api:
         condition: service_healthy
+    user: "1000:1000"
     environment:
-      HOSTNAME: "0.0.0.0"
-      HELIOLYTICS_SIGNING_SECRET: ${HELIOLYTICS_SIGNING_SECRET}
-      HELIOLYTICS_WEB_PASSWORD_HASH: ${HELIOLYTICS_WEB_PASSWORD_HASH}
-      HELIOLYTICS_SESSION_SECRET: ${HELIOLYTICS_SESSION_SECRET}
-      API_INTERNAL_URL: http://api:8080
       NODE_ENV: production
+      HOSTNAME: "0.0.0.0"
+      PORT: "3000"
+      API_INTERNAL_URL: http://api:8080
+      HELIOLYTICS_API_KEY: ${HELIOLYTICS_API_KEY:?set HELIOLYTICS_API_KEY}
+      HELIOLYTICS_WEB_PASSWORD_HASH: ${HELIOLYTICS_WEB_PASSWORD_HASH:?set HELIOLYTICS_WEB_PASSWORD_HASH}
+      HELIOLYTICS_SESSION_SECRET: ${HELIOLYTICS_SESSION_SECRET:?set HELIOLYTICS_SESSION_SECRET}
+      TRUST_PROXY: ${TRUST_PROXY:-true}
+      COOKIE_SECURE: ${COOKIE_SECURE:-true}
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      test:
+        - CMD
+        - node
+        - -e
+        - 'fetch("http://127.0.0.1:3000/login").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
       interval: 15s
       timeout: 5s
       start_period: 30s
       retries: 5
+    read_only: true
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m,mode=1777
+      - /app/.next/cache:rw,noexec,nosuid,size=256m,mode=0700,uid=1000,gid=1000
+    networks:
+      - application
+      - ingress
+    mem_limit: 768m
+    cpus: 1
+    pids_limit: 256
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  adminer:
+    image: adminer:6.1.2-standalone@sha256:49a7d30e71de97fb18933ffe7d46cc2b343c49fd7a63a7791c8be2548eb65115
+    profiles:
+      - tools
+    restart: unless-stopped
+    stop_grace_period: 10s
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: db
+    ports:
+      - "127.0.0.1:${ADMINER_PORT:-8081}:8080"
+    networks:
+      - data
+      - tools
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   cloudflared:
-    image: cloudflare/cloudflared:latest
+    image: cloudflare/cloudflared:2026.10.1@sha256:a15a3b50b8dabd57ac2090e9484c0247dba9dfa1f0df4d298d4317f9d69eb2d5
+    profiles:
+      - tunnel
     restart: unless-stopped
-    extra_hosts:
-      - "host.docker.internal:172.18.0.1"
-    command: tunnel --no-autoupdate run
+    stop_grace_period: 10s
+    command: ["tunnel", "--no-autoupdate", "run"]
     environment:
-      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN}
+      TUNNEL_TOKEN: ${CLOUDFLARE_TUNNEL_TOKEN:-}
     depends_on:
       api:
         condition: service_healthy
       web:
         condition: service_healthy
+    networks:
+      ingress:
+        ipv4_address: ${CLOUDFLARED_IP:-172.28.0.10}
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+networks:
+  # Database traffic. The subnet is fixed so deploy/pg_hba.conf matches it.
+  data:
+    internal: true
+    ipam:
+      config:
+        - subnet: ${DATA_SUBNET:-172.30.0.0/24}
+  application:
+    internal: true
+  ingress:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: ${INGRESS_SUBNET:-172.28.0.0/24}
+  # Loopback-published tools. A published port needs a non-internal network.
+  tools:
+    driver: bridge
 
 volumes:
+  # Keep this key: production data lives in deploy_pgdata.
   pgdata:

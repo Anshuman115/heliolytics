@@ -1,106 +1,245 @@
 package parse
 
 import (
-	"os"
-	"path/filepath"
+	"errors"
 	"testing"
 	"time"
 )
 
-func TestParseWorkoutsProtobuf(t *testing.T) {
-	p := filepath.Join("..", "..", "..", "Heliolytics_App", "helio_dump_v5", "0x05_raw.bin")
-	raw, err := os.ReadFile(p)
+func appendVarint(dst []byte, value uint64) []byte {
+	for value >= 0x80 {
+		dst = append(dst, byte(value)|0x80)
+		value >>= 7
+	}
+	return append(dst, byte(value))
+}
+
+func protoBytesField(dst []byte, field int, payload []byte) []byte {
+	dst = appendVarint(dst, uint64(field)<<3|2)
+	dst = appendVarint(dst, uint64(len(payload)))
+	return append(dst, payload...)
+}
+
+func protoVarintField(dst []byte, field int, value uint64) []byte {
+	dst = appendVarint(dst, uint64(field)<<3)
+	return appendVarint(dst, value)
+}
+
+type workoutSpec struct {
+	start    int64
+	duration int64
+	sport    *int
+	calories *int
+	avgHR    *int
+	maxHR    *int
+	minHR    *int
+}
+
+func encodeWorkout(spec workoutSpec) []byte {
+	message := protoBytesField(nil, 1, []byte("2.1"))
+	message = append(message, protoBytesField(nil, 2, protoVarintField(nil, 1, uint64(spec.start)))...)
+	if spec.sport != nil {
+		message = append(message, protoBytesField(nil, 3, protoVarintField(nil, 1, uint64(*spec.sport)))...)
+	}
+	message = append(message, protoBytesField(nil, 7, protoVarintField(nil, 1, uint64(spec.duration)))...)
+	if spec.calories != nil {
+		message = append(message, protoBytesField(nil, 16, protoVarintField(nil, 1, uint64(*spec.calories)))...)
+	}
+	var hr []byte
+	if spec.avgHR != nil {
+		hr = protoVarintField(hr, 1, uint64(*spec.avgHR))
+	}
+	if spec.maxHR != nil {
+		hr = protoVarintField(hr, 2, uint64(*spec.maxHR))
+	}
+	if spec.minHR != nil {
+		hr = protoVarintField(hr, 3, uint64(*spec.minHR))
+	}
+	if len(hr) > 0 {
+		message = append(message, protoBytesField(nil, 19, hr)...)
+	}
+	out := append([]byte{0x00, 0x80}, message...)
+	return append(out, 0x00)
+}
+
+func detailStream(times ...time.Time) []byte {
+	var out []byte
+	for _, at := range times {
+		out = append(out, workoutDetailHeader...)
+		millis := at.UnixMilli()
+		for index := range workoutDetailTimestampSize {
+			out = append(out, byte(millis>>(8*index)))
+		}
+	}
+	return out
+}
+
+func workoutWindow(center time.Time) Window {
+	return Window{StartedAt: center.Add(-time.Hour), EndedAt: center.Add(4 * time.Hour)}
+}
+
+func TestWorkoutUnknownSportKeepsNumericID(t *testing.T) {
+	start := time.Date(2026, 6, 20, 14, 39, 0, 0, time.UTC)
+	raw := encodeWorkout(workoutSpec{start: start.Unix(), duration: 3600, sport: new(223)})
+	rows, result, err := parseWorkoutSummaries(raw, workoutWindow(start))
 	if err != nil {
-		t.Skip("dump missing")
+		t.Fatalf("parse summary: %v", err)
 	}
-	ws := ParseWorkouts(raw)
-	if len(ws) != 1 {
-		t.Fatalf("want 1 workout got %d", len(ws))
+	if len(rows) != 1 || result.Rows != 1 {
+		t.Fatalf("rows=%v result=%+v, want one workout", rows, result)
 	}
-	w := ws[0]
-	if w.SportType != 92 {
-		t.Fatalf("sport %d name %q", w.SportType, w.SportName)
-	}
-	if w.SportName != "Badminton" {
-		t.Fatalf("name %q", w.SportName)
-	}
-	if w.Calories == nil || *w.Calories != 872 {
-		t.Fatalf("calories %v", w.Calories)
-	}
-	if w.DurationSec < 180 {
-		t.Fatalf("duration %d", w.DurationSec)
+	if rows[0].SportType != 223 || rows[0].SportName != "Activity 223" {
+		t.Fatalf("sport = %d/%q, want 223/Activity 223", rows[0].SportType, rows[0].SportName)
 	}
 }
 
-func TestMergeWorkoutsPreservesSourceProvenance(t *testing.T) {
-	started := time.Date(2026, 7, 25, 8, 30, 0, 0, time.UTC)
-	merged := MergeWorkouts(
-		[]WorkoutRecord{{StartedAt: started, DurationSec: 300, HasSummary: true}},
-		[]WorkoutRecord{{StartedAt: started, DurationSec: 600, HasDetail: true}},
-	)
-	if len(merged) != 1 {
-		t.Fatalf("len=%d want 1", len(merged))
+func TestWorkoutWithoutSportFallsBackToWorkout(t *testing.T) {
+	start := time.Date(2026, 6, 20, 14, 39, 0, 0, time.UTC)
+	raw := encodeWorkout(workoutSpec{start: start.Unix(), duration: 600})
+	rows, _, err := parseWorkoutSummaries(raw, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse summary: %v", err)
 	}
-	if !merged[0].HasSummary || !merged[0].HasDetail {
-		t.Fatalf("provenance summary=%t detail=%t", merged[0].HasSummary, merged[0].HasDetail)
-	}
-	if merged[0].DurationSec != 600 {
-		t.Fatalf("duration=%d want richer detail duration", merged[0].DurationSec)
+	if len(rows) != 1 || rows[0].SportType != 0 || rows[0].SportName != "Workout" {
+		t.Fatalf("rows = %+v, want sport 0 named Workout", rows)
 	}
 }
 
-func TestParseWorkoutDetailsUsesTimestampedSessionEnvelopes(t *testing.T) {
-	first := time.Date(2026, 7, 26, 9, 14, 18, 0, time.UTC)
-	second := first.Add(10 * time.Minute)
-	raw := appendDetailBlock(nil, first.UnixMilli(), detailSessionStartMarker)
-	raw = appendDetailBlock(raw, first.Add(33*time.Second).UnixMilli(), []byte{0x00, 0x00, 0x08, 0x03})
-	raw = appendDetailBlock(raw, second.UnixMilli(), detailSessionStartMarker)
-
-	details := ParseWorkoutDetails(raw)
-	if len(details) != 2 {
-		t.Fatalf("len=%d want 2", len(details))
+func TestWorkoutOptionalStatsOutsideDomainBecomeNil(t *testing.T) {
+	start := time.Date(2026, 6, 20, 14, 39, 0, 0, time.UTC)
+	raw := encodeWorkout(workoutSpec{
+		start: start.Unix(), duration: 600, sport: new(92),
+		calories: new(12000), avgHR: new(0),
+	})
+	rows, result, err := parseWorkoutSummaries(raw, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse summary: %v", err)
 	}
-	if !details[0].StartedAt.Equal(first) || details[0].DurationSec != 33 {
-		t.Fatalf("first=%+v", details[0])
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want the workout retained", len(rows))
 	}
-	if !details[1].StartedAt.Equal(second) || details[1].DurationSec != 1 {
-		t.Fatalf("second=%+v", details[1])
+	if rows[0].Calories != nil || rows[0].AvgHR != nil {
+		t.Fatalf("out of range stats survived: %+v", rows[0])
 	}
-
-	summary := WorkoutRecord{StartedAt: first, DurationSec: 252, HasSummary: true}
-	details[0].HasDetail = true
-	merged := MergeWorkouts([]WorkoutRecord{summary}, details[:1])
-	if len(merged) != 1 || !merged[0].HasDetail || merged[0].DurationSec != 252 {
-		t.Fatalf("merged=%+v", merged)
+	if result.Dropped != 2 {
+		t.Fatalf("dropped = %d, want both out of range statistics", result.Dropped)
 	}
-}
-
-func TestParseWorkoutDetailsBySegmentsIgnoresTrailerStreams(t *testing.T) {
-	first := time.Date(2026, 7, 7, 2, 21, 41, 0, time.UTC)
-	trailer := first.Add(73*time.Minute + 12*time.Second)
-	second := time.Date(2026, 7, 8, 2, 32, 3, 0, time.UTC)
-	raw := appendDetailBlock(nil, first.UnixMilli(), detailSessionStartMarker)
-	raw = appendDetailBlock(raw, trailer.UnixMilli(), detailSessionStartMarker)
-	secondOffset := len(raw)
-	raw = appendDetailBlock(raw, second.UnixMilli(), detailSessionStartMarker)
-	entry := &CatalogEntry{RoundSegments: []RoundSegment{
-		{ByteOffset: 0, RoundStart: "2026-07-07T07:51:41.000"},
-		{ByteOffset: secondOffset, RoundStart: "2026-07-08T08:02:03.000"},
-	}}
-
-	details := ParseWorkoutDetailsBySegments(raw, entry)
-	if len(details) != 2 {
-		t.Fatalf("len=%d want 2", len(details))
-	}
-	if !details[0].StartedAt.Equal(first) || !details[1].StartedAt.Equal(second) {
-		t.Fatalf("details=%+v", details)
+	if len(result.Warnings) != 1 || result.Warnings[0].Code != "workout_stat_out_of_range" ||
+		result.Warnings[0].Count != 2 {
+		t.Fatalf("warnings = %v, want one workout_stat_out_of_range count=2", result.Warnings)
 	}
 }
 
-func appendDetailBlock(raw []byte, millis int64, marker []byte) []byte {
-	raw = append(raw, psmHeader...)
-	for index := 0; index < detailTimestampBytes; index++ {
-		raw = append(raw, byte(millis>>(8*index)))
+func TestWorkoutSportOutsideInt16IsFatal(t *testing.T) {
+	start := time.Date(2026, 6, 20, 14, 39, 0, 0, time.UTC)
+	raw := encodeWorkout(workoutSpec{start: start.Unix(), duration: 600, sport: new(40000)})
+	_, _, err := parseWorkoutSummaries(raw, workoutWindow(start))
+	var parseErr *ParseError
+	if !errors.As(err, &parseErr) {
+		t.Fatalf("error = %v, want a structural *ParseError", err)
 	}
-	return append(raw, marker...)
+}
+
+func TestWorkoutWithoutVersionMarkerIsRejected(t *testing.T) {
+	raw := []byte{0x00, 0x80, 0x08, 0x01, 0x00}
+	_, _, err := parseWorkoutSummaries(raw, loadFixtureWindow(t))
+	var parseErr *ParseError
+	if !errors.As(err, &parseErr) || parseErr.Code != ErrCodeUnsupportedVersion {
+		t.Fatalf("error = %v, want unsupported_version", err)
+	}
+}
+
+func TestDetailOnlyInputCreatesNoWorkout(t *testing.T) {
+	start := time.Date(2026, 6, 22, 2, 20, 16, 0, time.UTC)
+	batch, err := ParseBlobs(Catalog{}, map[string][]byte{
+		typeWorkoutDetail: detailStream(start.Add(280 * time.Millisecond)),
+	}, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse detail: %v", err)
+	}
+	if len(batch.Workouts) != 0 {
+		t.Fatalf("detail only input produced %d workouts", len(batch.Workouts))
+	}
+	result := batch.Types[typeWorkoutDetail]
+	if result.Rows != 0 || result.Dropped != 1 {
+		t.Fatalf("result = %+v, want one unmatched block and no rows", result)
+	}
+}
+
+func TestDetailBlockAttachesInsideTheSummaryWindow(t *testing.T) {
+	start := time.Date(2026, 6, 22, 2, 20, 16, 0, time.UTC)
+	summary := encodeWorkout(workoutSpec{start: start.Unix(), duration: 600, sport: new(92)})
+	batch, err := ParseBlobs(Catalog{}, map[string][]byte{
+		typeWorkout:       summary,
+		typeWorkoutDetail: detailStream(start.Add(280 * time.Millisecond)),
+	}, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse blobs: %v", err)
+	}
+	if len(batch.Workouts) != 1 || !batch.Workouts[0].HasDetail {
+		t.Fatalf("workouts = %+v, want one summary with detail", batch.Workouts)
+	}
+	if result := batch.Types[typeWorkoutDetail]; result.ProcessedThrough == nil ||
+		!result.ProcessedThrough.Equal(start.Add(600*time.Second)) {
+		t.Fatalf("0x06 processedThrough = %v, want the attached workout end", result.ProcessedThrough)
+	}
+}
+
+func TestDetailTrailerBlocksKeepTheWorkoutCount(t *testing.T) {
+	start := time.Date(2026, 6, 22, 2, 20, 16, 0, time.UTC)
+	summary := encodeWorkout(workoutSpec{start: start.Unix(), duration: 600, sport: new(92)})
+	batch, err := ParseBlobs(Catalog{}, map[string][]byte{
+		typeWorkout: summary,
+		typeWorkoutDetail: detailStream(
+			start.Add(time.Second),
+			start.Add(700*time.Second),
+		),
+	}, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse blobs: %v", err)
+	}
+	if len(batch.Workouts) != 1 || !batch.Workouts[0].HasDetail {
+		t.Fatalf("workouts = %+v, want one summary with attached detail", batch.Workouts)
+	}
+	result := batch.Types[typeWorkoutDetail]
+	if result.Dropped != 1 || len(result.Warnings) != 1 ||
+		result.Warnings[0].String() != "unmatched_workout_detail offset=12 count=1" {
+		t.Fatalf("result = %+v, want the trailer block warned at offset 12", result)
+	}
+}
+
+func TestAmbiguousDetailBlockIsNotAttached(t *testing.T) {
+	start := time.Date(2026, 6, 22, 2, 20, 16, 0, time.UTC)
+	first := encodeWorkout(workoutSpec{start: start.Unix(), duration: 600, sport: new(92)})
+	second := encodeWorkout(workoutSpec{start: start.Add(300 * time.Second).Unix(), duration: 600, sport: new(92)})
+	batch, err := ParseBlobs(Catalog{}, map[string][]byte{
+		typeWorkout:       append(first, second...),
+		typeWorkoutDetail: detailStream(start.Add(400 * time.Second)),
+	}, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse blobs: %v", err)
+	}
+	if len(batch.Workouts) != 2 {
+		t.Fatalf("workouts = %d, want both overlapping summaries", len(batch.Workouts))
+	}
+	for _, workout := range batch.Workouts {
+		if workout.HasDetail {
+			t.Fatalf("ambiguous block attached to %+v", workout)
+		}
+	}
+	if result := batch.Types[typeWorkoutDetail]; result.Dropped != 1 {
+		t.Fatalf("result = %+v, want the ambiguous block counted", result)
+	}
+}
+
+func TestWorkoutSummaryWithoutDurationIsNotAWorkout(t *testing.T) {
+	start := time.Date(2026, 6, 20, 14, 39, 0, 0, time.UTC)
+	raw := encodeWorkout(workoutSpec{start: start.Unix(), duration: 0, sport: new(92)})
+	rows, result, err := parseWorkoutSummaries(raw, workoutWindow(start))
+	if err != nil {
+		t.Fatalf("parse summary: %v", err)
+	}
+	if len(rows) != 0 || result.Rows != 0 || result.Dropped != 1 {
+		t.Fatalf("rows=%v result=%+v, want the summary dropped", rows, result)
+	}
 }

@@ -1,61 +1,105 @@
 # Metrics API
 
-The route registry is `internal/api/routes.go`. Successful responses use named JSON fields such as `days` or `workouts`. Errors generally use an HTTP status and plain text. There is no universal `data` wrapper.
+The route table lives in `internal/api/routes.go`. The router resolves the exact
+escaped path, then the method, before any authentication or body work. It never
+redirects and never canonicalizes a slash or dot segment, so
+`GET /api/daily-metrics/` is a 404.
 
-## Routes and current consumers
+Successful responses are JSON objects with named fields. Errors are JSON too:
+`{"error":{"code":"...","message":"..."}}`. The message comes from a fixed table,
+never from the request or the database.
 
-Paths below start with `/api/v1` unless shown otherwise. App means the Flutter client. Web means the Next.js server-side client.
+## Routes
 
-| Method and path | Response / purpose | Current consumer |
-|---|---|---|
-| `GET /health` | `ok` when the DB responds; unauthenticated | Healthchecks, connection checks |
-| `GET /api/v1/daily-metrics` | `days`: daily rollups | App and Web |
-| `GET /api/v1/sleep` | `sleep`: sessions and stages | App and Web |
-| `GET /api/v1/metrics/workouts` | `workouts`: workout summaries | App and Web |
-| `GET /api/v1/metrics/activity-sessions` | `activitySessions`: automatic sessions | App and Web |
-| `GET /api/v1/metrics/hr` | `days`: compact HR blocks | App and Web |
-| `GET /api/v1/metrics/series` | `days`: compact vital blocks | App and Web |
-| `GET /api/v1/metrics/temperature` | `days`: compact temperature blocks | App and Web |
-| `GET /api/v1/metrics/coverage` | Ingest and per-type timestamps | App sync, Web status |
-| `GET /api/v1/daily-health-scores` | `days`: selected daily health fields | App |
-| `GET /api/v1/metrics/hrv` | `points`: sample timestamps and values | Available; no current client call |
-| `GET /api/v1/metrics/rhr` | `points`: sample timestamps and values | Available; no current client call |
-| `GET /api/v1/metrics/vo2max` | Empty `points`; no data source | Stub; no current client call |
-| `GET /api/v1/recovery` | Calculated score and components | Available; no current client call |
-| `GET /api/v1/strain` | `paiScore` for a day | Available; no current client call |
-| `GET /api/v1/profile` | Stored profile | Available; App does not read it |
-| `PUT /api/v1/profile` | Save profile | App best-effort profile upload |
-| `POST /api/v1/ingest` | Accept multipart sync | App |
-| `POST /api/v1/reparse` | Replay latest stored session | Operator; disabled by default |
+| Method and path | Auth | Range | Response |
+|---|---|---|---|
+| `GET /health` | public | none | Text `ok`. It never touches the database |
+| `GET /version` | public | none | `commit` and `builtAt`, null when the build injected neither |
+| `GET /api/daily-metrics` | signed | 366 days | `days`: one C3.3 row per stored IST day |
+| `GET /api/sleep` | signed | 366 days | `days`: `dayKey`, `main`, `naps` |
+| `GET /api/activities` | signed | 366 days | `activities`: workouts and derived auto activities |
+| `GET /api/metrics/hr` | signed | 31 days | `days`: compact heart rate blocks |
+| `GET /api/metrics/temperature` | signed | 31 days | `days`: compact temperature blocks |
+| `GET /api/metrics/series` | signed | 31 days | `days`: compact vital blocks |
+| `GET /api/metrics/coverage` | signed | no parameters | `hasData`, `lastIngestAt`, `dataThrough`, `types` |
+| `PUT /api/profile` | `phone` only | none | 204 with an empty body |
+| `POST /api/ingest` | `phone` only | none | The C2 per-type result |
 
-The former paths `/api/v1/metrics/days` and `/api/v1/metrics/sleep` are not registered.
+An unknown path returns 404 `not_found`. A known path with any other method,
+including `HEAD`, returns 405 `method_not_allowed` and lists the accepted methods
+in `Allow`.
 
-## Dates and response shapes
+No other route exists. Workout lists, activity sessions, HRV points, resting HR
+points, VO2 max, recovery, strain, daily health scores and reparse are not served;
+clients read the same values from the daily row, the sleep route, the activity
+route or the series route.
 
-Most history routes accept inclusive `from` and `to` date keys. Defaults in `metrics_common.go` start 30 days before today, or 90 for workouts and automatic sessions. Both endpoints are inclusive. These defaults are not exact row counts.
+## Date ranges
 
-Recovery and strain require `day=YYYY-MM-DD`.
+`from` and `to` must appear together as `YYYY-MM-DD` and each may appear exactly
+once. Anything else is 400 `invalid_date`. An inverted range is 400
+`invalid_range`. A span above the route cap is 400 `range_too_large`. Omitting
+both means the last 30 IST days, ending today.
 
-Compact blocks carry a `startTime`, second `offsets`, and `values`, plus day or metric identity as applicable. Clients pair each offset with its value and rebuild time. This expands timestamps, not health blobs. A consumer must follow each endpoint's actual response shape rather than assume that every route returns a flat list.
+## Day rows
 
-Profile writes use `height_cm` and `weight_kg`. Daily metric JSON uses names such as `dayKey` and `hrvRmssd`. Profile and daily metric casing are different contracts.
+Every key is present. A metric the store does not hold is null, never zero.
+`spo2Samples`, `napCount`, `workoutCount` and `autoActivityCount` are counts and
+always numbers.
 
-`/recovery` always computes the backend formula. Readiness in daily metrics prefers the device's score. These can differ and are not interchangeable.
+`readiness` and `readinessComponents` come from the stored row. `readinessStatus`
+is the `status` field inside those components, and `readinessBand` is derived from
+the stored score (`good` at 67 or more, `fair` at 34 to 66, `low` at 33 or less).
+Clients never derive the band themselves. A day whose inputs were insufficient
+keeps its status and a null score.
+
+Only stored IST days appear. A calendar gap is not a row, so clients draw gaps as
+gaps and never as zero or `no_data` days. The same rule applies to the sleep,
+activity and series routes.
+
+Compact blocks carry `dayKey`, `startTime`, second `offsets` and `values`. Clients
+pair each offset with its value to rebuild a timestamp. This expands timestamps,
+never raw blobs.
+
+## Coverage
+
+`types` has exactly the eleven measured codes: `0x01`, `0x05`, `0x06`, `0x0D`,
+`0x13`, `0x25`, `0x2E`, `0x38`, `0x46`, `0x48`, `0x49`. Each value is the canonical
+watermark of stored rows, or null before the first one. `0x26` is raw-only, so it
+never appears. `lastIngestAt` is the latest committed session and `dataThrough` is
+the greatest canonical watermark.
+
+## Writes
+
+`PUT /api/profile` replaces the whole profile. All five keys are required and
+an explicit null clears that field: `name`, `birthDate`, `sex`, `heightCm`,
+`weightKg`. Values are bounded (birth date after 1900-01-01 and not after today,
+50..250 cm, 20..300 kg, sex `male` or `female`). A shape failure is 400
+`invalid_body` and a semantic failure is 422 `invalid_profile`. The 204 is sent
+only after the transaction commits, and a changed birth date or sex recomputes
+every stored load and readiness row in that same transaction.
+
+`POST /api/ingest` accepts at most 16 MiB, 40 parts, and requires the `session`
+and `catalog` parts plus one non-empty `0xNN_raw.bin` part. An unknown or
+duplicate part is 400. A structural type failure rejects the whole upload with 422
+and writes nothing. `0x26` returns `raw_only`.
 
 ## Request path
 
-Logging -> rate limiter -> HMAC verifier -> handler -> store -> JSON.
-`/health` bypasses that chain and checks the database.
-
-Flutter fetches day bundles plus separate health tiles. Heavy series are requested on detail screens. Web currently starts eight reads on the server for its dashboard.
+Logging, then the request timeout, then panic recovery, then the router, then the
+guard: IP limit, MAC, permission, key limit, body slot, bounded read and hash,
+route preparation, nonce, handler. `/health` and `/version` skip the guard
+entirely.
 
 ## Source files
 
-- `internal/api/routes.go`: exact registrations.
-- `internal/api/metrics_common.go`: default ranges, JSON helper, DB health.
-- `internal/store/metrics_list.go`: database-to-JSON model conversion.
-- `sql/queries`: handwritten sqlc queries; `internal/store/db` is generated.
+- `internal/api/routes.go`: the exact route table and guard assembly.
+- `internal/api/metrics_common.go`: range rules, JSON writer, error mapping.
+- `internal/api/metrics_coverage.go`: the measured coverage shape.
+- `internal/api/ingest.go` and `internal/api/profile.go`: the write envelopes.
+- `internal/store/metrics_list.go`: stored rows to JSON models.
 
-See [the request walkthrough](go-request-walkthrough.md) for a line-by-line example.
+See [the request walkthrough](go-request-walkthrough.md) for a line-by-line
+example.
 
 Validation: not run for this revision.

@@ -11,48 +11,40 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const latestRespOnDay = `-- name: LatestRespOnDay :one
-SELECT value FROM resp_samples
-WHERE day_key = $1
-ORDER BY sampled_at DESC
-LIMIT 1
-`
-
-func (q *Queries) LatestRespOnDay(ctx context.Context, dayKey pgtype.Date) (pgtype.Numeric, error) {
-	row := q.db.QueryRow(ctx, latestRespOnDay, dayKey)
-	var value pgtype.Numeric
-	err := row.Scan(&value)
-	return value, err
-}
-
-const listRespSamplesRange = `-- name: ListRespSamplesRange :many
-SELECT sampled_at, day_key, value
+const listRespSamples = `-- name: ListRespSamples :many
+SELECT sampled_at, br_min::float8 AS br_min, session_id, observed_at
 FROM resp_samples
-WHERE day_key >= $1 AND day_key <= $2
+WHERE sampled_at >= $1 AND sampled_at < $2
 ORDER BY sampled_at ASC
 `
 
-type ListRespSamplesRangeParams struct {
-	DayKey   pgtype.Date `json:"day_key"`
-	DayKey_2 pgtype.Date `json:"day_key_2"`
+type ListRespSamplesParams struct {
+	FromAt pgtype.Timestamptz `json:"from_at"`
+	ToAt   pgtype.Timestamptz `json:"to_at"`
 }
 
-type ListRespSamplesRangeRow struct {
-	SampledAt pgtype.Timestamptz `json:"sampled_at"`
-	DayKey    pgtype.Date        `json:"day_key"`
-	Value     pgtype.Numeric     `json:"value"`
+type ListRespSamplesRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	BrMin      float64            `json:"br_min"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-func (q *Queries) ListRespSamplesRange(ctx context.Context, arg ListRespSamplesRangeParams) ([]ListRespSamplesRangeRow, error) {
-	rows, err := q.db.Query(ctx, listRespSamplesRange, arg.DayKey, arg.DayKey_2)
+func (q *Queries) ListRespSamples(ctx context.Context, arg ListRespSamplesParams) ([]ListRespSamplesRow, error) {
+	rows, err := q.db.Query(ctx, listRespSamples, arg.FromAt, arg.ToAt)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListRespSamplesRangeRow{}
+	items := []ListRespSamplesRow{}
 	for rows.Next() {
-		var i ListRespSamplesRangeRow
-		if err := rows.Scan(&i.SampledAt, &i.DayKey, &i.Value); err != nil {
+		var i ListRespSamplesRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.BrMin,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -63,51 +55,115 @@ func (q *Queries) ListRespSamplesRange(ctx context.Context, arg ListRespSamplesR
 	return items, nil
 }
 
-const meanRespInWindow = `-- name: MeanRespInWindow :one
-SELECT AVG(value)::float8 AS avg_value, COUNT(*) AS n
+const listRespSamplesByKeys = `-- name: ListRespSamplesByKeys :many
+SELECT sampled_at, br_min::float8 AS br_min, session_id, observed_at
 FROM resp_samples
-WHERE sampled_at >= $1 AND sampled_at <= $2
+WHERE sampled_at = ANY($1::timestamptz[])
+ORDER BY sampled_at ASC
 `
 
-type MeanRespInWindowParams struct {
-	SampledAt   pgtype.Timestamptz `json:"sampled_at"`
-	SampledAt_2 pgtype.Timestamptz `json:"sampled_at_2"`
+type ListRespSamplesByKeysRow struct {
+	SampledAt  pgtype.Timestamptz `json:"sampled_at"`
+	BrMin      float64            `json:"br_min"`
+	SessionID  string             `json:"session_id"`
+	ObservedAt pgtype.Timestamptz `json:"observed_at"`
 }
 
-type MeanRespInWindowRow struct {
-	AvgValue float64 `json:"avg_value"`
-	N        int64   `json:"n"`
+func (q *Queries) ListRespSamplesByKeys(ctx context.Context, keys []pgtype.Timestamptz) ([]ListRespSamplesByKeysRow, error) {
+	rows, err := q.db.Query(ctx, listRespSamplesByKeys, keys)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListRespSamplesByKeysRow{}
+	for rows.Next() {
+		var i ListRespSamplesByKeysRow
+		if err := rows.Scan(
+			&i.SampledAt,
+			&i.BrMin,
+			&i.SessionID,
+			&i.ObservedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
-func (q *Queries) MeanRespInWindow(ctx context.Context, arg MeanRespInWindowParams) (MeanRespInWindowRow, error) {
-	row := q.db.QueryRow(ctx, meanRespInWindow, arg.SampledAt, arg.SampledAt_2)
-	var i MeanRespInWindowRow
-	err := row.Scan(&i.AvgValue, &i.N)
-	return i, err
+const maxRespSampleAt = `-- name: MaxRespSampleAt :one
+SELECT sampled_at FROM resp_samples
+WHERE ($1::text IS NULL OR session_id = $1::text)
+ORDER BY sampled_at DESC
+LIMIT 1
+`
+
+func (q *Queries) MaxRespSampleAt(ctx context.Context, sessionID pgtype.Text) (pgtype.Timestamptz, error) {
+	row := q.db.QueryRow(ctx, maxRespSampleAt, sessionID)
+	var sampled_at pgtype.Timestamptz
+	err := row.Scan(&sampled_at)
+	return sampled_at, err
 }
 
-const upsertRespSample = `-- name: UpsertRespSample :exec
-INSERT INTO resp_samples (sampled_at, day_key, value, source_session_id)
-VALUES ($1, $2, $3, $4)
+const respDayBounds = `-- name: RespDayBounds :many
+(SELECT day_key FROM resp_samples ORDER BY sampled_at ASC LIMIT 1)
+UNION ALL
+(SELECT day_key FROM resp_samples ORDER BY sampled_at DESC LIMIT 1)
+`
+
+func (q *Queries) RespDayBounds(ctx context.Context) ([]pgtype.Date, error) {
+	rows, err := q.db.Query(ctx, respDayBounds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []pgtype.Date{}
+	for rows.Next() {
+		var day_key pgtype.Date
+		if err := rows.Scan(&day_key); err != nil {
+			return nil, err
+		}
+		items = append(items, day_key)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const upsertRespSamples = `-- name: UpsertRespSamples :exec
+INSERT INTO resp_samples (sampled_at, br_min, session_id, observed_at)
+SELECT v.sampled_at, v.br_min, v.session_id, v.observed_at
+FROM ROWS FROM (
+  unnest($1::timestamptz[]),
+  unnest($2::real[]),
+  unnest($3::text[]),
+  unnest($4::timestamptz[])
+) AS v(sampled_at, br_min, session_id, observed_at)
 ON CONFLICT (sampled_at) DO UPDATE SET
-  value = EXCLUDED.value,
-  day_key = EXCLUDED.day_key,
-  source_session_id = EXCLUDED.source_session_id
+  br_min = EXCLUDED.br_min,
+  session_id = EXCLUDED.session_id,
+  observed_at = EXCLUDED.observed_at
+WHERE (EXCLUDED.observed_at, EXCLUDED.session_id COLLATE "C")
+      >= (resp_samples.observed_at, resp_samples.session_id COLLATE "C")
 `
 
-type UpsertRespSampleParams struct {
-	SampledAt       pgtype.Timestamptz `json:"sampled_at"`
-	DayKey          pgtype.Date        `json:"day_key"`
-	Value           pgtype.Numeric     `json:"value"`
-	SourceSessionID string             `json:"source_session_id"`
+type UpsertRespSamplesParams struct {
+	SampledAt  []pgtype.Timestamptz `json:"sampled_at"`
+	BrMin      []float32            `json:"br_min"`
+	SessionID  []string             `json:"session_id"`
+	ObservedAt []pgtype.Timestamptz `json:"observed_at"`
 }
 
-func (q *Queries) UpsertRespSample(ctx context.Context, arg UpsertRespSampleParams) error {
-	_, err := q.db.Exec(ctx, upsertRespSample,
+func (q *Queries) UpsertRespSamples(ctx context.Context, arg UpsertRespSamplesParams) error {
+	_, err := q.db.Exec(ctx, upsertRespSamples,
 		arg.SampledAt,
-		arg.DayKey,
-		arg.Value,
-		arg.SourceSessionID,
+		arg.BrMin,
+		arg.SessionID,
+		arg.ObservedAt,
 	)
 	return err
 }

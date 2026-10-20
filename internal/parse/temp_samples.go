@@ -2,61 +2,55 @@ package parse
 
 import (
 	"encoding/binary"
-	"time"
+	"sort"
 )
 
-type TempSamplePoint struct {
-	Ts      time.Time
-	DayKey  string
-	Celsius float64
-}
+const (
+	temperatureStride        = 8
+	temperatureAbsent        = int16(-1)
+	temperatureSentinel      = int16(0x7FFF)
+	temperatureMaxHundredths = 5000
+)
 
-func ParseTempSeries(raw []byte, entry *CatalogEntry) []TempSamplePoint {
-	if entry == nil || len(raw) == 0 {
-		return nil
+// parseTemperature decodes the signed int16 hundredths field at record+2 and
+// keeps the raw precision. The surrounding padding bytes are not a wear flag.
+func parseTemperature(raw []byte, catalog Catalog, window Window) ([]TemperatureRow, TypeResult, error) {
+	records, trailing, err := minuteRecords(typeTemperature, raw,
+		FindEntry(catalog, typeTemperature), temperatureStride)
+	if err != nil {
+		return nil, TypeResult{}, err
 	}
-	var out []TempSamplePoint
-	if len(entry.RoundSegments) > 0 {
-		if err := validateRoundSegments("0x2E", raw, 8, entry.RoundSegments); err != nil {
-			return nil
+	byTime := make(map[int64]TemperatureRow, len(records))
+	dropped := 0
+	for _, record := range records {
+		value := int16(binary.LittleEndian.Uint16(raw[record.off+2:]))
+		if !window.contains(record.at) || value == temperatureAbsent ||
+			value == temperatureSentinel || value < 0 || value > temperatureMaxHundredths {
+			dropped++
+			continue
 		}
-		for si, seg := range entry.RoundSegments {
-			start := seg.ByteOffset
-			end := len(raw)
-			if si+1 < len(entry.RoundSegments) {
-				end = entry.RoundSegments[si+1].ByteOffset
-			}
-			if start >= len(raw) {
-				continue
-			}
-			if end > len(raw) {
-				end = len(raw)
-			}
-			rs := ParseRoundStartIst(seg.RoundStart)
-			out = append(out, parseTempSeriesChunk(raw[start:end], rs)...)
+		byTime[record.at.Unix()] = TemperatureRow{
+			SampledAt: record.at, HundredthsC: int(value),
 		}
-		return out
 	}
-	rs := ParseRoundStartIst(entry.RoundStart)
-	if !IsPlausibleUnixSec(rs) {
-		return nil
+	out := make([]TemperatureRow, 0, len(byTime))
+	for _, row := range byTime {
+		out = append(out, row)
 	}
-	return parseTempSeriesChunk(raw, rs)
-}
-
-func parseTempSeriesChunk(raw []byte, rs int64) []TempSamplePoint {
-	var out []TempSamplePoint
-	ts := rs
-	for i := 0; i+8 <= len(raw); i += 8 {
-		v := int16(binary.LittleEndian.Uint16(raw[i+2:]))
-		if v != 0x7FFF && v != -1 {
-			c := float64(v) / 100.0
-			sec := ts
-			out = append(out, TempSamplePoint{
-				Ts: EpochUTC(sec), DayKey: IstDayKey(sec), Celsius: c,
-			})
-		}
-		ts += 60
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	result := TypeResult{
+		Status:        statusFor(trailing),
+		Rows:          len(out),
+		Dropped:       dropped,
+		TrailingBytes: trailing,
 	}
-	return out
+	if trailing > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "trailing_fragment", ByteOffset: len(raw) - trailing, Count: trailing,
+		})
+	}
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].SampledAt)
+	}
+	return out, result, nil
 }

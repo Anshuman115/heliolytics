@@ -1,75 +1,348 @@
 package parse
 
-import "time"
+import (
+	"fmt"
+	"sort"
+	"time"
+)
 
-// ParsedBatch holds parse-only outputs from raw sync blobs.
-type ParsedBatch struct {
-	Catalog          Catalog
-	StepsByDay       map[string]int
-	Sleep            []SleepRecord
-	Pai              []PaiScore
-	Readiness        []ReadinessScore
-	Temperature      []TempSample
-	StressSeries     []HealthSample
-	HrvSeries        []HealthSample
-	Spo2Spot         []HealthSample
-	Spo2Sleep        []HealthSample
-	RhrSeries        []HealthSample
-	RespRateSeries   []HealthSample
-	Workouts         []WorkoutRecord
-	ActivitySessions []WorkoutRecord
-	TempSeries       []TempSamplePoint
-	HrSeries         []HrSamplePoint
-	StepSeries       []StepSample
+type Window struct {
+	StartedAt time.Time
+	EndedAt   time.Time
 }
 
-func ParseBlobs(catalogJSON []byte, blobs map[string][]byte, fetchEnd time.Time) (ParsedBatch, error) {
-	cat, err := ParseCatalog(catalogJSON)
-	if err != nil {
-		return ParsedBatch{}, err
-	}
-	if err := validateCatalogAnchors(cat, blobs, fetchEnd); err != nil {
-		return ParsedBatch{}, err
-	}
-	out := ParsedBatch{Catalog: cat, StepsByDay: map[string]int{}}
+const (
+	ErrCodeInvalidCatalog      = "invalid_catalog"
+	ErrCodeMissingAnchor       = "missing_anchor"
+	ErrCodeInvalidWindow       = "invalid_window"
+	ErrCodeInvalidFraming      = "invalid_framing"
+	ErrCodeUnsupportedVersion  = "unsupported_version"
+	ErrCodeUnsupportedTimezone = "unsupported_timezone"
+	ErrCodeCountOverflow       = "count_overflow"
+	ErrCodeMalformedProtobuf   = "malformed_protobuf"
+)
 
-	if raw, ok := blobs["0x01"]; ok && len(raw) > 0 {
-		for day, steps := range SumStepsByDay(raw, catalogJSON, fetchEnd) {
-			out.StepsByDay[day] = steps
+const (
+	typeActivity      = "0x01"
+	typeWorkout       = "0x05"
+	typeWorkoutDetail = "0x06"
+	typePAI           = "0x0D"
+	typeStress        = "0x13"
+	typeSpO2          = "0x25"
+	typeSpO2Sleep     = "0x26"
+	typeTemperature   = "0x2E"
+	typeRespiration   = "0x38"
+	typeContinuousHR  = "0x46"
+	typeSleep         = "0x48"
+	typeHRV           = "0x49"
+)
+
+type ParseError struct {
+	Code       string
+	TypeCode   string
+	ByteOffset int
+	Reason     string
+}
+
+func (e *ParseError) Error() string {
+	reason := e.Reason
+	if reason == "" {
+		reason = "parse error"
+	}
+	if e.TypeCode != "" {
+		return fmt.Sprintf("%s [%s] at byte %d: %s", e.Code, e.TypeCode, e.ByteOffset, reason)
+	}
+	return fmt.Sprintf("%s at byte %d: %s", e.Code, e.ByteOffset, reason)
+}
+
+func newError(code, typeCode string, offset int, format string, args ...any) *ParseError {
+	return &ParseError{
+		Code: code, TypeCode: typeCode, ByteOffset: offset,
+		Reason: fmt.Sprintf(format, args...),
+	}
+}
+
+// Warnings must not carry raw bytes or device identity.
+type Warning struct {
+	Code       string
+	ByteOffset int
+	Count      int
+}
+
+func (w Warning) String() string {
+	return fmt.Sprintf("%s offset=%d count=%d", w.Code, w.ByteOffset, w.Count)
+}
+
+type TypeResult struct {
+	Status           string
+	Rows             int
+	Dropped          int
+	TrailingBytes    int
+	ProcessedThrough *time.Time
+	Warnings         []Warning
+}
+
+type HeartRateRow struct {
+	SampledAt time.Time
+	Source    string
+	BPM       int
+}
+
+type StepRow struct {
+	SampledAt time.Time
+	Steps     int
+}
+
+type TemperatureRow struct {
+	SampledAt   time.Time
+	HundredthsC int
+}
+
+type ScalarRow struct {
+	SampledAt time.Time
+	Value     float64
+}
+
+type SpO2Row struct {
+	SampledAt time.Time
+	Source    string
+	Pct       int
+	Mode      string
+}
+
+type SleepStage struct {
+	Start time.Time
+	End   time.Time
+	Type  int
+}
+
+type SleepRow struct {
+	StartedAt       time.Time
+	EndedAt         time.Time
+	DayKey          string
+	IsNap           bool
+	Score           *int
+	TotalMins       int
+	DeepMins        int
+	REMMins         int
+	LightMins       int
+	WakeMins        int
+	Stages          []SleepStage
+	StagesTruncated bool
+}
+
+type WorkoutRow struct {
+	StartedAt time.Time
+	EndedAt   time.Time
+	SportType int
+	SportName string
+	Calories  *int
+	AvgHR     *int
+	MaxHR     *int
+	MinHR     *int
+	Steps     *int
+	HasDetail bool
+}
+
+type PAIRow struct {
+	SampledAt time.Time
+	DayKey    string
+	Score     int
+}
+
+type ParsedBatch struct {
+	Catalog     Catalog
+	HeartRate   []HeartRateRow
+	Steps       []StepRow
+	Temperature []TemperatureRow
+	HRV         []ScalarRow
+	Stress      []ScalarRow
+	Respiration []ScalarRow
+	SpO2        []SpO2Row
+	Sleep       []SleepRow
+	Workouts    []WorkoutRow
+	PAI         []PAIRow
+	Types       map[string]TypeResult
+}
+
+func (w Window) validate() error {
+	if w.StartedAt.IsZero() || w.EndedAt.IsZero() {
+		return newError(ErrCodeInvalidWindow, "", 0, "session start and end are required")
+	}
+	if w.EndedAt.Before(w.StartedAt) {
+		return newError(ErrCodeInvalidWindow, "", 0, "session end is before its start")
+	}
+	return nil
+}
+
+func (w Window) low() time.Time  { return w.StartedAt.Add(-measuredWindowSlack) }
+func (w Window) high() time.Time { return w.EndedAt.Add(measuredWindowTail) }
+
+func (w Window) contains(at time.Time) bool {
+	return !at.Before(w.low()) && !at.After(w.high())
+}
+
+func (w Window) containsInterval(start, end time.Time) bool {
+	return !start.Before(w.low()) && !end.After(w.high())
+}
+
+func ParseBlobs(catalog Catalog, blobs map[string][]byte, window Window) (ParsedBatch, error) {
+	if err := window.validate(); err != nil {
+		return ParsedBatch{}, err
+	}
+	out := ParsedBatch{Catalog: catalog, Types: make(map[string]TypeResult, len(blobs))}
+
+	if raw := blobs[typeActivity]; len(raw) > 0 {
+		hr, steps, result, err := parseActivity(raw, catalog, window)
+		if err != nil {
+			return ParsedBatch{}, err
 		}
+		out.HeartRate = hr
+		out.Steps = steps
+		out.Types[typeActivity] = result
 	}
-	out.Sleep = ParseSleep(blobs["0x48"])
-	out.Pai = ParsePai(blobs["0x0D"])
-	out.Readiness = ParseReadiness(blobs["0x39"])
-	out.Temperature = ParseTemperature(blobs["0x2E"], FindEntry(cat, "0x2E"))
-	out.StressSeries = ParseStressSeries(blobs["0x13"], FindEntry(cat, "0x13"))
-	out.HrvSeries = ParseHrvSeries(blobs["0x49"])
-	out.Spo2Spot = ParseSpo2Series(blobs["0x25"])
-	out.Spo2Sleep = ParseSpo2SleepSeries(blobs["0x26"])
-	out.RhrSeries = ParseRhrSeries(blobs["0x3A"])
-	out.RespRateSeries = ParseRespRateSeries(blobs["0x38"])
-	summaries := ParseWorkouts(blobs["0x05"])
-	for i := range summaries {
-		summaries[i].HasSummary = true
+	if raw := blobs[typeWorkout]; len(raw) > 0 {
+		workouts, result, err := parseWorkoutSummaries(raw, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Workouts = workouts
+		out.Types[typeWorkout] = result
 	}
-	details := ParseWorkoutDetailsBySegments(blobs["0x06"], FindEntry(cat, "0x06"))
-	for i := range details {
-		details[i].HasDetail = true
+	if raw := blobs[typeWorkoutDetail]; len(raw) > 0 {
+		blocks, err := parseWorkoutDetailBlocks(raw)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Types[typeWorkoutDetail] = attachWorkoutDetails(out.Workouts, blocks)
 	}
-	out.Workouts = MergeWorkouts(summaries, details)
-	out.ActivitySessions = DetectActivitySessions(blobs["0x01"], catalogJSON, fetchEnd)
-	out.TempSeries = ParseTempSeries(blobs["0x2E"], FindEntry(cat, "0x2E"))
-	out.HrSeries = MergeHeartRateSeries(
-		ParseActivityHrSeries(blobs["0x01"], catalogJSON, fetchEnd),
-		ParseContinuousHr(blobs["0x46"]),
-	)
-	out.StepSeries = ParseStepSeries(blobs["0x01"], catalogJSON, fetchEnd)
+	if raw := blobs[typePAI]; len(raw) > 0 {
+		pai, result, err := parsePAI(raw, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.PAI = pai
+		out.Types[typePAI] = result
+	}
+	if raw := blobs[typeStress]; len(raw) > 0 {
+		stress, result, err := parseStress(raw, catalog, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Stress = stress
+		out.Types[typeStress] = result
+	}
+	if raw := blobs[typeSpO2]; len(raw) > 0 {
+		spo2, result, err := parseSpO2(raw, catalog, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.SpO2 = spo2
+		out.Types[typeSpO2] = result
+	}
+	if raw := blobs[typeSpO2Sleep]; len(raw) > 0 {
+		result, err := parseSpO2Sleep(raw, catalog)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Types[typeSpO2Sleep] = result
+	}
+	if raw := blobs[typeTemperature]; len(raw) > 0 {
+		temperature, result, err := parseTemperature(raw, catalog, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Temperature = temperature
+		out.Types[typeTemperature] = result
+	}
+	if raw := blobs[typeRespiration]; len(raw) > 0 {
+		respiration, result, err := parseRespiration(raw, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Respiration = respiration
+		out.Types[typeRespiration] = result
+	}
+	if raw := blobs[typeContinuousHR]; len(raw) > 0 {
+		hr, result, err := parseContinuousHR(raw, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.HeartRate = mergeHeartRate(out.HeartRate, hr)
+		out.Types[typeContinuousHR] = result
+	}
+	if raw := blobs[typeSleep]; len(raw) > 0 {
+		sleep, result, err := parseSleep(raw, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.Sleep = sleep
+		out.Types[typeSleep] = result
+	}
+	if raw := blobs[typeHRV]; len(raw) > 0 {
+		hrv, result, err := parseHRV(raw, window)
+		if err != nil {
+			return ParsedBatch{}, err
+		}
+		out.HRV = hrv
+		out.Types[typeHRV] = result
+	}
+	for code, result := range out.Types {
+		result.Warnings = sortWarnings(result.Warnings)
+		out.Types[code] = result
+	}
 	return out, nil
 }
 
-func (b ParsedBatch) healthSeries() []HealthSample {
-	return appendHealthSeries(
-		b.StressSeries, b.HrvSeries, b.Spo2Spot, b.Spo2Sleep,
-		b.RhrSeries, b.RespRateSeries,
-	)
+func sortWarnings(w []Warning) []Warning {
+	if len(w) == 0 {
+		return nil
+	}
+	sort.SliceStable(w, func(i, j int) bool {
+		if w[i].Code != w[j].Code {
+			return w[i].Code < w[j].Code
+		}
+		return w[i].ByteOffset < w[j].ByteOffset
+	})
+	return w
+}
+
+func statusFor(trailing int) string {
+	if trailing > 0 {
+		return "partial"
+	}
+	return "accepted"
+}
+
+func maxTime(current *time.Time, candidate time.Time) *time.Time {
+	if current == nil || candidate.After(*current) {
+		value := candidate
+		return &value
+	}
+	return current
+}
+
+func mergeHeartRate(existing, extra []HeartRateRow) []HeartRateRow {
+	type key struct {
+		at     int64
+		source string
+	}
+	merged := make(map[key]HeartRateRow, len(existing)+len(extra))
+	for _, row := range existing {
+		merged[key{row.SampledAt.Unix(), row.Source}] = row
+	}
+	for _, row := range extra {
+		merged[key{row.SampledAt.Unix(), row.Source}] = row
+	}
+	out := make([]HeartRateRow, 0, len(merged))
+	for _, row := range merged {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if !out[i].SampledAt.Equal(out[j].SampledAt) {
+			return out[i].SampledAt.Before(out[j].SampledAt)
+		}
+		return out[i].Source < out[j].Source
+	})
+	return out
 }

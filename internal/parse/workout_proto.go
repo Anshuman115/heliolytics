@@ -1,63 +1,91 @@
 package parse
 
-type protoField struct {
-	kind  int
-	intV  int
-	bytes []byte
+import "math"
+
+type workoutSummary struct {
+	startedAt   int64
+	durationSec int64
+	sportType   int
+	calories    *int
+	avgHR       *int
+	maxHR       *int
+	minHR       *int
 }
 
-func readProtoMsg(b []byte) map[int][]protoField {
-	m := map[int][]protoField{}
-	o := 0
-	for o < len(b) {
-		field, wire, n := readTag(b, o)
-		if n <= o {
-			break
-		}
-		o = n
-		switch wire {
-		case 0:
-			v, n2 := readVarint(b, o)
-			o = n2
-			m[field] = append(m[field], protoField{kind: 0, intV: v})
-		case 2:
-			chunk, n2 := readBytes(b, o)
-			o = n2
-			if chunk != nil {
-				m[field] = append(m[field], protoField{kind: 2, bytes: chunk})
-			}
-		case 5:
-			if o+4 > len(b) {
-				return m
-			}
-			o += 4
-		case 1:
-			if o+8 > len(b) {
-				return m
-			}
-			o += 8
-		default:
-			return m
-		}
+func decodeWorkoutSummary(blob []byte, offset int) (*workoutSummary, int, error) {
+	budget := &protoBudget{}
+	top, err := readMessage(blob, 0, budget)
+	if err != nil {
+		return nil, 0, newError(ErrCodeMalformedProtobuf, typeWorkout, offset, "%v", err)
 	}
-	return m
+	meta, err := subMessage(top, 2, 0, budget)
+	if err != nil {
+		return nil, 0, newError(ErrCodeMalformedProtobuf, typeWorkout, offset, "%v", err)
+	}
+	start, ok := varintField(meta, 1)
+	if !ok || start > math.MaxInt64 {
+		return nil, 0, nil
+	}
+	durationMessage, err := subMessage(top, 7, 0, budget)
+	if err != nil {
+		return nil, 0, newError(ErrCodeMalformedProtobuf, typeWorkout, offset, "%v", err)
+	}
+	duration, ok := varintField(durationMessage, 1)
+	if !ok || duration > math.MaxInt64 {
+		return nil, 0, nil
+	}
+	sport, err := workoutSport(top, budget)
+	if err != nil {
+		return nil, 0, newError(ErrCodeInvalidFraming, typeWorkout, offset, "%v", err)
+	}
+	caloriesMessage, err := subMessage(top, 16, 0, budget)
+	if err != nil {
+		return nil, 0, newError(ErrCodeMalformedProtobuf, typeWorkout, offset, "%v", err)
+	}
+	hrMessage, err := subMessage(top, 19, 0, budget)
+	if err != nil {
+		return nil, 0, newError(ErrCodeMalformedProtobuf, typeWorkout, offset, "%v", err)
+	}
+
+	dropped := 0
+	caloriesValue, caloriesPresent := varintField(caloriesMessage, 1)
+	calories, caloriesOut := statValue(caloriesValue, caloriesPresent, 0, 10000)
+	if caloriesOut {
+		dropped++
+	}
+	avgValue, avgPresent := varintField(hrMessage, 1)
+	avgHR, avgOut := statValue(avgValue, avgPresent, hrMinBPM, hrMaxBPM)
+	if avgOut {
+		dropped++
+	}
+	maxValue, maxPresent := varintField(hrMessage, 2)
+	maxHR, maxOut := statValue(maxValue, maxPresent, hrMinBPM, hrMaxBPM)
+	if maxOut {
+		dropped++
+	}
+	minValue, minPresent := varintField(hrMessage, 3)
+	minHR, minOut := statValue(minValue, minPresent, hrMinBPM, hrMaxBPM)
+	if minOut {
+		dropped++
+	}
+	return &workoutSummary{
+		startedAt:   int64(start),
+		durationSec: int64(duration),
+		sportType:   sport,
+		calories:    calories,
+		avgHR:       avgHR,
+		maxHR:       maxHR,
+		minHR:       minHR,
+	}, dropped, nil
 }
 
-func protoSub(m map[int][]protoField, field int) map[int][]protoField {
-	for _, f := range m[field] {
-		if f.kind == 2 {
-			return readProtoMsg(f.bytes)
-		}
+func statValue(value uint64, present bool, minimum, maximum int) (*int, bool) {
+	if !present {
+		return nil, false
 	}
-	return map[int][]protoField{}
-}
-
-func protoInt(m map[int][]protoField, field int) *int {
-	for _, f := range m[field] {
-		if f.kind == 0 {
-			v := f.intV
-			return &v
-		}
+	if value < uint64(minimum) || value > uint64(maximum) {
+		return nil, true
 	}
-	return nil
+	number := int(value)
+	return &number, false
 }

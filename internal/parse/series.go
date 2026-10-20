@@ -2,145 +2,114 @@ package parse
 
 import (
 	"encoding/binary"
-	"time"
+	"sort"
 )
 
-type HealthSample struct {
-	Metric    string
-	DayKey    string
-	SampledAt time.Time
-	Value     float64
+type scalarSpec struct {
+	code       string
+	stride     int
+	valueAt    int
+	timezoneAt int
+	accept     func(int) bool
 }
 
-func ParseStressSeries(raw []byte, entry *CatalogEntry) []HealthSample {
-	if entry == nil || len(raw) == 0 {
-		return nil
-	}
-	var out []HealthSample
-	appendChunk := func(chunk []byte, rs int64) {
-		ts := rs
-		for _, b := range chunk {
-			if b != 0xFF {
-				out = append(out, HealthSample{
-					Metric: "stress", DayKey: IstDayKey(ts),
-					SampledAt: EpochUTC(ts), Value: float64(b),
-				})
-			}
-			ts += 60
-		}
-	}
-	if len(entry.RoundSegments) > 0 {
-		if err := validateRoundSegments("0x13", raw, 1, entry.RoundSegments); err != nil {
-			return nil
-		}
-		for si, seg := range entry.RoundSegments {
-			start, end := seg.ByteOffset, len(raw)
-			if si+1 < len(entry.RoundSegments) {
-				end = entry.RoundSegments[si+1].ByteOffset
-			}
-			if start >= len(raw) {
-				continue
-			}
-			if end > len(raw) {
-				end = len(raw)
-			}
-			appendChunk(raw[start:end], ParseRoundStartIst(seg.RoundStart))
-		}
-		return out
-	}
-	rs := ParseRoundStartIst(entry.RoundStart)
-	if !IsPlausibleUnixSec(rs) {
-		return nil
-	}
-	appendChunk(raw, rs)
-	return out
+var hrvSpec = scalarSpec{
+	code: typeHRV, stride: 6, valueAt: 5, timezoneAt: 4,
+	accept: func(value int) bool { return value > 0 && value <= 300 },
 }
 
-func ParseHrvSeries(raw []byte) []HealthSample {
-	if len(raw)%6 != 0 {
-		return nil
+var respirationSpec = scalarSpec{
+	code: typeRespiration, stride: 8, valueAt: 5, timezoneAt: 4,
+	accept: func(value int) bool { return value >= 4 && value <= 40 },
+}
+
+func parseHRV(raw []byte, window Window) ([]ScalarRow, TypeResult, error) {
+	return parseScalarRecords(hrvSpec, raw, window)
+}
+
+func parseRespiration(raw []byte, window Window) ([]ScalarRow, TypeResult, error) {
+	return parseScalarRecords(respirationSpec, raw, window)
+}
+
+// parseStress decodes 0x13 as one byte per anchored minute. The wire value
+// 0xff is a missing reading and values above 100 are out of domain.
+func parseStress(raw []byte, catalog Catalog, window Window) ([]ScalarRow, TypeResult, error) {
+	records, trailing, err := minuteRecords(typeStress, raw, FindEntry(catalog, typeStress), 1)
+	if err != nil {
+		return nil, TypeResult{}, err
 	}
-	var out []HealthSample
-	for i := 0; i < len(raw); i += 6 {
-		sec := int64(binary.LittleEndian.Uint32(raw[i:]))
-		if !IsPlausibleUnixSec(sec) {
+	byTime := make(map[int64]ScalarRow, len(records))
+	dropped := 0
+	for _, record := range records {
+		value := raw[record.off]
+		if !window.contains(record.at) || value == stepsMissing || value > 100 {
+			dropped++
 			continue
 		}
-		rmssd := int(raw[i+5])
-		if rmssd <= 0 {
-			continue
-		}
-		out = append(out, HealthSample{
-			Metric: "hrv", DayKey: IstDayKey(sec),
-			SampledAt: EpochUTC(sec), Value: float64(rmssd),
+		byTime[record.at.Unix()] = ScalarRow{SampledAt: record.at, Value: float64(value)}
+	}
+	out := make([]ScalarRow, 0, len(byTime))
+	for _, row := range byTime {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	result := TypeResult{
+		Status:        statusFor(trailing),
+		Rows:          len(out),
+		Dropped:       dropped,
+		TrailingBytes: trailing,
+	}
+	if trailing > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "trailing_fragment", ByteOffset: len(raw) - trailing, Count: trailing,
 		})
 	}
-	return out
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].SampledAt)
+	}
+	return out, result, nil
 }
 
-func ParseSpo2Series(raw []byte) []HealthSample {
-	return spo2ToSeries(ParseSpo2(raw), "spo2")
-}
-
-func ParseSpo2SleepSeries(raw []byte) []HealthSample {
-	return spo2ToSeries(ParseSpo2Sleep(raw), "spo2_sleep")
-}
-
-func spo2ToSeries(rows []Spo2Sample, metric string) []HealthSample {
-	out := make([]HealthSample, 0, len(rows))
-	for _, s := range rows {
-		out = append(out, HealthSample{
-			Metric: metric, DayKey: s.DayKey,
-			SampledAt: EpochUTC(s.SampledAt), Value: float64(s.Percent),
+// parseScalarRecords decodes records that carry their own UTC epoch, a device
+// timezone byte that must be IST and one numeric value byte.
+func parseScalarRecords(spec scalarSpec, raw []byte, window Window) ([]ScalarRow, TypeResult, error) {
+	offsets, trailing, err := fixedRecords(spec.code, raw, spec.stride)
+	if err != nil {
+		return nil, TypeResult{}, err
+	}
+	byTime := make(map[int64]ScalarRow, len(offsets))
+	dropped := 0
+	for _, off := range offsets {
+		if raw[off+spec.timezoneAt] != istTimezoneQuarter {
+			return nil, TypeResult{}, timezoneError(spec.code, off+spec.timezoneAt, raw[off+spec.timezoneAt])
+		}
+		epoch := int64(binary.LittleEndian.Uint32(raw[off:]))
+		value := raw[off+spec.valueAt]
+		at := EpochUTC(epoch)
+		if !window.contains(at) || !spec.accept(int(value)) {
+			dropped++
+			continue
+		}
+		byTime[at.Unix()] = ScalarRow{SampledAt: at, Value: float64(value)}
+	}
+	out := make([]ScalarRow, 0, len(byTime))
+	for _, row := range byTime {
+		out = append(out, row)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].SampledAt.Before(out[j].SampledAt) })
+	result := TypeResult{
+		Status:        statusFor(trailing),
+		Rows:          len(out),
+		Dropped:       dropped,
+		TrailingBytes: trailing,
+	}
+	if trailing > 0 {
+		result.Warnings = append(result.Warnings, Warning{
+			Code: "trailing_fragment", ByteOffset: len(raw) - trailing, Count: trailing,
 		})
 	}
-	return out
-}
-
-func ParseRhrSeries(raw []byte) []HealthSample {
-	return parseHr6Series(raw, "rhr", 30, 220)
-}
-
-func parseHr6Series(raw []byte, metric string, lo, hi int) []HealthSample {
-	if len(raw)%6 != 0 {
-		return nil
+	for i := range out {
+		result.ProcessedThrough = maxTime(result.ProcessedThrough, out[i].SampledAt)
 	}
-	var out []HealthSample
-	for i := 0; i < len(raw); i += 6 {
-		sec := int64(binary.LittleEndian.Uint32(raw[i:]))
-		if !IsPlausibleUnixSec(sec) {
-			continue
-		}
-		bpm := int(raw[i+5])
-		if bpm == 0xFF || bpm < lo || bpm > hi {
-			continue
-		}
-		out = append(out, HealthSample{
-			Metric: metric, DayKey: IstDayKey(sec),
-			SampledAt: EpochUTC(sec), Value: float64(bpm),
-		})
-	}
-	return out
-}
-
-func ParseRespRateSeries(raw []byte) []HealthSample {
-	if len(raw)%8 != 0 {
-		return nil
-	}
-	var out []HealthSample
-	for i := 0; i < len(raw); i += 8 {
-		sec := int64(binary.LittleEndian.Uint32(raw[i:]))
-		if !IsPlausibleUnixSec(sec) {
-			continue
-		}
-		rate := int(raw[i+5])
-		if rate == 0xFF || rate <= 0 {
-			continue
-		}
-		out = append(out, HealthSample{
-			Metric: "resp_rate", DayKey: IstDayKey(sec),
-			SampledAt: EpochUTC(sec), Value: float64(rate),
-		})
-	}
-	return out
+	return out, result, nil
 }

@@ -1,100 +1,213 @@
 package parse
 
-import (
-	"fmt"
-	"time"
-)
+import "time"
 
-type catalogSegmentRule struct {
-	code           string
-	stride         func([]byte) int
-	requiresAnchor bool
+const headeredRoundVersion = 0x02
+
+type roundAnchor struct {
+	off int
+	at  time.Time
 }
 
-var catalogSegmentRules = []catalogSegmentRule{
-	{code: "0x01", stride: func(raw []byte) int { return activityStrideFor(len(raw)) }, requiresAnchor: true},
-	{code: "0x13", stride: func([]byte) int { return 1 }, requiresAnchor: true},
-	{code: "0x2E", stride: func([]byte) int { return 8 }, requiresAnchor: true},
-	{code: "0x06", stride: func([]byte) int { return 1 }},
+type minuteRecord struct {
+	at  time.Time
+	off int
 }
 
-func validateCatalogAnchors(cat Catalog, blobs map[string][]byte, fetchEnd time.Time) error {
-	for _, rule := range catalogSegmentRules {
-		raw := blobs[rule.code]
-		if len(raw) == 0 {
-			continue
+type headeredRecord struct {
+	off       int
+	nextRound *time.Time
+}
+
+func minuteRecords(code string, raw []byte, entry *CatalogEntry, stride int) ([]minuteRecord, int, error) {
+	anchors, err := minuteAnchors(code, raw, entry, stride)
+	if err != nil {
+		return nil, 0, err
+	}
+	var out []minuteRecord
+	trailing := 0
+	for i, anchor := range anchors {
+		end := len(raw)
+		if i+1 < len(anchors) {
+			end = anchors[i+1].off
 		}
-		entry := FindEntry(cat, rule.code)
-		if entry == nil {
-			if rule.code == "0x01" {
-				return validateFetchEndFallback(raw, rule.stride(raw), fetchEnd)
+		size := end - anchor.off
+		complete := size / stride
+		remainder := size % stride
+		if remainder != 0 {
+			if i+1 < len(anchors) {
+				return nil, 0, newError(ErrCodeInvalidFraming, code, end-remainder,
+					"interior segment ends with %d trailing bytes", remainder)
 			}
-			if rule.requiresAnchor {
-				return catalogError(rule.code, "missing catalog entry with a round anchor")
+			if len(out) == 0 {
+				return nil, 0, newError(ErrCodeInvalidFraming, code, anchor.off,
+					"payload holds no complete %d-byte record", stride)
 			}
-			continue
+			trailing = remainder
 		}
-		if len(entry.RoundSegments) > 0 {
-			if err := validateRoundSegments(rule.code, raw, rule.stride(raw), entry.RoundSegments); err != nil {
-				return err
-			}
-			continue
-		}
-		if !rule.requiresAnchor {
-			continue
-		}
-		if entry.RoundStart == "" && rule.code == "0x01" {
-			return validateFetchEndFallback(raw, rule.stride(raw), fetchEnd)
-		}
-		if err := validateRoundTimestamp(rule.code, "roundStart", entry.RoundStart); err != nil {
-			return err
+		for j := range complete {
+			out = append(out, minuteRecord{
+				at:  anchor.at.Add(time.Duration(j) * time.Minute),
+				off: anchor.off + j*stride,
+			})
 		}
 	}
-	return nil
+	return out, trailing, nil
 }
 
-func validateRoundSegments(code string, raw []byte, stride int, segments []RoundSegment) error {
+func minuteAnchors(code string, raw []byte, entry *CatalogEntry, stride int) ([]roundAnchor, error) {
+	if entry == nil {
+		return nil, newError(ErrCodeMissingAnchor, code, 0, "no catalog entry provides a round anchor")
+	}
+	if len(entry.RoundSegments) == 0 {
+		if entry.RoundStart == "" {
+			return nil, newError(ErrCodeMissingAnchor, code, 0, "catalog entry has no round anchor")
+		}
+		anchor, err := validateMinuteAnchor(code, 0, entry.RoundStart, len(raw), stride)
+		if err != nil {
+			return nil, err
+		}
+		return []roundAnchor{anchor}, nil
+	}
+	out := make([]roundAnchor, 0, len(entry.RoundSegments))
 	previous := -1
-	for index, segment := range segments {
-		if segment.ByteOffset < 0 || segment.ByteOffset >= len(raw) {
-			return catalogError(code, "roundSegments[%d].byteOffset=%d is outside payload length %d", index, segment.ByteOffset, len(raw))
+	for i, segment := range entry.RoundSegments {
+		anchor, err := validateMinuteAnchor(code, segment.ByteOffset, segment.RoundStart, len(raw), stride)
+		if err != nil {
+			return nil, err
 		}
-		if stride <= 0 || segment.ByteOffset%stride != 0 {
-			return catalogError(code, "roundSegments[%d].byteOffset=%d is not aligned to stride %d", index, segment.ByteOffset, stride)
+		if i == 0 && segment.ByteOffset != 0 {
+			return nil, newError(ErrCodeInvalidCatalog, code, segment.ByteOffset,
+				"first round offset must be 0")
 		}
-		if index > 0 && segment.ByteOffset <= previous {
-			return catalogError(code, "roundSegments[%d].byteOffset=%d is not strictly after %d", index, segment.ByteOffset, previous)
+		if i > 0 && segment.ByteOffset <= previous {
+			return nil, newError(ErrCodeInvalidCatalog, code, segment.ByteOffset,
+				"round offset is not strictly after %d", previous)
 		}
-		if err := validateRoundTimestamp(code, fmt.Sprintf("roundSegments[%d].roundStart", index), segment.RoundStart); err != nil {
-			return err
-		}
+		out = append(out, anchor)
 		previous = segment.ByteOffset
 	}
-	return nil
+	return out, nil
 }
 
-func validateRoundTimestamp(code, field, raw string) error {
-	sec := ParseRoundStartIst(raw)
-	if !IsPlausibleUnixSec(sec) {
-		return catalogError(code, "%s=%q is not a plausible timestamp", field, raw)
+func validateMinuteAnchor(code string, offset int, roundStart string, size, stride int) (roundAnchor, error) {
+	if offset < 0 {
+		return roundAnchor{}, newError(ErrCodeInvalidCatalog, code, offset,
+			"round offset is negative")
 	}
-	return nil
+	// A round position the payload cannot satisfy is a framing conflict, not a
+	// catalog syntax error.
+	if offset >= size {
+		return roundAnchor{}, newError(ErrCodeInvalidFraming, code, offset,
+			"round offset is outside the %d-byte payload", size)
+	}
+	if offset%stride != 0 {
+		return roundAnchor{}, newError(ErrCodeInvalidFraming, code, offset,
+			"round offset is not aligned to stride %d", stride)
+	}
+	sec, fraction, ok := parseRoundStart(roundStart)
+	if !ok {
+		return roundAnchor{}, newError(ErrCodeInvalidCatalog, code, offset,
+			"round start is not an offsetless IST wall clock")
+	}
+	if !anchorPlausible(sec) || sec%60 != 0 || fraction {
+		return roundAnchor{}, newError(ErrCodeInvalidCatalog, code, offset,
+			"minute anchor must be a whole minute in the accepted range")
+	}
+	return roundAnchor{off: offset, at: EpochUTC(sec)}, nil
 }
 
-func validateFetchEndFallback(raw []byte, stride int, fetchEnd time.Time) error {
-	if stride <= 0 {
-		return catalogError("0x01", "missing a valid round anchor and fetch-end fallback")
+func payloadSegments(code string, raw []byte, entry *CatalogEntry) ([]int, error) {
+	size := len(raw)
+	if entry == nil || len(entry.RoundSegments) == 0 {
+		return []int{0}, nil
 	}
-	count := len(raw) / stride
-	endSec := fetchEnd.UTC().Unix()
-	startSec := endSec - int64(count-1)*60
-	if count == 0 || !IsPlausibleUnixSec(startSec) || !IsPlausibleUnixSec(endSec) {
-		return catalogError("0x01", "missing a valid round anchor and fetch-end fallback")
+	out := make([]int, 0, len(entry.RoundSegments))
+	previous := -1
+	for i, segment := range entry.RoundSegments {
+		if segment.ByteOffset < 0 {
+			return nil, newError(ErrCodeInvalidCatalog, code, segment.ByteOffset,
+				"round offset is negative")
+		}
+		// A round position the payload cannot satisfy is a framing conflict, not
+		// a catalog syntax error.
+		if segment.ByteOffset >= size {
+			return nil, newError(ErrCodeInvalidFraming, code, segment.ByteOffset,
+				"round offset is outside the %d-byte payload", size)
+		}
+		if i == 0 && segment.ByteOffset != 0 {
+			return nil, newError(ErrCodeInvalidCatalog, code, segment.ByteOffset,
+				"first round offset must be 0")
+		}
+		if i > 0 && segment.ByteOffset <= previous {
+			return nil, newError(ErrCodeInvalidCatalog, code, segment.ByteOffset,
+				"round offset is not strictly after %d", previous)
+		}
+		out = append(out, segment.ByteOffset)
+		previous = segment.ByteOffset
 	}
-	return nil
+	return out, nil
 }
 
-func catalogError(code, format string, args ...any) error {
-	detail := fmt.Sprintf(format, args...)
-	return fmt.Errorf("%w: %s: %s", ErrInvalidCatalog, code, detail)
+func headeredRecords(code string, raw []byte, entry *CatalogEntry, stride int) ([]headeredRecord, int, error) {
+	starts, err := payloadSegments(code, raw, entry)
+	if err != nil {
+		return nil, 0, err
+	}
+	var out []headeredRecord
+	trailing := 0
+	for i, start := range starts {
+		end := len(raw)
+		if i+1 < len(starts) {
+			end = starts[i+1]
+		}
+		if raw[start] != headeredRoundVersion {
+			return nil, 0, newError(ErrCodeUnsupportedVersion, code, start,
+				"round version is not 2")
+		}
+		size := end - start - 1
+		complete := size / stride
+		remainder := size % stride
+		if remainder != 0 {
+			if i+1 < len(starts) {
+				return nil, 0, newError(ErrCodeInvalidFraming, code, end-remainder,
+					"interior round ends with %d trailing bytes", remainder)
+			}
+			if len(out) == 0 {
+				return nil, 0, newError(ErrCodeInvalidFraming, code, start,
+					"round holds no complete %d-byte record", stride)
+			}
+			trailing = remainder
+		}
+		var limit *time.Time
+		if entry != nil && i+1 < len(starts) && i+1 < len(entry.RoundSegments) {
+			if sec, _, ok := parseRoundStart(entry.RoundSegments[i+1].RoundStart); ok && anchorPlausible(sec) {
+				bound := EpochUTC(sec)
+				limit = &bound
+			}
+		}
+		for j := range complete {
+			out = append(out, headeredRecord{off: start + 1 + j*stride, nextRound: limit})
+		}
+	}
+	return out, trailing, nil
+}
+
+func fixedRecords(code string, raw []byte, stride int) ([]int, int, error) {
+	complete := len(raw) / stride
+	remainder := len(raw) % stride
+	if remainder != 0 && complete == 0 {
+		return nil, 0, newError(ErrCodeInvalidFraming, code, 0,
+			"payload holds no complete %d-byte record", stride)
+	}
+	out := make([]int, complete)
+	for i := range out {
+		out[i] = i * stride
+	}
+	return out, remainder, nil
+}
+
+func timezoneError(code string, offset int, value byte) error {
+	return newError(ErrCodeUnsupportedTimezone, code, offset,
+		"timezone byte %d is not the IST value 22", value)
 }

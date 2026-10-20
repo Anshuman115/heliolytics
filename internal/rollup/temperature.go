@@ -1,22 +1,25 @@
 package rollup
 
-import (
-	"context"
-	"log"
-)
+import "github.com/Anshuman115/heliolytics/internal/store"
 
-// recomputeDailyTemperatureSQL sets daily_metrics.temp_avg_c to the average of
-// temperature_samples.celsius for a given day, reading from the DB rather
-// than the sync payload.
-const recomputeDailyTemperatureSQL = `
-	UPDATE daily_metrics
-	SET temp_avg_c = (SELECT AVG(celsius) FROM temperature_samples WHERE day_key = $1::date),
-	    updated_at = NOW()
-	WHERE day_key = $1::date`
+const temperatureSamplesPerNight = 60
 
-// RecomputeDailyTemperature recomputes daily_metrics.temp_avg_c for each day
-// in days by averaging temperature_samples straight from the database.
-func RecomputeDailyTemperature(ctx context.Context, st Target, days []string) error {
-	log.Printf("rollup temperature days=%v", days)
-	return st.ExecDayKeys(ctx, recomputeDailyTemperatureSQL, days)
+func meanNightTemp(rows []store.TemperatureReadRow, w []span) *float64 {
+	total := totalMinutes(w)
+	if total == 0 {
+		return nil
+	}
+	var sumCenti int
+	n := 0
+	for _, r := range rows {
+		if !r.OnWrist {
+			continue
+		}
+		sumCenti += r.CentiC
+		n++
+	}
+	if n < temperatureSamplesPerNight || float64(n) < 0.5*float64(total) {
+		return nil
+	}
+	return new(float64(sumCenti) / 100 / float64(n))
 }

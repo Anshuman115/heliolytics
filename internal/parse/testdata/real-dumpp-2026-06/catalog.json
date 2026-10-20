@@ -1,0 +1,20 @@
+{
+  "sessionId": "fixture-dumpp-2026-06-22",
+  "chunked": [
+    {
+      "code": "0x01",
+      "status": "ok",
+      "roundStart": "2026-06-21T11:16:00.000",
+      "roundSegments": [
+        { "byteOffset": 0, "roundStart": "2026-06-21T11:16:00.000" },
+        { "byteOffset": 632, "roundStart": "2026-06-21T12:35:00.000" },
+        { "byteOffset": 2336, "roundStart": "2026-06-21T16:09:00.000" }
+      ]
+    },
+    { "code": "0x05", "status": "ok", "roundStart": "2026-06-22T02:20:16.000" },
+    { "code": "0x06", "status": "ok", "roundStart": "2026-06-22T02:20:16.000" },
+    { "code": "0x13", "status": "ok", "roundStart": "2026-06-21T11:16:00.000" },
+    { "code": "0x2E", "status": "ok", "roundStart": "2026-06-21T11:17:00.000" }
+  ],
+  "unsolicited": []
+}
