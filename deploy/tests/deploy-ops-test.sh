@@ -127,6 +127,7 @@ stage_deploy_tree() {
   cp -- "$deploy_dir/deploy.sh" "$target/deploy.sh"
   cp -- "$deploy_dir/deploy-all.sh" "$target/deploy-all.sh"
   cp -- "$deploy_dir/deploy-cloudflare.sh" "$target/deploy-cloudflare.sh"
+  cp -- "$deploy_dir/deploy-adminer.sh" "$target/deploy-adminer.sh"
   mkdir -p "$target/cloudflared"
   cp -- "$deploy_dir/cloudflared/docker-compose.yml" "$target/cloudflared/docker-compose.yml"
 }
@@ -395,6 +396,7 @@ done
 expect_failure 'tunnel deploy refuses an empty token' "$fake_deploy/deploy-cloudflare.sh"
 printf 'CLOUDFLARE_TUNNEL_TOKEN=token\n' >>"$fake_deploy/.env"
 expect_failure 'tunnel deploy refuses a missing ingress network' "$fake_deploy/deploy-cloudflare.sh"
+expect_failure 'adminer helper refuses an unknown action' "$fake_deploy/deploy-adminer.sh" restart
 
 # ------------------------------------------------------- D. reset guards
 expect_failure 'reset refuses extra arguments' \
