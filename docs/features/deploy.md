@@ -31,6 +31,7 @@ again. Configure the phone app with `HELIOLYTICS_PHONE_API_KEY` from `deploy/.en
 | `deploy/deploy-all.sh` | Rebuilds and starts `db`, `api` and `web` | data, tunnel, Adminer |
 | `deploy/reset-db.sh` | Deletes the database volume, then rebuilds `db`, `api` and `web` | tunnel, Adminer |
 | `deploy/deploy-cloudflare.sh` | Starts or updates the tunnel connector | everything else |
+| `deploy/deploy-adminer.sh [start\|stop]` | Starts or stops Adminer on `127.0.0.1:8081` | everything else |
 
 `deploy.sh` and `deploy-all.sh` refuse a checkout that is not on a clean `main`.
 They write the deployed commits and build time into `deploy/.env`, validate the
@@ -48,12 +49,11 @@ configuration, and only then build. `reset-db.sh` asks you to type `DELETE`.
 
 `db`, `api`, `web` and `adminer` belong to the Compose project named by
 `COMPOSE_PROJECT_NAME` in `deploy/.env` (default `heliolytics`). The database volume
-is `<project>_pgdata`. Start Adminer when you need it:
+is `<project>_pgdata`.
 
-```sh
-docker compose --project-name <project> --env-file deploy/.env \
-  --file deploy/docker-compose.yml --profile tools up -d adminer
-```
+Adminer is off by default. Start it with `deploy/deploy-adminer.sh`, open it through
+an SSH tunnel (`ssh -L 8081:127.0.0.1:8081 <host>`), log in to server `db` as
+`heliolytics` with `POSTGRES_PASSWORD`, and stop it with `deploy/deploy-adminer.sh stop`.
 
 Networks:
 
